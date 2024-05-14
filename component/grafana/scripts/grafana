@@ -1,0 +1,64 @@
+#!/bin/bash
+# Author: lingyang
+# Create Date: 2019-04-23 06:27:36
+# Last Modified: 2020-11-16 16:25:22
+# Description: 
+HERE=$(cd -P -- $(dirname -- "$0") && pwd -P)
+PARENT_DIR=$(echo ${HERE%/*})
+ROOT_DIR=$(echo ${PARENT_DIR%/*})
+APP_HOME="${PARENT_DIR}"
+APP_NAME="grafana server"
+APP="grafana"
+APP_LOG_DIR="${OMP_GRAFANA_LOG_PATH}"
+APP_DATA_DIR="${APP_HOME}/data"
+APP_PID_FILE="${APP_HOME}/pid/grafana.pid"
+
+start() {
+    PID=$(cat ${APP_PID_FILE} 2>/dev/null)
+    ps -p ${PID} 2>/dev/null | grep -wq "${APP}"
+    if [ $? -eq 0 ];then
+      echo "${APP} [running]"
+      return 0
+    else
+        exec $APP_HOME/sbin/grafana-server -homepath $APP_HOME --pidfile=$APP_PID_FILE --config=$APP_HOME/conf/defaults.ini cfg:default.paths.data=$APP_DATA_DIR cfg:default.paths.logs=$APP_LOG_DIR cfg:default.paths.plugins=$APP_HOME/data/plugins 1>/dev/null 2>${APP_LOG_DIR}/start.log &
+        echo "${APP} [running]"
+    fi
+}
+
+stop() {
+    PID=$(cat $APP_PID_FILE 2>/dev/null)
+    if [ -z $PID ];then
+      echo "not found PID"
+    else
+      kill -9 $PID &>/dev/null
+    fi
+    sleep 5
+    ps -ef | grep "${APP_NAME}" | grep component | grep -v "grep" | awk -F ' ' '{print $2}' | xargs -r kill -9 > /dev/null 2>&1
+    rm -f $APP_PID_FILE &>/dev/null
+    echo "${APP} [not running]"
+}
+
+status() {
+  if [ ! -f ${APP_PID_FILE} ];then echo -e "${APP} [not running]";return 1;fi
+  PID=`cat ${APP_PID_FILE}`
+  ps -p ${PID} | grep -w "${APP}" > /dev/null 2>&1
+  if [ $? -eq 0 ];then
+    echo "${APP} [running]"
+    return 0
+  else
+    echo "${APP} [not running]"
+    return 1
+  fi
+}
+
+case $1 in
+    start) start ;;
+    stop) stop ;;
+    status) status;;
+    restart)
+       stop
+       start
+       ;;
+    *) echo "usage: $0 [start|stop|restart|status]"
+       ;;
+esac

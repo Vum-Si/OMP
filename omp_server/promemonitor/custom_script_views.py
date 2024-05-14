@@ -31,17 +31,20 @@ logger = logging.getLogger('server')
 
 class CustomScriptViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, UpdateModelMixin, DestroyModelMixin):
     """
-    list:
-    查询自定义脚本列表
+        list:
+        查询自定义脚本列表
 
-    create:
-    新增自定义脚本记录
+        create:
+        新增自定义脚本记录
 
-    update:
-    更新自定义脚本模型字段
+        update:
+        更新自定义脚本模型字段
 
-    delete:
-    删除指定自定义脚本
+        partial_update:
+        更新自定义脚本模型的一个或多个字段
+
+        delete:
+        删除指定自定义脚本
     """
     get_description = "读取自定义脚本记录"
     post_description = "更新自定义脚本记录"
@@ -128,9 +131,7 @@ class CustomScriptViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, Upda
             if not os.path.exists(job_target_json):
                 with open(job_target_json, "w") as target_fw:
                     json.dump([], target_fw)
-            reload_prometheus_url = "http://localhost:19011/-/reload"
-            requests.post(reload_prometheus_url,
-                          auth=self.prometheus_util.basic_auth)
+            self.prometheus_util.reload_prometheus()
             return Response({})
         except Exception as e:
             logger.error(traceback.format_exc(e))
@@ -148,7 +149,7 @@ class CustomScriptViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, Upda
 
         add_host_list = set(new_bound_host_list) - set(instance.bound_hosts)
         deleted_host_list = set(instance.bound_hosts) - \
-            set(new_bound_host_list)
+                            set(new_bound_host_list)
 
         instance.scrape_interval = new_scrape_interval
         instance.enabled = new_enabled

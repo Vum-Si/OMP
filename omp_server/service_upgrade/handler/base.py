@@ -5,16 +5,20 @@ from functools import reduce
 
 from django.conf import settings
 
-from db_models.models import UpgradeDetail, RollbackDetail, Service
+from db_models.models import UpgradeDetail, RollbackDetail, Service, Host
 from utils.plugin.salt_client import SaltClient
 
 logger = logging.getLogger(__name__)
 
 
 def get_install_detail(detail, service, operation_uuid):
+    """
+        ToDo operation_uuid为安装表，不一定在目标升级节点中存在
+    """
     install_history = service.detailinstallhistory_set.filter(
         install_step_status=2).last()
     logger.info(f"{service.service_instance_name}无detail记录或该服务升级前为安装失败")
+
     if not install_history:
         return None, None
 
@@ -36,9 +40,12 @@ def get_install_detail(detail, service, operation_uuid):
         "is_static",
         bool(not service.service_controllers.get("start"))
     )
-    # 升级的data path
+    # 升级的data path 暂时找不到data_folder丢失问题 优先补足
+    data_path = install_args.get("data_folder")
+    if not data_path:
+        data_path = Host.objects.filter(ip=service.ip).values_list('data_folder', flat=True)[0]
     setattr(
-        detail, "data_path", install_args.get("data_folder")
+        detail, "data_path", data_path
     )
     # 安装的uuid
     setattr(
@@ -50,6 +57,9 @@ def get_install_detail(detail, service, operation_uuid):
 
 
 def load_upgrade_detail(upgrade_detail, operation_uuid):
+    """
+    operation_uuid:main最新安装的uuid
+    """
     service = upgrade_detail.service
     upgrade_detail, service = get_install_detail(
         upgrade_detail, service, operation_uuid)
@@ -65,9 +75,10 @@ def load_upgrade_detail(upgrade_detail, operation_uuid):
     return upgrade_detail, service, relation_details
 
 
-def load_rollback_detail(rollback_detail, operation_uuid):
+def load_rollback_detail(rollback_detail):
     service = rollback_detail.upgrade.service
     # 安装成功记录
+    operation_uuid = service.detailinstallhistory_set.first().main_install_history.operation_uuid
     rollback_detail, service = get_install_detail(
         rollback_detail, service, operation_uuid)
     # 加载关联的升级对象

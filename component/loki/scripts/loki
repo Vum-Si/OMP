@@ -1,0 +1,66 @@
+#!/bin/bash
+# Author: 
+# Create Date: 2020-04-16 03:19:34
+# Last Modified: 2020-11-12 15:31:56
+# Description: 
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/sbin:/usr/sbin"
+HERE=$(cd -P -- $(dirname -- "$0") && pwd -P)
+PARENT_DIR=$(echo ${HERE%/*})
+
+APP_NAME="loki"
+APP_PID_FILE="$PARENT_DIR/pid/loki.pid"
+
+
+start() {
+  PID=$(cat ${APP_PID_FILE} 2>/dev/null)
+  ps -p ${PID} 2>/dev/null | grep -wq "${APP_NAME}"
+  if [ $? -eq 0 ];then
+    echo "${APP_NAME} [running]"
+    return 0
+  else
+    nohup $PARENT_DIR/sbin/loki-linux-amd64 \
+        -config.file=$PARENT_DIR/conf/loki.yml \
+        -print-config-stderr \
+        1>/dev/null 2> ${OMP_LOKI_LOG_PATH}/loki-info.log &
+    echo $! > $APP_PID_FILE
+
+    echo "${APP_NAME} [running]"
+  fi
+}
+
+stop() {
+    PID=$(cat $APP_PID_FILE 2>/dev/null)
+    if [ -z $PID ];then echo "not found PID";return 1;fi
+    kill -9 $PID &>/dev/null
+    sleep 0.5
+    rm -f $APP_PID_FILE &>/dev/null
+    echo "${APP_NAME} [not running]"
+}
+
+status() {
+  if [ ! -f ${APP_PID_FILE} ];then echo -e "${APP_NAME} [not running]";return 1;fi
+  PID=`cat ${APP_PID_FILE}`
+  ps -p ${PID} | grep -w "${APP_NAME}" > /dev/null 2>&1
+  if [ $? -eq 0 ];then
+    echo "${APP_NAME} [running]"
+    return 0
+  else
+    echo "${APP_NAME} [not running]"
+    return 1
+  fi
+}
+
+case $1 in
+    start) start ;;
+    stop) stop ;;
+    restart)
+       stop
+       start
+       ;;
+    status)
+       status
+       ;;
+    *) echo "usage: $0 [start|stop|restart]" 
+       ;;
+esac
+

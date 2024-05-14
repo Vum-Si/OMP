@@ -62,7 +62,7 @@ class ServicePrometheusCrawl(Prometheus):
     def run(self):
         """统一执行实例方法"""
         target = ['service_status', 'run_time',
-                  'cpu_usage', 'mem_usage', 'test_test']
+                  'cpu_usage', 'mem_usage']
         for t in target:
             if getattr(self, t):
                 getattr(self, t)()

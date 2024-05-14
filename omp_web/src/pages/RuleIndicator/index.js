@@ -31,55 +31,83 @@ import {
   ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import { useHistory } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const RuleIndicator = () => {
+const msgMap = {
+  "en-US": {
+    nameMsg: "The name of the rule, as an identifier and description",
+    typeMsg:
+      "The built-in indicators can be directly used, and custom PromSQL rules can also be added",
+    selectMsg: "Select the indicators that need to be monitored",
+    numMsg: "Numbers greater than or equal to 0",
+    queryMsg: "Test query",
+    serviceMsg: "association service",
+    connMsg:
+      "After associating the service, the alarm for this indicator will be classified under the service name, such as 'mysql'. If you need to associate it with a host, please fill in 'node'",
+    titleMsg:
+      "Support configuring labels in Prometheus, such as {{$labels. instance}}}",
+    timeMsg:
+      "During the duration, an alarm will be triggered after matching the rule",
+    deleteMsg: "Are you sure to delete this indicator?",
+    tLeft: "Are you sure to disable a total of",
+    tRight: "indicators?",
+    qLeft: "Are you sure to enable a total of",
+    qRight: "indicators?",
+  },
+  "zh-CN": {
+    nameMsg: "规则的名称，作为标识和描述",
+    typeMsg: "内置指标能直接使用，也可以添加自定义PromSQL规则",
+    selectMsg: "选择需要监控的指标",
+    numMsg: "大于等于0的数字",
+    queryMsg: "测试查询",
+    serviceMsg: "关联服务",
+    connMsg:
+      "关联服务后，该指标的告警会归类于该服务名，如'mysql'，如需关联到主机，请填写'node'",
+    titleMsg: "支持配置Prometheus中的标签，如 {{ $labels.instance }}",
+    timeMsg: "在持续时长内，匹配规则后会触发告警",
+    deleteMsg: "确认删除此指标吗?",
+    tLeft: "确认停用共计",
+    tRight: "个指标吗?",
+    qLeft: "确认启用共计",
+    qRight: "个指标吗?",
+  },
+};
+
+const RuleIndicator = ({ locale }) => {
   const [loading, setLoading] = useState(false);
   const [modalForm] = Form.useForm();
-
   const [upDateForm] = Form.useForm();
   const history = useHistory();
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-
   const [row, setRow] = useState({});
-
   // 测试展示数据
   const [testQueryResults, setTestQueryResults] = useState([]);
   // 测试弹框控制器
   const [testVisible, setTestVisible] = useState(false);
-
   // 批量停用弹框控制器
   const [stopVisible, setStopVisible] = useState(false);
   // 单独停用弹框控制器
   const [stopRowVisible, setStopRowVisible] = useState(false);
-
   // 批量启用弹框控制器
   const [startVisible, setStartVisible] = useState(false);
   // 单独启用弹框控制器
   const [startRowVisible, setStartRowVisible] = useState(false);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [selectValue, setSelectValue] = useState();
-
   // 添加规则控制器
   const [addMoadlVisible, setAddMoadlVisible] = useState(false);
-
   // 修改规则控制器
   const [upDateVisible, setUpDateVisible] = useState(false);
-
   // 删除规则控制器
   const [deleteMoadlVisible, setDeleteMoadlVisible] = useState(false);
-
   // 规则类型
   const [ruleType, setRuleType] = useState("0");
-
   // 持续时长单位
   const [forTimeCompany, setForTimeCompany] = useState("s");
-
   // 选择内置规则联级数据
   const [cascaderOption, setCascaderOption] = useState([]);
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -87,79 +115,77 @@ const RuleIndicator = () => {
     ordering: "",
     searchParams: {},
   });
+  const context = locales[locale].common;
 
   const columns = [
     {
-      title: "规则名称",
-      // width: 60,
+      title: context.rule + context.ln + context.name,
       key: "alert",
       dataIndex: "alert",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 250,
       fixed: "left",
       ellipsis: true,
     },
     {
-      title: "对比规则",
+      title: context.compare,
       key: "compare_str",
       width: 120,
       dataIndex: "compare_str",
       align: "center",
     },
     {
-      title: "阈值",
+      title: context.threshold,
       key: "threshold_value",
       dataIndex: "threshold_value",
       width: 120,
       align: "center",
     },
     {
-      title: "持续时长(s)",
+      title: context.durationS,
       key: "for_time",
       dataIndex: "for_time",
       width: 120,
       align: "center",
     },
     {
-      title: "级别",
+      title: context.severity,
       key: "severity",
       dataIndex: "severity",
       align: "center",
       width: 120,
       render: (text) => {
         const map = {
-          warning: "警告",
-          critical: "严重",
+          warning: "warning",
+          critical: "critical",
         };
         return map[text];
       },
     },
     {
-      title: "状态",
+      title: context.open,
       key: "status",
       dataIndex: "status",
       align: "center",
       width: 120,
       render: (text) => {
-        const map = ["已停用", "已启用"];
+        const map = [context.disabled, context.enabled];
         return map[text];
       },
     },
     {
-      title: "指标类型",
+      title: context.type,
       key: "quota_type",
       dataIndex: "quota_type",
       align: "center",
       width: 120,
       render: (text) => {
-        const map = ["内置指标", "自定义promsql"];
+        const map = [context.builtIn, context.custom + " promsql"];
         return map[text];
       },
     },
     {
-      title: "操作",
+      title: context.action,
       width: 150,
       key: "",
       dataIndex: "",
@@ -169,10 +195,7 @@ const RuleIndicator = () => {
         return (
           <div
             style={{ display: "flex", justifyContent: "space-around" }}
-            onClick={() => {
-              console.log(record);
-              setRow(record);
-            }}
+            onClick={() => setRow(record)}
           >
             <div style={{ margin: "auto" }}>
               <a
@@ -181,7 +204,6 @@ const RuleIndicator = () => {
                   // setForTimeCompany("s");
                   queryBuiltinsQuota();
                   setUpDateVisible(true);
-
                   setForTimeCompany(
                     record.for_time[record.for_time.length - 1]
                   );
@@ -222,7 +244,7 @@ const RuleIndicator = () => {
                   }
                 }}
               >
-                修改
+                {context.edit}
               </a>
               <a
                 style={{
@@ -236,7 +258,7 @@ const RuleIndicator = () => {
                   }
                 }}
               >
-                {record.status == 1 ? "停用" : "启用"}
+                {record.status == 1 ? context.disable : context.enable}
               </a>
               <a
                 style={{
@@ -256,7 +278,7 @@ const RuleIndicator = () => {
                   }
                 }}
               >
-                删除
+                {context.delete}
               </a>
             </div>
           </div>
@@ -265,11 +287,11 @@ const RuleIndicator = () => {
     },
   ];
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.ruleCenter.queryPromemonitor, {
       params: {
@@ -303,7 +325,7 @@ const RuleIndicator = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   const dictionaries = useRef(null);
 
@@ -318,7 +340,6 @@ const RuleIndicator = () => {
             setCascaderOption(() => {
               return Object.keys(data).map((key) => {
                 let children = data[key].map((item) => {
-                  console.log(item);
                   return {
                     label: item.name,
                     value: item.name,
@@ -394,7 +415,7 @@ const RuleIndicator = () => {
       .then((res) => {
         //console.log(operateObj[operateAciton])
         handleResponse(res, (res) => {
-          message.success(`添加操作下发成功`);
+          message.success(context.add + context.ln + context.succeeded);
         });
       })
       .catch((e) => console.log(e))
@@ -414,7 +435,7 @@ const RuleIndicator = () => {
   };
 
   // 测试promsql规则
-  function fetchTestData(str) {
+  const fetchTestData = (str) => {
     setLoading(true);
     fetchPost(apiRequest.ruleCenter.testPromSql, {
       body: {
@@ -440,7 +461,7 @@ const RuleIndicator = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   // 修改
   const uploadQuota = (data) => {
@@ -498,7 +519,7 @@ const RuleIndicator = () => {
       .then((res) => {
         //console.log(operateObj[operateAciton])
         handleResponse(res, (res) => {
-          message.success(`修改操作下发成功`);
+          message.success(context.edit + context.ln + context.succeeded);
         });
       })
       .catch((e) => console.log(e))
@@ -528,7 +549,7 @@ const RuleIndicator = () => {
       .then((res) => {
         //console.log(operateObj[operateAciton])
         handleResponse(res, (res) => {
-          message.success(`删除操作下发成功`);
+          message.success(context.delete + context.ln + context.succeeded);
         });
       })
       .catch((e) => console.log(e))
@@ -560,9 +581,9 @@ const RuleIndicator = () => {
         //console.log(operateObj[operateAciton])
         handleResponse(res, (res) => {
           if (status == 1) {
-            message.success(`启用操作下发成功`);
+            message.success(context.indicator + context.ln + context.enabled);
           } else {
-            message.success(`停用操作下发成功`);
+            message.success(context.indicator + context.ln + context.disabled);
           }
         });
       })
@@ -596,6 +617,7 @@ const RuleIndicator = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部添加/更多/过滤 -- */}
       <div style={{ display: "flex" }}>
         <Button
           type="primary"
@@ -607,10 +629,9 @@ const RuleIndicator = () => {
             setAddMoadlVisible(true);
           }}
         >
-          添加
+          {context.add}
         </Button>
         <Dropdown
-          //placement="bottomLeft"
           overlay={
             <Menu>
               <Menu.Item
@@ -619,33 +640,39 @@ const RuleIndicator = () => {
                 onClick={() => setStartVisible(true)}
                 disabled={checkedList.map((item) => item.id).length == 0}
               >
-                启用规则
+                {context.enable + context.ln + context.rule}
               </Menu.Item>
               <Menu.Item
                 key="closeMaintain"
                 style={{ textAlign: "center" }}
                 disabled={checkedList.length == 0}
-                onClick={() => {
-                  setStopVisible(true);
-                }}
+                onClick={() => setStopVisible(true)}
               >
-                停用规则
+                {context.disable + context.ln + context.rule}
               </Menu.Item>
             </Menu>
           }
           placement="bottomCenter"
         >
           <Button style={{ marginLeft: 10, paddingRight: 10, paddingLeft: 15 }}>
-            更多
+            {context.more}
             <DownOutlined />
           </Button>
         </Dropdown>
         <div style={{ display: "flex", marginLeft: "auto" }}>
-          <span style={{ width: 80, display: "flex", alignItems: "center" }}>
-            规则名称:
+          <span
+            style={{ marginRight: 5, display: "flex", alignItems: "center" }}
+          >
+            {context.rule + context.ln + context.name + " : "}
           </span>
           <Input
-            placeholder="请输入规则名称"
+            placeholder={
+              context.input +
+              context.ln +
+              context.rule +
+              context.ln +
+              context.name
+            }
             style={{ width: 200 }}
             allowClear
             value={selectValue}
@@ -705,10 +732,12 @@ const RuleIndicator = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -743,21 +772,24 @@ const RuleIndicator = () => {
                   justifyContent: "space-between",
                 }}
               >
-                <p>已选中 {checkedList.length} 条</p>
+                <p>
+                  {context.selected} {checkedList.length} {context.tiao}
+                </p>
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
             ...pagination,
           }}
-          rowKey={(record) => record.id}
         />
       </div>
+
+      {/* -- 添加规则 -- */}
       <OmpModal
         loading={loading}
         formLabelCol={{ span: 5 }}
@@ -765,19 +797,17 @@ const RuleIndicator = () => {
         width={800}
         setLoading={setLoading}
         visibleHandle={[addMoadlVisible, setAddMoadlVisible]}
-        okBtnText={"确定"}
         title={
           <span>
             <span style={{ position: "relative", left: "-10px" }}>
               <PlusSquareOutlined />
             </span>
-            <span>添加指标规则</span>
+            <span>{context.add + context.ln + context.rule}</span>
           </span>
         }
         form={modalForm}
-        onFinish={(data) => {
-          addQuota(data);
-        }}
+        onFinish={(data) => addQuota(data)}
+        context={context}
         initialValues={{
           compare_str: ">=",
           threshold_value: 30,
@@ -795,18 +825,21 @@ const RuleIndicator = () => {
           }}
         >
           <Form.Item
-            label="规则名称"
+            label={context.rule + context.ln + context.name}
             name="alert"
             key="alert"
             rules={[
               {
                 required: true,
-                message: "请输入规则名称",
+                message: context.input + context.ln + context.name,
               },
             ]}
           >
             <Form.Item noStyle name="alert">
-              <Input style={{ width: 520 }} placeholder={"请输入规则名称"} />
+              <Input
+                style={{ width: 520 }}
+                placeholder={context.input + context.ln + context.name}
+              />
             </Form.Item>
             <span
               name="tishi"
@@ -817,32 +850,32 @@ const RuleIndicator = () => {
               }}
             >
               {" "}
-              <Tooltip title="指标规则的名称，方便识别">
+              <Tooltip title={msgMap[locale].nameMsg}>
                 <QuestionCircleOutlined />
               </Tooltip>
             </span>
           </Form.Item>
 
           <Form.Item
-            label="规则类型"
+            label={context.type}
             name="quota_type"
             key="quota_type"
             rules={[
               {
                 required: true,
-                message: "请选择规则类型",
+                message: context.select + context.ln + context.type,
               },
             ]}
           >
             <Form.Item noStyle name="quota_type">
               <Radio.Group
                 value={ruleType}
-                onChange={(e) => {
-                  setRuleType(e.target.value);
-                }}
+                onChange={(e) => setRuleType(e.target.value)}
               >
-                <Radio.Button value="0">内置指标</Radio.Button>
-                <Radio.Button value="1">自定义PromSQL</Radio.Button>
+                <Radio.Button value="0">{context.builtIn}</Radio.Button>
+                <Radio.Button value="1">
+                  {context.custom + " PromSQL"}
+                </Radio.Button>
               </Radio.Group>
             </Form.Item>
             <span
@@ -854,7 +887,7 @@ const RuleIndicator = () => {
               }}
             >
               {" "}
-              <Tooltip title="内置PromSQL指标方便使用，也可以添加自定义PromSQL规则">
+              <Tooltip title={msgMap[locale].typeMsg}>
                 <QuestionCircleOutlined />
               </Tooltip>
             </span>
@@ -863,13 +896,13 @@ const RuleIndicator = () => {
           {ruleType === "0" && (
             <>
               <Form.Item
-                label="选择指标"
+                label={context.indicator}
                 name="builtins_quota"
                 key="builtins_quota"
                 rules={[
                   {
                     required: true,
-                    message: "请选择指标",
+                    message: context.select + context.ln + context.indicator,
                   },
                 ]}
               >
@@ -877,7 +910,9 @@ const RuleIndicator = () => {
                   <Cascader
                     style={{ width: 520 }}
                     options={cascaderOption}
-                    placeholder="请选择指标"
+                    placeholder={
+                      context.select + context.ln + context.indicator
+                    }
                   />
                 </Form.Item>
                 <span
@@ -889,23 +924,27 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="选择需要监控的指标">
+                  <Tooltip title={msgMap[locale].selectMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="触发条件"
+                label={context.compare}
                 name="compare_str"
                 key="compare_str"
                 rules={[
                   {
                     required: true,
-                    message: "请选择触发条件",
+                    message: context.selelct + context.ln + context.compare,
                   },
                 ]}
               >
-                <Select placeholder="请选择触发条件" style={{ width: 520 }}>
+                <Select
+                  placeholder={context.selelct + context.ln + context.compare}
+                  style={{ width: 520 }}
+                >
                   <Select.Option value=">=">{`${">="}`}</Select.Option>
                   <Select.Option value=">">{`${">"}`}</Select.Option>
                   <Select.Option value="==">{`${"=="}`}</Select.Option>
@@ -914,24 +953,16 @@ const RuleIndicator = () => {
                   <Select.Option value="<">{`${"<"}`}</Select.Option>
                 </Select>
               </Form.Item>
+
               <Form.Item
-                label="触发阈值"
+                label={context.threshold}
                 name="threshold_value"
                 key="threshold_value"
                 rules={[
                   {
                     required: true,
-                    message: "请选择触发阈值",
+                    message: context.input + context.ln + context.threshold,
                   },
-                  // {
-                  //   validator: (rule, value, callback) => {
-                  //     if (value == 0) {
-                  //       return Promise.reject(`只支持大于等于0的数字`);
-                  //     } else {
-                  //       return Promise.resolve("success");
-                  //     }
-                  //   },
-                  // },
                 ]}
               >
                 <Form.Item noStyle name="threshold_value">
@@ -946,19 +977,20 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="只支持大于等于0的数字">
+                  <Tooltip title={msgMap[locale].numMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="持续时长"
+                label={context.durationS}
                 name="for_time"
                 key="for_time"
                 rules={[
                   {
                     required: true,
-                    message: "请选择持续时长",
+                    message: context.input + context.ln + context.durationS,
                   },
                   {
                     validator: (rule, value, callback) => {
@@ -978,13 +1010,11 @@ const RuleIndicator = () => {
                       <Select
                         style={{ width: 80 }}
                         value={forTimeCompany}
-                        onChange={(e) => {
-                          setForTimeCompany(e);
-                        }}
+                        onChange={(e) => setForTimeCompany(e)}
                       >
-                        <Select.Option value="s">秒</Select.Option>
-                        <Select.Option value="m">分</Select.Option>
-                        <Select.Option value="h">时</Select.Option>
+                        <Select.Option value="s">s</Select.Option>
+                        <Select.Option value="m">min</Select.Option>
+                        <Select.Option value="h">h</Select.Option>
                       </Select>
                     }
                   />
@@ -998,39 +1028,33 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="通在持续时长内均匹配规则后会触发告警">
+                  <Tooltip title={msgMap[locale].timeMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
 
               <Form.Item
-                label="告警等级"
+                label={context.severity}
                 name="severity"
                 key="severity"
                 rules={[
                   {
                     required: true,
-                    message: "请选择告警等级",
+                    message: context.select + context.ln + context.severity,
                   },
                 ]}
               >
                 <Radio.Group>
-                  <Radio value="warning">警告</Radio>
-                  <Radio value="critical">严重</Radio>
+                  <Radio value="warning">warning</Radio>
+                  <Radio value="critical">critical</Radio>
                 </Radio.Group>
               </Form.Item>
 
               <Form.Item
-                label="启用状态"
+                label={context.open}
                 name="status"
                 key="status"
-                rules={[
-                  {
-                    required: true,
-                    message: "请选择启用状态",
-                  },
-                ]}
                 valuePropName="checked"
               >
                 <Switch />
@@ -1047,19 +1071,21 @@ const RuleIndicator = () => {
                 rules={[
                   {
                     required: true,
-                    message: "请输入PromSQL",
+                    message: context.input + " PromSQL",
                   },
                 ]}
               >
                 <Form.Item noStyle name="expr">
-                  <Input style={{ width: 400 }} placeholder={"请输入PromSQL"} />
+                  <Input
+                    style={{ width: 400 }}
+                    placeholder={context.input + " PromSQL"}
+                  />
                 </Form.Item>
                 <span
                   name="tishi"
                   style={{
                     paddingLeft: 20,
                     position: "relative",
-                    // top: 1,
                   }}
                 >
                   {" "}
@@ -1070,22 +1096,26 @@ const RuleIndicator = () => {
                       setTestVisible(true);
                     }}
                   >
-                    测试查询
+                    {msgMap[locale].queryMsg}
                   </Button>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="触发条件"
+                label={context.compare}
                 name="compare_str"
                 key="compare_str"
                 rules={[
                   {
                     required: true,
-                    message: "请选择触发条件",
+                    message: context.select + context.ln + context.compare,
                   },
                 ]}
               >
-                <Select placeholder="请选择触发条件" style={{ width: 520 }}>
+                <Select
+                  placeholder={context.select + context.ln + context.compare}
+                  style={{ width: 520 }}
+                >
                   <Select.Option value=">=">{`${">="}`}</Select.Option>
                   <Select.Option value=">">{`${">"}`}</Select.Option>
                   <Select.Option value="==">{`${"=="}`}</Select.Option>
@@ -1094,24 +1124,16 @@ const RuleIndicator = () => {
                   <Select.Option value="<">{`${"<"}`}</Select.Option>
                 </Select>
               </Form.Item>
+
               <Form.Item
-                label="触发阈值"
+                label={context.threshold}
                 name="threshold_value"
                 key="threshold_value"
                 rules={[
                   {
                     required: true,
-                    message: "请选择触发阈值",
+                    message: context.input + context.ln + context.threshold,
                   },
-                  // {
-                  //   validator: (rule, value, callback) => {
-                  //     if (value == 0) {
-                  //       return Promise.reject(`只支持大于等于0的数字`);
-                  //     } else {
-                  //       return Promise.resolve("success");
-                  //     }
-                  //   },
-                  // },
                 ]}
               >
                 <Form.Item noStyle name="threshold_value">
@@ -1126,19 +1148,20 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="只支持大于等于0的数字">
+                  <Tooltip title={msgMap[locale].numMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="持续时长"
+                label={context.durationS}
                 name="for_time"
                 key="for_time"
                 rules={[
                   {
                     required: true,
-                    message: "请选择持续时长",
+                    message: context.input + context.ln + context.durationS,
                   },
                   {
                     validator: (rule, value, callback) => {
@@ -1158,13 +1181,11 @@ const RuleIndicator = () => {
                       <Select
                         style={{ width: 80 }}
                         value={forTimeCompany}
-                        onChange={(e) => {
-                          setForTimeCompany(e);
-                        }}
+                        onChange={(e) => setForTimeCompany(e)}
                       >
-                        <Select.Option value="s">秒</Select.Option>
-                        <Select.Option value="m">分</Select.Option>
-                        <Select.Option value="h">时</Select.Option>
+                        <Select.Option value="s">s</Select.Option>
+                        <Select.Option value="m">min</Select.Option>
+                        <Select.Option value="h">h</Select.Option>
                       </Select>
                     }
                   />
@@ -1178,26 +1199,30 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="通在持续时长内均匹配规则后会触发告警">
+                  <Tooltip title={msgMap[locale].timeMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="关联服务"
+                label={msgMap[locale].serviceMsg}
                 name="service"
                 key="service"
                 rules={[
                   {
                     required: true,
-                    message: "请输入关联服务",
+                    message:
+                      context.input + context.ln + msgMap[locale].serviceMsg,
                   },
                 ]}
               >
                 <Form.Item noStyle name="service">
                   <Input
                     style={{ width: 520 }}
-                    placeholder={"请输入关联服务"}
+                    placeholder={
+                      context.input + context.ln + msgMap[locale].serviceMsg
+                    }
                   />
                 </Form.Item>
                 <span
@@ -1209,56 +1234,54 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="输入关联服务后，该指标的告警会归类于该服务名，如“mysql”，如需关联到主机，请填写“node”">
+                  <Tooltip title={msgMap[locale].connMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="告警等级"
+                label={context.severity}
                 name="severity"
                 key="severity"
                 rules={[
                   {
                     required: true,
-                    message: "请选择告警等级",
+                    message: context.select + context.ln + context.severity,
                   },
                 ]}
               >
                 <Radio.Group>
-                  <Radio value="warning">警告</Radio>
-                  <Radio value="critical">严重</Radio>
+                  <Radio value="warning">warning</Radio>
+                  <Radio value="critical">critical</Radio>
                 </Radio.Group>
               </Form.Item>
 
               <Form.Item
-                label="启用状态"
+                label={context.open}
                 name="status"
                 key="status"
-                rules={[
-                  {
-                    required: true,
-                    message: "请选择启用状态",
-                  },
-                ]}
                 valuePropName="checked"
               >
                 <Switch />
               </Form.Item>
 
               <Form.Item
-                label="告警标题"
+                label={context.alarm + context.ln + context.title}
                 name="summary"
                 key="summary"
                 rules={[
                   {
                     required: true,
-                    message: "选择规则名称",
+                    message: context.input + context.ln + context.title,
                   },
                 ]}
               >
                 <Form.Item noStyle name="summary">
-                  <Input style={{ width: 520 }} placeholder={"选择规则名称"} />
+                  <Input
+                    style={{ width: 520 }}
+                    placeholder={context.input + context.ln + context.title}
+                  />
                 </Form.Item>
                 <span
                   name="tishi"
@@ -1269,20 +1292,20 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="标题中可配置Prometheus中的标签，如 {{ $labels.instance }}">
+                  <Tooltip title={msgMap[locale].titleMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
 
               <Form.Item
-                label="告警消息"
+                label={context.alarm + context.ln + context.content}
                 name="description"
                 key="description"
                 rules={[
                   {
                     required: true,
-                    message: "选择告警消息",
+                    message: context.input + context.ln + context.content,
                   },
                 ]}
               >
@@ -1290,7 +1313,7 @@ const RuleIndicator = () => {
                   <Input.TextArea
                     rows={4}
                     style={{ width: 520 }}
-                    placeholder={"输入告警消息"}
+                    placeholder={context.input + context.ln + context.content}
                   />
                 </Form.Item>
                 <span
@@ -1302,7 +1325,7 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="消息中可配Prometheus中的标签，如 {{ $labels.instance }}">
+                  <Tooltip title={msgMap[locale].titleMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
@@ -1312,32 +1335,14 @@ const RuleIndicator = () => {
         </div>
       </OmpModal>
 
-      {/* 删除操作 */}
+      {/* -- 删除指标 -- */}
       <OmpMessageModal
         visibleHandle={[deleteMoadlVisible, setDeleteMoadlVisible]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
-        onFinish={() => {
-          deleteQuota(row);
-        }}
+        onFinish={() => deleteQuota(row)}
       >
-        <div style={{ padding: "20px" }}>
-          确定要对 <span style={{ fontWeight: 500 }}>{row.alert}</span> 规则{" "}
-          <span style={{ fontWeight: 500 }}>下发删除命令</span> ？
-        </div>
+        <div style={{ padding: "20px" }}>{msgMap[locale].deleteMsg}</div>
       </OmpMessageModal>
 
       <OmpMessageModal
@@ -1373,7 +1378,7 @@ const RuleIndicator = () => {
         </div>
       </OmpMessageModal>
 
-      {/* 修改规则 */}
+      {/* -- 编辑指标 -- */}
       <OmpModal
         loading={loading}
         width={800}
@@ -1381,20 +1386,17 @@ const RuleIndicator = () => {
         formWrapperCol={{ span: 18 }}
         setLoading={setLoading}
         visibleHandle={[upDateVisible, setUpDateVisible]}
-        okBtnText={"确定"}
         title={
           <span>
             <span style={{ position: "relative", left: "-10px" }}>
               <PlusSquareOutlined />
             </span>
-            <span>修改指标规则</span>
+            <span>{context.edit + context.ln + context.rule}</span>
           </span>
         }
         form={upDateForm}
-        onFinish={(data) => {
-          uploadQuota(data);
-          // console.log(upDateForm.getFieldValue());
-        }}
+        onFinish={(data) => uploadQuota(data)}
+        context={context}
         initialValues={{
           compare_str: ">=",
           threshold_value: 30,
@@ -1412,13 +1414,13 @@ const RuleIndicator = () => {
           }}
         >
           <Form.Item
-            label="规则名称"
+            label={context.rule + context.ln + context.name}
             name="alert"
             key="alert"
             rules={[
               {
                 required: true,
-                message: "请输入规则名称",
+                message: context.input + context.ln + context.name,
               },
             ]}
           >
@@ -1426,7 +1428,7 @@ const RuleIndicator = () => {
               <Input
                 disabled={row.forbidden == 2}
                 style={{ width: 520 }}
-                placeholder={"请输入规则名称"}
+                placeholder={context.input + context.ln + context.name}
               />
             </Form.Item>
             <span
@@ -1438,20 +1440,20 @@ const RuleIndicator = () => {
               }}
             >
               {" "}
-              <Tooltip title="指标规则的名称，方便识别">
+              <Tooltip title={msgMap[locale].nameMsg}>
                 <QuestionCircleOutlined onClick={() => console.log(row)} />
               </Tooltip>
             </span>
           </Form.Item>
 
           <Form.Item
-            label="规则类型"
+            label={context.type}
             name="quota_type"
             key="quota_type"
             rules={[
               {
                 required: true,
-                message: "请选择规则类型",
+                message: context.select + context.ln + context.type,
               },
             ]}
           >
@@ -1459,12 +1461,12 @@ const RuleIndicator = () => {
               <Radio.Group
                 disabled={true}
                 value={ruleType}
-                onChange={(e) => {
-                  setRuleType(e.target.value);
-                }}
+                onChange={(e) => setRuleType(e.target.value)}
               >
-                <Radio.Button value="0">内置指标</Radio.Button>
-                <Radio.Button value="1">自定义PromSQL</Radio.Button>
+                <Radio.Button value="0">{context.builtIn}</Radio.Button>
+                <Radio.Button value="1">
+                  {context.custom + " PromSQL"}
+                </Radio.Button>
               </Radio.Group>
             </Form.Item>
             <span
@@ -1476,7 +1478,7 @@ const RuleIndicator = () => {
               }}
             >
               {" "}
-              <Tooltip title="内置PromSQL指标方便使用，也可以添加自定义PromSQL规则">
+              <Tooltip title={msgMap[locale].typeMsg}>
                 <QuestionCircleOutlined />
               </Tooltip>
             </span>
@@ -1485,13 +1487,13 @@ const RuleIndicator = () => {
           {ruleType === "0" && (
             <>
               <Form.Item
-                label="选择指标"
+                label={context.indicator}
                 name="builtins_quota"
                 key="builtins_quota"
                 rules={[
                   {
                     required: true,
-                    message: "请选择指标",
+                    message: context.select + context.ln + context.indicator,
                   },
                 ]}
               >
@@ -1500,7 +1502,9 @@ const RuleIndicator = () => {
                     disabled={true}
                     style={{ width: 520 }}
                     options={cascaderOption}
-                    placeholder="请选择指标"
+                    placeholder={
+                      context.select + context.ln + context.indicator
+                    }
                   />
                 </Form.Item>
                 <span
@@ -1512,23 +1516,27 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="选择需要监控的指标">
+                  <Tooltip title={msgMap[locale].selectMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="触发条件"
+                label={context.compare}
                 name="compare_str"
                 key="compare_str"
                 rules={[
                   {
                     required: true,
-                    message: "请选择触发条件",
+                    message: context.selelct + context.ln + context.compare,
                   },
                 ]}
               >
-                <Select placeholder="请选择触发条件" style={{ width: 520 }}>
+                <Select
+                  placeholder={context.selelct + context.ln + context.compare}
+                  style={{ width: 520 }}
+                >
                   <Select.Option value=">=">{`${">="}`}</Select.Option>
                   <Select.Option value=">">{`${">"}`}</Select.Option>
                   <Select.Option value="==">{`${"=="}`}</Select.Option>
@@ -1537,24 +1545,16 @@ const RuleIndicator = () => {
                   <Select.Option value="<">{`${"<"}`}</Select.Option>
                 </Select>
               </Form.Item>
+
               <Form.Item
-                label="触发阈值"
+                label={context.threshold}
                 name="threshold_value"
                 key="threshold_value"
                 rules={[
                   {
                     required: true,
-                    message: "请选择触发阈值",
+                    message: context.input + context.ln + context.threshold,
                   },
-                  // {
-                  //   validator: (rule, value, callback) => {
-                  //     if (value == 0) {
-                  //       return Promise.reject(`只支持大于等于0的数字`);
-                  //     } else {
-                  //       return Promise.resolve("success");
-                  //     }
-                  //   },
-                  // },
                 ]}
               >
                 <Form.Item noStyle name="threshold_value">
@@ -1569,19 +1569,20 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="只支持大于等于0的数字">
+                  <Tooltip title={msgMap[locale].numMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="持续时长"
+                label={context.durationS}
                 name="for_time"
                 key="for_time"
                 rules={[
                   {
                     required: true,
-                    message: "请选择持续时长",
+                    message: context.input + context.ln + context.durationS,
                   },
                   {
                     validator: (rule, value, callback) => {
@@ -1601,13 +1602,11 @@ const RuleIndicator = () => {
                       <Select
                         style={{ width: 80 }}
                         value={forTimeCompany}
-                        onChange={(e) => {
-                          setForTimeCompany(e);
-                        }}
+                        onChange={(e) => setForTimeCompany(e)}
                       >
-                        <Select.Option value="s">秒</Select.Option>
-                        <Select.Option value="m">分</Select.Option>
-                        <Select.Option value="h">时</Select.Option>
+                        <Select.Option value="s">s</Select.Option>
+                        <Select.Option value="m">min</Select.Option>
+                        <Select.Option value="h">h</Select.Option>
                       </Select>
                     }
                   />
@@ -1621,43 +1620,28 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="通在持续时长内均匹配规则后会触发告警">
+                  <Tooltip title={msgMap[locale].timeMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
 
               <Form.Item
-                label="告警等级"
+                label={context.severity}
                 name="severity"
                 key="severity"
                 rules={[
                   {
                     required: true,
-                    message: "请选择告警等级",
+                    message: context.select + context.ln + context.severity,
                   },
                 ]}
               >
                 <Radio.Group>
-                  <Radio value="warning">警告</Radio>
-                  <Radio value="critical">严重</Radio>
+                  <Radio value="warning">warning</Radio>
+                  <Radio value="critical">critical</Radio>
                 </Radio.Group>
               </Form.Item>
-
-              {/* <Form.Item
-                label="启用状态"
-                name="status"
-                key="status"
-                rules={[
-                  {
-                    required: true,
-                    message: "请选择启用状态",
-                  },
-                ]}
-                valuePropName="checked"
-              >
-                <Switch disabled={true} />
-              </Form.Item> */}
             </>
           )}
 
@@ -1670,19 +1654,21 @@ const RuleIndicator = () => {
                 rules={[
                   {
                     required: true,
-                    message: "请输入PromSQL",
+                    message: context.input + " PromSQL",
                   },
                 ]}
               >
                 <Form.Item noStyle name="expr">
-                  <Input style={{ width: 400 }} placeholder={"请输入PromSQL"} />
+                  <Input
+                    style={{ width: 400 }}
+                    placeholder={context.input + " PromSQL"}
+                  />
                 </Form.Item>
                 <span
                   name="tishi"
                   style={{
                     paddingLeft: 20,
                     position: "relative",
-                    // top: 1,
                   }}
                 >
                   {" "}
@@ -1693,22 +1679,26 @@ const RuleIndicator = () => {
                       setTestVisible(true);
                     }}
                   >
-                    测试查询
+                    {msgMap[locale].queryMsg}
                   </Button>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="触发条件"
+                label={context.compare}
                 name="compare_str"
                 key="compare_str"
                 rules={[
                   {
                     required: true,
-                    message: "请选择触发条件",
+                    message: context.select + context.ln + context.compare,
                   },
                 ]}
               >
-                <Select placeholder="请选择触发条件" style={{ width: 520 }}>
+                <Select
+                  placeholder={context.select + context.ln + context.compare}
+                  style={{ width: 520 }}
+                >
                   <Select.Option value=">=">{`${">="}`}</Select.Option>
                   <Select.Option value=">">{`${">"}`}</Select.Option>
                   <Select.Option value="==">{`${"=="}`}</Select.Option>
@@ -1717,24 +1707,16 @@ const RuleIndicator = () => {
                   <Select.Option value="<">{`${"<"}`}</Select.Option>
                 </Select>
               </Form.Item>
+
               <Form.Item
-                label="触发阈值"
+                label={context.threshold}
                 name="threshold_value"
                 key="threshold_value"
                 rules={[
                   {
                     required: true,
-                    message: "请选择触发阈值",
+                    message: context.input + context.ln + context.threshold,
                   },
-                  // {
-                  //   validator: (rule, value, callback) => {
-                  //     if (value == 0) {
-                  //       return Promise.reject(`只支持大于等于0的数字`);
-                  //     } else {
-                  //       return Promise.resolve("success");
-                  //     }
-                  //   },
-                  // },
                 ]}
               >
                 <Form.Item noStyle name="threshold_value">
@@ -1749,19 +1731,20 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="只支持大于等于0的数字">
+                  <Tooltip title={msgMap[locale].numMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="持续时长"
+                label={context.durationS}
                 name="for_time"
                 key="for_time"
                 rules={[
                   {
                     required: true,
-                    message: "请选择持续时长",
+                    message: context.input + context.ln + context.durationS,
                   },
                   {
                     validator: (rule, value, callback) => {
@@ -1781,13 +1764,11 @@ const RuleIndicator = () => {
                       <Select
                         style={{ width: 80 }}
                         value={forTimeCompany}
-                        onChange={(e) => {
-                          setForTimeCompany(e);
-                        }}
+                        onChange={(e) => setForTimeCompany(e)}
                       >
-                        <Select.Option value="s">秒</Select.Option>
-                        <Select.Option value="m">分</Select.Option>
-                        <Select.Option value="h">时</Select.Option>
+                        <Select.Option value="s">s</Select.Option>
+                        <Select.Option value="m">min</Select.Option>
+                        <Select.Option value="h">h</Select.Option>
                       </Select>
                     }
                   />
@@ -1801,26 +1782,30 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="通在持续时长内均匹配规则后会触发告警">
+                  <Tooltip title={msgMap[locale].timeMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="关联服务"
+                label={msgMap[locale].serviceMsg}
                 name="service"
                 key="service"
                 rules={[
                   {
                     required: true,
-                    message: "请输入关联服务",
+                    message:
+                      context.input + context.ln + msgMap[locale].serviceMsg,
                   },
                 ]}
               >
                 <Form.Item noStyle name="service">
                   <Input
                     style={{ width: 520 }}
-                    placeholder={"请输入关联服务"}
+                    placeholder={
+                      context.input + context.ln + msgMap[locale].serviceMsg
+                    }
                   />
                 </Form.Item>
                 <span
@@ -1832,56 +1817,54 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="输入关联服务后，该指标的告警会归类于该服务名，如“mysql”，如需关联到主机，请填写“node”">
+                  <Tooltip title={msgMap[locale].connMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
+
               <Form.Item
-                label="告警等级"
+                label={context.severity}
                 name="severity"
                 key="severity"
                 rules={[
                   {
                     required: true,
-                    message: "请选择告警等级",
+                    message: context.select + context.ln + context.severity,
                   },
                 ]}
               >
                 <Radio.Group>
-                  <Radio value="warning">警告</Radio>
-                  <Radio value="critical">严重</Radio>
+                  <Radio value="warning">warning</Radio>
+                  <Radio value="critical">critical</Radio>
                 </Radio.Group>
               </Form.Item>
 
               <Form.Item
-                label="启用状态"
+                label={context.open}
                 name="status"
                 key="status"
-                rules={[
-                  {
-                    required: true,
-                    message: "请选择启用状态",
-                  },
-                ]}
                 valuePropName="checked"
               >
                 <Switch />
               </Form.Item>
 
               <Form.Item
-                label="告警标题"
+                label={context.alarm + context.ln + context.title}
                 name="summary"
                 key="summary"
                 rules={[
                   {
                     required: true,
-                    message: "选择规则名称",
+                    message: context.input + context.ln + context.title,
                   },
                 ]}
               >
                 <Form.Item noStyle name="summary">
-                  <Input style={{ width: 520 }} placeholder={"选择规则名称"} />
+                  <Input
+                    style={{ width: 520 }}
+                    placeholder={context.input + context.ln + context.title}
+                  />
                 </Form.Item>
                 <span
                   name="tishi"
@@ -1892,20 +1875,20 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="标题中可配置Prometheus中的标签，如 {{ $labels.instance }}">
+                  <Tooltip title={msgMap[locale].titleMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
               </Form.Item>
 
               <Form.Item
-                label="告警消息"
+                label={context.alarm + context.ln + context.content}
                 name="description"
                 key="description"
                 rules={[
                   {
                     required: true,
-                    message: "选择告警消息",
+                    message: context.input + context.ln + context.content,
                   },
                 ]}
               >
@@ -1913,7 +1896,7 @@ const RuleIndicator = () => {
                   <Input.TextArea
                     rows={4}
                     style={{ width: 520 }}
-                    placeholder={"输入告警消息"}
+                    placeholder={context.input + context.ln + context.content}
                   />
                 </Form.Item>
                 <span
@@ -1925,7 +1908,7 @@ const RuleIndicator = () => {
                   }}
                 >
                   {" "}
-                  <Tooltip title="消息中可配Prometheus中的标签，如 {{ $labels.instance }}">
+                  <Tooltip title={msgMap[locale].titleMsg}>
                     <QuestionCircleOutlined />
                   </Tooltip>
                 </span>
@@ -1935,26 +1918,12 @@ const RuleIndicator = () => {
         </div>
       </OmpModal>
 
-      {/* 批量停用操作 */}
+      {/* -- 批量停用操作 -- */}
       <OmpMessageModal
         visibleHandle={[stopVisible, setStopVisible]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
         onFinish={() => {
-          // deleteQuota(row);
           statusUpdate(
             checkedList.map((i) => i.id),
             0
@@ -1963,56 +1932,33 @@ const RuleIndicator = () => {
         }}
       >
         <div style={{ padding: "20px" }}>
-          确定要对 <span style={{ fontWeight: 500 }}>{checkedList.length}</span>{" "}
-          条规则 <span style={{ fontWeight: 500 }}>下发停用命令</span> ？
+          {msgMap[locale].tLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {checkedList.length}{" "}
+          </span>
+          {msgMap[locale].tRight}
         </div>
       </OmpMessageModal>
 
-      {/* 单独停用操作 */}
+      {/* -- 单独停用操作 --  */}
       <OmpMessageModal
         visibleHandle={[stopRowVisible, setStopRowVisible]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
-        onFinish={() => {
-          statusUpdate([row.id], 0);
-        }}
+        onFinish={() => statusUpdate([row.id], 0)}
       >
         <div style={{ padding: "20px" }}>
-          确定要对 <span style={{ fontWeight: 500 }}>{row.alert}</span> 规则{" "}
-          <span style={{ fontWeight: 500 }}>下发停用命令</span> ？
+          {msgMap[locale].tLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>{" 1 "}</span>
+          {msgMap[locale].tRight}
         </div>
       </OmpMessageModal>
 
-      {/* 批量启用操作 */}
+      {/* -- 批量启用操作 -- */}
       <OmpMessageModal
         visibleHandle={[startVisible, setStartVisible]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
         onFinish={() => {
           statusUpdate(
@@ -2024,37 +1970,26 @@ const RuleIndicator = () => {
         }}
       >
         <div style={{ padding: "20px" }}>
-          确定要对 <span style={{ fontWeight: 500 }}>{checkedList.length}</span>{" "}
-          条规则 <span style={{ fontWeight: 500 }}>下发启用命令</span> ？
+          {msgMap[locale].qLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {checkedList.length}{" "}
+          </span>
+          {msgMap[locale].qRight}
         </div>
       </OmpMessageModal>
 
-      {/* 单独启用操作 */}
+      {/* -- 单独启用操作 -- */}
       <OmpMessageModal
         visibleHandle={[startRowVisible, setStartRowVisible]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
-        onFinish={() => {
-          statusUpdate([row.id], 1);
-          // deleteQuota(row);
-        }}
+        onFinish={() => statusUpdate([row.id], 1)}
       >
         <div style={{ padding: "20px" }}>
-          确定要对 <span style={{ fontWeight: 500 }}>{row.alert}</span> 规则{" "}
-          <span style={{ fontWeight: 500 }}>下发启用命令</span> ？
+          {msgMap[locale].qLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>{" 1 "}</span>
+          {msgMap[locale].qRight}
         </div>
       </OmpMessageModal>
     </OmpContentWrapper>

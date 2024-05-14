@@ -6,6 +6,7 @@ import sys
 import time
 from datetime import datetime
 import random
+import copy
 
 import django
 from django.db import transaction
@@ -21,11 +22,12 @@ from app_store.new_install_utils import RedisDB
 from app_store.tmp_exec_back_task import back_end_verified_init
 from db_models.models import UserProfile, UploadPackageHistory, Service, \
     ApplicationHub, UpgradeHistory, Env, UpgradeDetail, RollbackHistory, \
-    RollbackDetail
+    RollbackDetail, ProductHub
 from db_models.mixins import UpgradeStateChoices, RollbackStateChoices
 from service_upgrade.tasks import get_service_order, upgrade_service, \
     rollback_service
 from utils.plugin.public_utils import local_cmd
+from app_store.new_install_utils import DeployTypeUtil
 
 
 def log_print(message, level="info"):
@@ -39,10 +41,12 @@ class BaseOperation:
     services_level_key = "service_levels"
     _lock_key = "operation_lock"
 
-    def __init__(self, service_package, ip=None):
+    def __init__(self, service_package, ip=None, p_type_n=None, is_test=False):
         self.redis = RedisDB()
         self.service_package = service_package
         self.ip = ip
+        self.p_type = p_type_n
+        self.is_test = is_test
 
     @property
     def service_level(self):
@@ -115,8 +119,33 @@ class BaseOperation:
                 self.incr()
                 break
 
+    def valid_package(self):
+        pass
+
     def handle(self):
         pass
+
+    def explain_product(self):
+        """
+        校验筛选服务无法对应的安装包，修改，新增，删除服务均无法升级回滚
+        """
+        pro_obj = self.valid_package()
+        app_obj = ApplicationHub.objects.filter(
+            product=pro_obj)
+        if not app_obj:
+            # 无app情况下流水线不凋回滚
+            return True
+        # 排查哪些服务可以升级回滚
+        app_ls = app_obj.values_list("app_name", flat=True)
+        can_rollback_or_upgrade_app = list(set(Service.objects.filter(service__app_name__in=app_ls). \
+                                               values_list("service__app_name", flat=True)))
+        package_name = UploadPackageHistory.objects.filter(package_parent=pro_obj.pro_package) \
+            .values_list("package_name", flat=True)
+        can_rollback_or_upgrade_pk_name = []
+        for pk_name in package_name:
+            if pk_name.split("-")[0] in can_rollback_or_upgrade_app:
+                can_rollback_or_upgrade_pk_name.append(pk_name)
+        return can_rollback_or_upgrade_pk_name
 
     def __call__(self, *args, **kwargs):
         regular = re.compile(r"([a-zA-Z0-9]+)-.*\.tar\.gz")
@@ -129,7 +158,7 @@ class BaseOperation:
         if self.ip:
             self.services = self.services.filter(ip=self.ip)
         if not self.services.exists():
-            log_print("环境未安装该服务，请先安装！", "error")
+            log_print(f"环境未安装该{self.app_name}服务，请先界面安装此服务再升级！", "error")
             return False
         return self.handle()
 
@@ -139,7 +168,7 @@ class Upgrade(BaseOperation):
 
     def valid_package(self):
         # 校验服务包会删目录，需要锁,并且保证back_end_verified_path目录下无其他包
-        with self.redis.conn.lock(self._valid_lock_key):
+        with self.redis.conn.lock(self._valid_lock_key, timeout=1800):
             frond_package_path = os.path.join(
                 PROJECT_DIR,
                 "package_hub/front_end_verified",
@@ -153,7 +182,8 @@ class Upgrade(BaseOperation):
             if _code:
                 log_print(f"执行移动文件:{_cmd_str}发生错误:{_out}")
             back_end_verified_init(
-                operation_user=UserProfile.objects.first().username
+                operation_user=UserProfile.objects.first().username,
+                is_test=self.is_test
             )
             package = UploadPackageHistory.objects.filter(
                 package_name=self.service_package
@@ -164,7 +194,7 @@ class Upgrade(BaseOperation):
             start = time.time()
             while True:
                 if time.time() - start > 60 * 10:
-                    log_print(f"校验服务包超时！", "error")
+                    log_print("校验服务包超时！", "error")
                     break
                 package.refresh_from_db()
                 if package.package_status in [
@@ -177,6 +207,9 @@ class Upgrade(BaseOperation):
                 if package.package_status == \
                         package.PACKAGE_STATUS_PUBLISH_SUCCESS:
                     log_print("校验服务包通过！")
+                    if self.p_type:
+                        return ProductHub.objects.filter(
+                            pro_package=package).first()
                     return ApplicationHub.objects.filter(
                         app_package=package).first()
                 log_print("校验服务包中...")
@@ -191,9 +224,15 @@ class Upgrade(BaseOperation):
             )
             details = []
             for service in self.services:
+                # 根据当前 service 实例部署类型，决定 app 依赖
+                dependence_list = json.loads(app.app_dependence or '[]')
+                dependence_list = DeployTypeUtil(
+                    app, dependence_list
+                ).get_dependence_by_deploy(service.deploy_mode)
+                # 更新服务依赖
                 Service.update_dependence(
                     service.service_dependence,
-                    json.loads(app.app_dependence or '[]')
+                    dependence_list
                 )
                 details.append(
                     UpgradeDetail(
@@ -209,7 +248,11 @@ class Upgrade(BaseOperation):
         return history
 
     def handle(self):
-        app = self.valid_package()
+        if self.p_type:
+            pk_id = UploadPackageHistory.objects.filter(package_name=self.service_package).last()
+            app = ApplicationHub.objects.filter(app_package=pk_id).first()
+        else:
+            app = self.valid_package()
         if not app:
             # 无app情况下流水线不凋回滚
             return True
@@ -235,6 +278,13 @@ class Upgrade(BaseOperation):
 
 
 class Rollback(BaseOperation):
+
+    def valid_package(self):
+        package = UploadPackageHistory.objects.filter(
+            package_name=self.service_package
+        ).last()
+        return ProductHub.objects.filter(
+            pro_package=package).first()
 
     def roll_back(self, upgrade_details):
         with transaction.atomic():
@@ -278,9 +328,9 @@ class Rollback(BaseOperation):
         can_roll_back_details = []
         for detail in details:
             if not UpgradeDetail.objects.filter(
-                service=detail.service,
-                id__gt=detail.id,
-                has_rollback=False
+                    service=detail.service,
+                    id__gt=detail.id,
+                    has_rollback=False
             ).exists():
                 can_roll_back_details.append(detail)
         if not can_roll_back_details:
@@ -312,7 +362,32 @@ if __name__ == '__main__':
               "[服务安装包(如: mysql-xxxxx.tar.gz)] "
               "[服务所在ip(不填默认升级该服务所有实例)]")
         exit(1)
-    result = eval(operation.capitalize())(*sys_args[1:])()
+    p_type = None
+    pro_type = copy.copy(sys_args[1:])
+    pk_name_ls = None
+    # 当未产品时调用explain_product 获取package包列表
+    if "product" in pro_type:
+        pro_type.remove("product")
+        p_type = "product"
+        pk_name_ls = eval(operation.capitalize())(*pro_type, p_type_n=p_type).explain_product()
+    if isinstance(pk_name_ls, list):
+        # 执行产品升级带参跳过校验扫描过程
+        result = []
+        for pk_name in pk_name_ls:
+            rs = eval(operation.capitalize())(pk_name, p_type_n="product")()
+            log_print(f"{pk_name}升级结果:{str(rs)}")
+            result.append(rs)
+        if False in result:
+            result = False
+    elif pk_name_ls is None:
+        is_test = False
+        if "test" in pro_type:
+            pro_type.remove("test")
+            is_test = True
+        result = eval(operation.capitalize())(*pro_type, is_test=is_test)()
+    else:
+        # 包没扫描对，不触发回滚
+        result = True
     if result:
         exit(0)
     log_print("操作失败，即将退出！", "error")

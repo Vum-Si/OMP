@@ -1,10 +1,10 @@
 import moment from "moment";
 import { nonEmptyProcessing } from "@/utils/utils";
 
-const getColumnsConfig = (history) => {
+const getColumnsConfig = (history, context, locale) => {
   return [
     {
-      title: "编号",
+      title: context.number,
       width: 140,
       key: "_idx",
       dataIndex: "_idx",
@@ -13,35 +13,37 @@ const getColumnsConfig = (history) => {
       fixed: "left",
     },
     {
-      title: "模板名称",
+      title: context.template + context.ln + context.name,
       width: 280,
       key: "plan_name",
       dataIndex: "plan_name",
       align: "center",
+      render: (text) =>
+        locale === "zh-CN" ? text : text.replace("快速部署", "Template"),
     },
     {
-      title: "主机数量",
+      title: context.host + context.ln + context.total,
       key: "host_num",
       width: 150,
       dataIndex: "host_num",
       align: "center",
     },
     {
-      title: "产品数量",
+      title: context.product + context.ln + context.total,
       key: "product_num",
       width: 150,
       dataIndex: "product_num",
       align: "center",
     },
     {
-      title: "服务数量",
+      title: context.service + context.ln + context.total,
       key: "service_num",
       width: 150,
       dataIndex: "service_num",
       align: "center",
     },
     {
-      title: "创建时间",
+      title: context.created,
       key: "created",
       dataIndex: "created",
       align: "center",
@@ -55,23 +57,13 @@ const getColumnsConfig = (history) => {
       },
     },
     {
-      title: "创建用户",
-      key: "create_user",
-      dataIndex: "create_user",
-      align: "center",
-      width: 200,
-      render: (text) => {
-        return "Admin";
-      },
-    },
-    {
-      title: "操作",
+      title: context.action,
       width: 100,
       key: "",
       dataIndex: "",
       align: "center",
       fixed: "right",
-      render: function renderFunc(text, record, index) {
+      render: (text, record, index) => {
         return (
           <div style={{ display: "flex", justifyContent: "space-around" }}>
             <a
@@ -80,12 +72,12 @@ const getColumnsConfig = (history) => {
                   pathname: "/application_management/app_store/installation",
                   state: {
                     uniqueKey: record.operation_uuid,
-                    step: 3,
+                    step: 4,
                   },
                 });
               }}
             >
-              安装记录
+              {context.view}
             </a>
           </div>
         );

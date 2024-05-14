@@ -17,6 +17,14 @@ start() {
     echo "${APP_NAME} [running]"
     return 0
   else
+    sleep 2
+    real_status
+    if [ $? -eq 1 ];then
+      stop
+    else
+      echo "${APP_NAME} [running]"
+      exit 0
+    fi
     cd $PROJECT_FOLDER/omp_server
     nohup $PROJECT_FOLDER/component/env/bin/python3 $PROJECT_FOLDER/component/env/bin/celery \
     -A omp_server worker -c 10 --loglevel=INFO -f $PROJECT_FOLDER/logs/celery.log >$PROJECT_FOLDER/logs/celery_worker.log  2>&1 &
@@ -25,27 +33,27 @@ start() {
 }
 
 stop() {
+  #real_status
+  #if [ $? -eq 1 ]; then
+  #  echo "${APP_NAME} [not running]"
+  #  return 0
+  #else
+  ps -ef | grep "${PROJECT_FOLDER}/component/env/bin/celery" |grep -v scheduler | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null
+  sleep 3
   real_status
-  if [ $? -eq 1 ]; then
+  if [ $? -eq 0 ]; then
+    echo "${APP_NAME} [running]"
+    return 1
+  else
     echo "${APP_NAME} [not running]"
     return 0
-  else
-    ps -ef | grep "${PROJECT_FOLDER}/component/env/bin/celery" |grep -v scheduler | grep -v grep | awk '{print $2}' | xargs kill -9
-    sleep 3
-    real_status
-    if [ $? -eq 0 ]; then
-      echo "${APP_NAME} [running]"
-      return 1
-    else
-      echo "${APP_NAME} [not running]"
-      return 0
-    fi
   fi
+  #fi
 }
 
 real_status() {
-  worker_status=$(ps -ef | grep ${PROJECT_FOLDER}/component/env/bin/celery | grep -v scheduler | grep -v grep)
-  if [ -n "$worker_status" ]; then
+  worker_num=$(ps -ef | grep ${PROJECT_FOLDER}/component/env/bin/celery |grep worker | grep -v scheduler |grep -v grep | wc -l)
+  if [ $worker_num -eq 11 ]; then
     return 0
   else
     return 1

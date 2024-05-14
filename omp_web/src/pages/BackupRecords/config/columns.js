@@ -2,23 +2,38 @@ import { renderDisc } from "@/utils/utils";
 import { Tooltip } from "antd";
 import moment from "moment";
 
-const renderResult = (text) => {
+const renderResult = (text, context) => {
   switch (text) {
     case 0:
-      return <span>{renderDisc("critical", 7, -1)}失败</span>;
+      return (
+        <span>
+          {renderDisc("critical", 7, -1)}
+          {context.failed}
+        </span>
+      );
     case 1:
-      return <span>{renderDisc("normal", 7, -1)}成功</span>;
+      return (
+        <span>
+          {renderDisc("normal", 7, -1)}
+          {context.succeeded}
+        </span>
+      );
     case 2:
-      return <span>{renderDisc("warning", 7, -1)}执行中</span>;
+      return (
+        <span>
+          {renderDisc("warning", 7, -1)}
+          {context.executing}
+        </span>
+      );
   }
 };
 
-const getColumnsConfig = (setRow, setDeleteOneModal) => {
+const getColumnsConfig = (setRow, setDeleteOneModal, context) => {
   // 推送邮件相关数据
 
   return [
     {
-      title: "任务名称",
+      title: context.task + context.ln + context.name,
       key: "backup_name",
       dataIndex: "backup_name",
       align: "center",
@@ -34,17 +49,17 @@ const getColumnsConfig = (setRow, setDeleteOneModal) => {
       },
     },
     {
-      title: "状态",
+      title: context.status,
       key: "result",
       dataIndex: "result",
       align: "center",
       width: 100,
       render: (text) => {
-        return renderResult(text);
+        return renderResult(text, context);
       },
     },
     {
-      title: "备份实例",
+      title: context.instance,
       key: "content",
       dataIndex: "content",
       align: "center",
@@ -52,7 +67,7 @@ const getColumnsConfig = (setRow, setDeleteOneModal) => {
       ellipsis: true,
     },
     {
-      title: "备份文件",
+      title: context.file,
       key: "file_name",
       dataIndex: "file_name",
       align: "center",
@@ -70,18 +85,15 @@ const getColumnsConfig = (setRow, setDeleteOneModal) => {
       },
     },
     {
-      title: "文件大小",
+      title: context.file + context.ln + context.size,
       key: "file_size",
       dataIndex: "file_size",
       align: "center",
       width: 80,
       ellipsis: true,
-      // render: (text) => {
-      //   return <span>{text ? `${text} M` : "-"}</span>;
-      // },
     },
     {
-      title: "备份路径",
+      title: context.save + context.ln + context.path,
       key: "retain_path",
       dataIndex: "retain_path",
       width: 160,
@@ -96,7 +108,7 @@ const getColumnsConfig = (setRow, setDeleteOneModal) => {
       },
     },
     {
-      title: "远程路径",
+      title: context.remote + context.ln + context.path,
       key: "remote_path",
       dataIndex: "remote_path",
       width: 160,
@@ -111,7 +123,7 @@ const getColumnsConfig = (setRow, setDeleteOneModal) => {
       },
     },
     {
-      title: "过期时间",
+      title: context.expire + context.ln + context.time,
       key: "expire_time",
       dataIndex: "expire_time",
       width: 180,
@@ -125,7 +137,7 @@ const getColumnsConfig = (setRow, setDeleteOneModal) => {
       },
     },
     {
-      title: "信息",
+      title: context.description,
       key: "message",
       dataIndex: "message",
       align: "center",
@@ -140,7 +152,7 @@ const getColumnsConfig = (setRow, setDeleteOneModal) => {
       },
     },
     {
-      title: "操作",
+      title: context.action,
       width: 100,
       key: "",
       dataIndex: "",
@@ -149,43 +161,25 @@ const getColumnsConfig = (setRow, setDeleteOneModal) => {
       render: (text, record, index) => {
         return (
           <div
-            onClick={() => {
-              setRow(record);
-            }}
+            onClick={() => setRow(record)}
             style={{ display: "flex", justifyContent: "space-around" }}
           >
             <div style={{ margin: "auto" }}>
               {record.result === 2 ? (
                 <>
-                  {/* <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>下载</span> */}
                   <span
                     style={{ color: "rgba(0, 0, 0, 0.25)", marginLeft: 10 }}
                   >
-                    删除
+                    {context.delete}
                   </span>
                 </>
               ) : (
                 <>
-                  {/* <a
-                    onClick={() => {
-                      if (record.file_name || record.result === 1) {
-                        let a = document.createElement("a");
-                        a.href = `/download-backup/${record.file_name}`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      } else {
-                        message.warning("该任务文件不支持下载");
-                      }
-                    }}
-                  >
-                    下载
-                  </a> */}
                   <a
                     style={{ marginLeft: 10 }}
                     onClick={() => setDeleteOneModal(true)}
                   >
-                    删除
+                    {context.delete}
                   </a>
                 </>
               )}

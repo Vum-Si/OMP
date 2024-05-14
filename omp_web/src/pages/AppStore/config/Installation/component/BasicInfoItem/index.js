@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { randomNumber } from "@/utils/utils";
 import { DownOutlined } from "@ant-design/icons";
 
-const BasicInfoItem = ({ data, form }) => {
+const BasicInfoItem = ({ data, form, context }) => {
   // step3的安装详情是否是展开状态 因为多个所以为对象
   const [isOpen, setIsOpen] = useState(false);
 
@@ -13,7 +13,7 @@ const BasicInfoItem = ({ data, form }) => {
   const step2Open = (num) => ({
     marginTop: 10,
     minHeight: 30,
-    height: num * 55,
+    // height: num * 55,
     transition: "all .2s ease-in",
     overflow: "hidden",
     backgroundColor: "#f9f9f9",
@@ -52,13 +52,13 @@ const BasicInfoItem = ({ data, form }) => {
         <div style={{ flex: 2 }}>{data.version}</div>
         <div style={{ flex: 3 }}>
           <Form.Item
-            label="实例名称"
+            label={context.instanceN}
             name={`${data.name}`}
             style={{ marginBottom: 0 }}
             rules={[
               {
                 required: true,
-                message: "请输入密码",
+                message: context.input + context.ln + context.instanceN,
               },
             ]}
           >
@@ -78,9 +78,7 @@ const BasicInfoItem = ({ data, form }) => {
                 flexDirection: "row-reverse",
                 paddingRight: 50,
               }}
-              onClick={() => {
-                setIsOpen(!isOpen);
-              }}
+              onClick={() => setIsOpen(!isOpen)}
             >
               <DownOutlined
                 style={{
@@ -90,7 +88,11 @@ const BasicInfoItem = ({ data, form }) => {
                   left: 3,
                 }}
               />
-              更改服务信息
+              {context.change +
+                context.ln +
+                context.service +
+                context.ln +
+                context.info}
             </a>
           </div>
         </div>
@@ -105,7 +107,7 @@ const BasicInfoItem = ({ data, form }) => {
       >
         {data.services_list.map((item) => {
           return (
-            <div style={{ width: 360 }} key={item.name}>
+            <div style={{ width: 360, marginBottom: 10 }} key={item.name}>
               <Form.Item
                 label={<span style={{ width: 180 }}>{item.name}</span>}
                 name={`${data.name}=${item.name}`}

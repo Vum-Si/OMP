@@ -1,14 +1,13 @@
 import UpgradeDetail from "./UpgradeDetail";
+import { logCreate } from "../../../Installation/component/logUtil";
 
-const UpgradeInfoItem = ({ id, data, title, log, idx }) => {
+const UpgradeInfoItem = ({ id, data, title, log, idx, context, locale }) => {
   return (
     <div
       id={id}
       style={{
-        //marginTop: 20,
         backgroundColor: "#fff",
         padding: 10,
-        //marginBottom: 15,
         marginTop: idx !== 0 && 15,
       }}
     >
@@ -32,7 +31,9 @@ const UpgradeInfoItem = ({ id, data, title, log, idx }) => {
             paddingRight: 20,
           }}
         >
-          {title}
+          {title === "升级前置操作"
+            ? context.pre + context.ln + context.task
+            : title}
         </div>
         <div style={{ height: 1, backgroundColor: "#b3b2b3", width: "100%" }} />
       </div>
@@ -41,19 +42,22 @@ const UpgradeInfoItem = ({ id, data, title, log, idx }) => {
           paddingLeft: 20,
           marginTop: 10,
           paddingBottom: 5,
-          // paddingTop: 20,
         }}
       >
         {data?.map((item) => {
-          console.log(item);
           return (
             <UpgradeDetail
               title={title}
               key={`${title}=${item.ip}=${item.instance_name}`}
               status={item.upgrade_state}
               ip={item.ip}
-              log={item.message}
+              log={
+                locale === "zh-CN"
+                  ? item.message
+                  : logCreate(title, item.message, context)
+              }
               instance_name={item.instance_name}
+              context={context}
             />
           );
         })}

@@ -15,33 +15,28 @@ const GetServiceModal = ({
   dataSource,
   setDataSource,
   initLoading,
+  context,
+  locale,
 }) => {
   const [loading, setLoading] = useState(false);
-
   const history = useHistory();
-
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-
   //应用服务选择的版本号
   const versionInfo = useRef({});
-
   const [searchName, setSearchName] = useState("");
 
   const columns = [
     {
-      title: "名称",
+      title: context.service + context.ln + context.name,
       key: "name",
       dataIndex: "name",
       align: "center",
       ellipsis: true,
       width: 80,
-      render: (text, record) => {
-        return text;
-      },
     },
     {
-      title: "版本",
+      title: context.version,
       key: "version",
       dataIndex: "version",
       align: "center",
@@ -152,19 +147,16 @@ const GetServiceModal = ({
           <span style={{ position: "relative", left: "-10px" }}>
             <CopyOutlined />
           </span>
-          <span>选择纳管服务</span>
+          <span>{context.service + context.ln + context.incorporate}</span>
         </span>
       }
       afterClose={() => {
         setCheckedList([]);
         versionInfo.current = {};
       }}
-      onCancel={() => {
-        setModalVisibility(false);
-      }}
+      onCancel={() => setModalVisibility(false)}
       visible={modalVisibility}
       footer={null}
-      //width={1000}
       loading={loading}
       bodyStyle={{
         paddingLeft: 30,
@@ -173,19 +165,19 @@ const GetServiceModal = ({
       }}
       destroyOnClose
     >
-      <div
-        style={{
-          display: "flex",
-          marginBottom: 10,
-        }}
-      >
+      {/* -- 搜索框 / 计数 -- */}
+      <div style={{ display: "flex", marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
           <Input
-            placeholder="请输入名称"
+            placeholder={
+              context.input +
+              context.ln +
+              context.service +
+              context.ln +
+              context.name
+            }
             suffix={<SearchOutlined style={{ color: "#b6b6b6" }} />}
-            style={{
-              width: 220,
-            }}
+            style={{ width: 220 }}
             value={searchName}
             onChange={(e) => {
               setSearchName(e.target.value);
@@ -217,13 +209,15 @@ const GetServiceModal = ({
             }}
           >
             <div style={{ marginRight: 10 }}>
-              已选择{" "}
+              {context.selected}{" "}
               {checkedList.filter((i) => typeof i.version !== "string").length}{" "}
-              个
+              {context.ge}
             </div>
           </div>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div>
         <div style={{ border: "1px solid rgb(235, 238, 242)" }}>
           <OmpTable
@@ -234,12 +228,14 @@ const GetServiceModal = ({
             columns={columns}
             dataSource={dataSource}
             rowKey={(record) => {
-              return record.name;
+              return `${record.name}-${record.version}`;
             }}
             checkedState={[checkedList, setCheckedList]}
             pagination={false}
             rowSelection={{
-              selectedRowKeys: checkedList?.map((item) => item?.name),
+              selectedRowKeys: checkedList?.map(
+                (item) => `${item.name}-${item.version}`
+              ),
               onSelect: (record, selected, selectedRows, nativeEvent) => {
                 if (selected) {
                   // 如果有子项则全部选中
@@ -247,6 +243,8 @@ const GetServiceModal = ({
                   if (record.hasOwnProperty("child")) {
                     const version =
                       versionInfo.current[record.name] || record.version[0];
+                    console.log(version);
+                    console.log(record);
                     childArr = record.child[version];
                   }
                   // 如果有父则选中
@@ -312,6 +310,8 @@ const GetServiceModal = ({
             }}
           />
         </div>
+
+        {/* -- 取消/确认 -- */}
         <div
           style={{ display: "flex", justifyContent: "center", marginTop: 30 }}
         >
@@ -322,17 +322,17 @@ const GetServiceModal = ({
               justifyContent: "space-between",
             }}
           >
-            <Button onClick={() => setModalVisibility(false)}>取消</Button>
+            <Button onClick={() => setModalVisibility(false)}>
+              {context.cancel}
+            </Button>
             <Button
               type="primary"
               style={{ marginLeft: 16 }}
               loading={loading || initLoading}
               disabled={checkedList.length == 0}
-              onClick={() => {
-                checkServiceData();
-              }}
+              onClick={() => checkServiceData()}
             >
-              确认选择
+              {context.ok}
             </Button>
           </div>
         </div>

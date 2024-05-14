@@ -3,12 +3,13 @@ from django.urls import path
 from service_upgrade.views import UpgradeChoiceMaxVersionListAPIView, \
     UpgradeHistoryListAPIView, UpgradeHistoryDetailAPIView, DoUpgradeAPIView, \
     RollbackHistoryListAPIView, RollbackHistoryDetailAPIView, \
-    RollbackChoiceListAPIView, DoRollbackAPIView
+    RollbackChoiceListAPIView, DoRollbackAPIView, ChangeSerAPIView
 
 upgrade_urlpatterns = [
     path('history', UpgradeHistoryListAPIView.as_view(), name="history"),
+    path('change-service', ChangeSerAPIView.as_view(), name="change-servic"),
     path(
-        'history/<int:pk>',
+        'history/<int:pk>/',
         UpgradeHistoryDetailAPIView.as_view(),
         name="detail"),
     path(
@@ -21,7 +22,7 @@ upgrade_urlpatterns = [
 rollback_urlpatterns = [
     path('history', RollbackHistoryListAPIView.as_view(), name="history"),
     path(
-        'history/<int:pk>',
+        'history/<int:pk>/',
         RollbackHistoryDetailAPIView.as_view(),
         name="detail"),
     path(

@@ -1,0 +1,12 @@
+# # config file version
+apiVersion: 1
+
+providers:
+ - name: 'provision'
+   orgId: 1
+   folder: 'provision'
+   folderUid: ''
+   type: file
+   updateIntervalSeconds: 10
+   options:
+     path: ${CW_GRAFANA_DASHBOARD}

@@ -46,7 +46,6 @@ const Login = withRouter(({ history }) => {
               data: {},
             },
           });
-          //console.log(data)
           localStorage.setItem("username", data.username);
         }
       })
@@ -68,10 +67,7 @@ const Login = withRouter(({ history }) => {
         <div className={styles.loginContent}>
           <header className={styles.loginTitle}>
             <img className={styles.loginLogo} src={img} />
-            <span className={styles.loginOMP}>
-              {/* OMP<span className={styles.loginOpenText}>运维管理平台</span> */}
-              运维工具包
-            </span>
+            <span className={styles.loginOMP}>运维工具包</span>
           </header>
           <p className={styles.loginInputTitle}>用户名密码登录</p>
           <div

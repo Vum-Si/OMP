@@ -1,11 +1,14 @@
 import json
 import logging
 import math
+import time
 
 import requests
+from urllib import parse
 
-from db_models.models import MonitorUrl
+from db_models.models import MonitorUrl, GrafanaMainPage
 from utils.parse_config import MONITOR_PORT, PROMETHEUS_AUTH
+from promemonitor.grafana_url import explain_url
 
 logger = logging.getLogger('server')
 
@@ -36,7 +39,7 @@ class Prometheus:
         return f'127.0.0.1:{MONITOR_PORT.get("prometheus", 19011)}'  # 默认值
 
     @staticmethod
-    def get_host_threshold(env_id=1,**kwargs):
+    def get_host_threshold(env_id=1, **kwargs):
         host_threshold = {
             'cpu': (80, 90),
             'mem': (80, 90),
@@ -47,23 +50,23 @@ class Prometheus:
 
             from db_models.models import AlertRule
             cpu_warning_ht = AlertRule.objects.filter(env_id=env_id,
-                                                          name="CPU使用率",
-                                                          severity="warning").first()
+                                                      name="CPU使用率",
+                                                      severity="warning").first()
             cpu_critical_ht = AlertRule.objects.filter(env_id=env_id,
-                                                           name="CPU使用率",
-                                                           severity="critical").first()
+                                                       name="CPU使用率",
+                                                       severity="critical").first()
             mem_warning_ht = AlertRule.objects.filter(env_id=env_id,
-                                                          name="内存使用率",
-                                                          severity="warning").first()
+                                                      name="内存使用率",
+                                                      severity="warning").first()
             mem_critical_ht = AlertRule.objects.filter(env_id=env_id,
-                                                           name="内存使用率",
-                                                           severity="critical").first()
+                                                       name="内存使用率",
+                                                       severity="critical").first()
             root_disk_warning_ht = AlertRule.objects.filter(env_id=env_id,
-                                                                name="根分区使用率",
-                                                                severity="warning").first()
+                                                            name="根分区使用率",
+                                                            severity="warning").first()
             root_disk_critical_ht = AlertRule.objects.filter(env_id=env_id,
-                                                                 name="根分区使用率",
-                                                                 severity="critical").first()
+                                                             name="根分区使用率",
+                                                             severity="critical").first()
             data_disk_warning_ht = None
             data_disk_critical_ht = None
             if kwargs.get("data_dir"):
@@ -71,12 +74,11 @@ class Prometheus:
                 从指标规则中获取指定路径的数据分区
                 """
                 data_disk_warning_ht = AlertRule.objects.filter(env_id=env_id,
-                                                                    name="数据分区使用率",
-                                                                    severity="warning").first()
+                                                                name="数据分区使用率",
+                                                                severity="warning").first()
                 data_disk_critical_ht = AlertRule.objects.filter(env_id=env_id,
-                                                                     name="数据分区使用率",
-                                                                     severity="critical").first()
-
+                                                                 name="数据分区使用率",
+                                                                 severity="critical").first()
 
             #
             # from db_models.models import HostThreshold
@@ -134,9 +136,10 @@ class Prometheus:
         """
         获取指定主机cpu使用率
         """
-        query_url = f'{self.prometheus_api_query_url}(1 - avg(rate(node_cpu_seconds_total' \
-                    f'{{mode="idle"}}[2m])) by (instance))*100'
-        # print(query_url)
+        query_content = ''
+        query_content = '(1 - sum by (instance)(increase(node_cpu_seconds_total{mode="idle"}[2m])) / sum by (instance)(increase(node_cpu_seconds_total[2m])))*100'
+        query_content = parse.quote(query_content)
+        query_url = f'{self.prometheus_api_query_url}{query_content}'
         try:
             get_cpu_response = requests.get(
                 url=query_url, headers=self.headers, auth=self.basic_auth)
@@ -285,7 +288,7 @@ class Prometheus:
                             host_list[index]['data_disk_usage'] = math.ceil(
                                 float(item.get('value')[1]))
                             host_list[index]['data_disk_status'] = self.get_host_metric_status('data_disk', math.ceil(
-                                float(item.get('value')[1])),data_dir=host_data_disk)
+                                float(item.get('value')[1])), data_dir=host_data_disk)
                             break
                         host_list[index]['data_disk_usage'] = None
                         host_list[index]['data_disk_status'] = None
@@ -341,7 +344,7 @@ class Prometheus:
                 if metric.get("service_type") != "service":
                     continue
                 _key = metric.get("instance", "") + "_" + \
-                    metric.get("instance_name", "")
+                       metric.get("instance_name", "")
                 _value = True if int(
                     item.get("value", [0, 0])[-1]) == 1 else False
                 service_status_dic[_key] = _value
@@ -448,6 +451,9 @@ class Prometheus:
                     if os_service.get('app_name') == 'hadoop':
                         os_service['app_name'] = os_service.get(
                             'service_instance_name', 'hadoop').split('_')[0]
+                    if os_service.get('app_name') == 'doim':
+                        os_service['app_name'] = os_service.get(
+                            'service_instance_name', 'doim').split('-')[0]
                     for item in os_cpu_usage_dict.get('data').get('result'):
                         if item.get('metric').get('instance') == os_service.get('ip') \
                                 and item.get('metric').get('app') == os_service.get('app_name') \
@@ -588,18 +594,18 @@ class Prometheus:
         service_list = self.get_service_mem_usage(service_list)
         return service_list
 
-    def get_quota_res(self,quota):
+    def get_quota_res(self, quota):
         """
         获取指标结果
         """
         query_url = f"{self.prometheus_api_query_url}{quota}"
         try:
             response = requests.get(
-                    url=query_url, headers=self.headers, auth=self.basic_auth)
+                url=query_url, headers=self.headers, auth=self.basic_auth)
             if response.status_code != 200:
                 logger.error(f"测试promsql错误: 状态码为{response.status_code} 错误{response.text}")
                 return False, response.text
-            print(query_url,response.json())
+            print(query_url, response.json())
             if response.json().get("status") == "success":
                 return True, response.json()["data"]["result"]
             return False, response.text
@@ -607,8 +613,44 @@ class Prometheus:
             logger.error(f"测试promsql错误：{e}")
             return False, "访问prometheus错误"
 
+    def get_container_service_list(self):
+        """获取容器监控服务列表"""
+        _t_timestamp = time.time()
+        res_list = list()
+        _metric_dict = dict()
+        url_dict = dict()
+        app_name = ''
+        for i in GrafanaMainPage.objects.all():
+            url_dict[i.instance_name] = i.instance_url
+        _query_url = f"{self.prometheus_api_query_url}up&time={_t_timestamp}"
 
-class UpdatePrometheusRule(object):
-    """
-    更新prometheus的配置文件
-    """
+        _res = requests.get(url=_query_url, headers=self.headers, auth=self.basic_auth)
+        if _res.status_code != 200:
+            return []
+        _res_list = _res.json().get("data", {}).get("result", [])
+        for _item in _res_list:
+            _metric_dict = _item.get("metric", {})
+            env = _metric_dict.get("env")
+            if env != "container":
+                continue
+            _metric_dict["service_status"] = _item.get("value", [])[-1]
+            _metric_dict.pop("__name__")
+            app_name = _metric_dict.pop("app")
+            _metric_dict.pop("job")
+            _metric_dict.pop("env")
+            _metric_dict.pop("instance")
+            _metric_dict.pop("service_type")
+            _metric_dict["app_name"] = app_name
+            monitor_url = url_dict.get(app_name, "")
+            _ip = _metric_dict.get("node_ip", "")
+            _instance_name = _metric_dict.get("instance_name", "")
+            if monitor_url:
+                _metric_dict["monitor_url"] = monitor_url + f"?var-instance={_ip}&kiosk=tv"
+            else:
+                # 容器过来的自研服务默认用jvm面板
+                _metric_dict["monitor_url"] = url_dict.get("javaspringboot",
+                                                           "") + f"?var-env={env}&var-app={app_name}&var-instance_name={_instance_name}&kiosk=tv"
+            _metric_dict["log_url"] = url_dict.get("log",
+                                                   "") + f"?var-env={env}&var-app={app_name}" + f"&var-instance={_instance_name}"
+            res_list.append(_metric_dict)
+        return res_list

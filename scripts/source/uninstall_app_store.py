@@ -1,3 +1,8 @@
+# -*- coding:utf-8 -*-
+# Project: uninstall_app_store
+# Author:Jerry.zhang@yunzhihui.com
+# Create time: 2022/3/13 11:23 上午
+
 import os
 import sys
 import time
@@ -54,8 +59,8 @@ class UninstallServices(object):
             self.product_all = True
         # 产品服务均存在
         if self.app_name and self.product:
-            app_obj = ApplicationHub.objects.filter(
-                app_name__startswith=self.app_name, product__pro_name=self.product)
+            app_obj = ApplicationHub.objects.filter(app_name__startswith=self.app_name,
+                                                    product__pro_name=self.product)
             if not app_obj:
                 print(f"{self.product}产品下无此服务")
                 sys.exit(1)
@@ -156,11 +161,10 @@ def parameters():
 
 if __name__ == '__main__':
     para = parameters()
-    uninstall_obj = UninstallServices(
-        app_name=para.app_name,
-        product=para.product,
-        version=para.version
-    )
+    uninstall_obj = UninstallServices(app_name=para.app_name,
+                                      product=para.product,
+                                      version=para.version
+                                      )
     result = uninstall_obj.check_database()
     if result:
         sys.exit(1)

@@ -35,6 +35,10 @@ function ping() {
   $PYTHON3 $SALT "$1" test.ping -c $SALT_CONFIG_DIR
 }
 
+function push_file() {
+  $PYTHON3 $SALT "$1" cp.get_file salt://$2  $3  -c $SALT_CONFIG_DIR
+}
+
 function echo_help() {
   echo "bash salt_agent_manager [ping|cmd|delete_one_key|delete_all_keys|list_salt_keys]"
 }
@@ -62,6 +66,10 @@ else
   list_salt_keys)
     shift
     list_salt_keys "$@"
+    ;;
+  push_file)
+    shift
+    push_file "$@"
     ;;
   *)
     echo_help

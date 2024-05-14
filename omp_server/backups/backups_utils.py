@@ -225,4 +225,8 @@ def check_ing(obj):
     if ing_instance:
         logger.info(f"当前实例正在备份：{','.join(ing_instance)}")
         return True
+    ser_count = Service.objects.filter(service_instance_name__in=list(obj.backup_instances)).count()
+    if ser_count != len(list(obj.backup_instances)):
+        logger.info(f"该备份实例子存在部分或全部删除{','.join(obj.backup_instances)}")
+        return True
     return False

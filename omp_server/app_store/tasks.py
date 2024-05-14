@@ -13,7 +13,7 @@ from celery import shared_task
 from celery.utils.log import get_task_logger
 from utils.plugin import public_utils
 from utils.parse_config import (
-    OMP_REDIS_PORT, OMP_REDIS_PASSWORD, OMP_REDIS_HOST
+    OMP_REDIS_PORT, OMP_REDIS_PASSWORD, OMP_REDIS_HOST, THREAD_POOL_MAX_WORKERS
 )
 
 from db_models.models import (
@@ -24,6 +24,9 @@ from app_store.upload_task import CreateDatabase
 from app_store.install_exec import InstallServiceExecutor
 # from app_store.install_executor import InstallServiceExecutor
 from promemonitor.prometheus_utils import PrometheusUtils
+from concurrent.futures import (
+    ThreadPoolExecutor, as_completed
+)
 
 # 屏蔽celery任务日志中的paramiko日志
 logging.getLogger("paramiko").setLevel(logging.WARNING)
@@ -36,18 +39,6 @@ package_hub = os.path.join(project_dir, "package_hub")
 package_dir = {"back_end_verified": "back_end_verified",
                "front_end_verified": "front_end_verified",
                "verified": "verified"}
-
-
-class PublicAction(object):
-    def __init__(self, md5):
-        self.md5_obj = UploadPackageHistory.objects.filter(package_md5=md5)
-
-    def update_package_status(self, status, msg=None):
-        self.md5_obj.update(package_status=status, error_msg=msg)
-        logger.info(msg)
-
-    def update_fail_status(self, msg=None):
-        self.md5_obj.update(package_status=1, error_msg=msg)
 
 
 class FiledCheck(object):
@@ -95,7 +86,7 @@ class FiledCheck(object):
                 return True
             else:
                 return False
-        except Exception as e:
+        except Exception:
             self.db_obj.update_package_status(
                 1,
                 f"yml:{attention}异常，检查yml文件{self.yaml_dir}")
@@ -122,16 +113,293 @@ class FiledCheck(object):
                         return False
                 return True
             else:
+                self.db_obj.update_package_status(
+                    1,
+                    f"字段检测异常，需要正确的字段{str(field)},父级字段{attention}")
                 return False
-        except Exception as e:
+        except Exception:
             self.db_obj.update_package_status(
                 1,
-                f"yml:{attention}异常，检查yml文件{self.yaml_dir}")
+                f"yml:{str(field)}异常，检查yml文件{self.yaml_dir}")
             return False
 
 
+def exec_clear(clear_dirs):
+    for clear_dir in clear_dirs:
+        if len(clear_dir) <= 28:
+            logger.error(f'{clear_dir}路径异常')
+            return False
+        else:
+            clear_out = public_utils.local_cmd(
+                f'rm -rf {clear_dir}')
+            logger.info(f"清理环境路径{clear_dir}")
+            if clear_out[2] != 0:
+                logger.error('清理环境失败')
+                return False
+    return True
+
+
+class ProduceJson:
+    """
+     upload_obj 上传记录表的id
+     package_name 上传的安装包
+     random_str 随机字符串，用于拼接临时校验目录
+     upload_obj 上传记录表的id
+    """
+
+    def __init__(self, upload_obj, package_name, package_path, random_str, is_test):
+        self.upload_obj = upload_obj
+        self.package_name = package_name
+        self.package_path = package_path
+        self.random_str = random_str
+        self.file_name = os.path.join(package_path, package_name)
+        self.tmp_dir = None
+        self.image = None
+        self.product_is_repeat = False
+        self.test = is_test
+
+    def update_package_status(self, status, msg=None):
+        self.upload_obj.package_status = status
+        if msg:
+            self.upload_obj.error_msg = msg
+        self.upload_obj.save()
+        logger.info(msg)
+        return False
+
+    def check_local_cmd(self, *args, msg=None):
+        # _out, _err, _code
+        if args[2] != 0:
+            self.update_package_status(1, msg if msg else args[1])
+            return False
+        return True
+
+    def get_md5(self, file_name=None):
+        """
+        获取md5值
+        """
+        file_name = file_name if file_name else self.file_name
+        md5_out = public_utils.local_cmd(f'md5sum {file_name}')
+        if self.check_local_cmd(*md5_out, msg="md5sum命令执行失败"):
+            self.upload_obj.package_md5 = md5_out[0].split()[0]
+            self.upload_obj.save()
+            return md5_out
+
+    def unzip_package(self):
+        touch_name = self.file_name[:-7] if \
+            self.file_name[-7:] == ".tar.gz" else self.file_name[:-3]
+        self.tmp_dir = os.path.join(self.package_path, touch_name + self.random_str)
+        # 创建临时校验路径
+        os.mkdir(self.tmp_dir)
+        tar_out = public_utils.local_cmd(f'tar -xmf {self.file_name} -C {self.tmp_dir}')
+        return self.check_local_cmd(*tar_out, msg=f"安装包{self.package_name}解压失败或者压缩包格式不合规")
+
+    def check_yaml(self, check_file=None):
+        app_name = self.package_name.split('-', 1)[0]
+        check_file = check_file if check_file \
+            else os.path.join(self.tmp_dir, app_name, f'{app_name}.yaml')
+        # yaml内容进行标准校验
+        explain_yml = ExplainYml(self, check_file).explain_yml()
+        # 这个校验可能用不到
+        if isinstance(explain_yml, bool):
+            return False
+        return explain_yml[1]
+
+    def get_image(self, app_name):
+        try:
+            image_dir = os.path.join(self.tmp_dir, f'{app_name}.svg')
+            if os.path.exists(image_dir):
+                with open(image_dir, 'r') as fp:
+                    self.image = fp.read()
+        except UnicodeDecodeError as e:
+            logger.info(f"{self.package_name}包图片格式异常{e}")
+
+    def get_publish_dir(self, info, valid_dir=None):
+        tar_dir = os.path.join(project_dir, 'package_hub', 'verified')
+        valid_dir = os.path.join(
+            tar_dir, valid_dir) if valid_dir else tar_dir
+        p_type = info.get('kind')
+        if p_type == "product":
+            info['clear_dir'] = [self.tmp_dir, self.file_name]
+            valid_dir = os.path.join(valid_dir, f"{info.get('name')}-{info.get('version')}")
+        else:
+            info['clear_dir'] = [self.tmp_dir]
+        info['target_dir'] = valid_dir
+
+    def test_create_env(self, pro_name, pro_version):
+        if self.test:
+            package_obj = UploadPackageHistory.objects.create(
+                operation_uuid="test",
+                operation_user="admin",
+                package_name=f"{pro_name}-{pro_version}",
+                package_md5="testmd5",
+                package_path="verified",
+                package_status=3
+            )
+            product_obj = ProductHub.objects.create(
+                is_release=True,
+                pro_name=pro_name,
+                pro_version=pro_version,
+                pro_package=package_obj,
+                pro_services=json.dumps([]),
+                pro_dependence=json.dumps([], ensure_ascii=False),
+                extend_fields={}
+            )
+            return product_obj
+
+    def service(self, info, service_package=None, is_product=None):
+        """
+        包含通过产品校验和单独服务校验逻辑
+        """
+        service_package = service_package if service_package else self.package_name
+        kind, version, name = (info.get(key) for key in ['kind', 'version', 'name'])
+        if kind != "service":
+            return self.update_package_status(
+                1, f"安装包类型错误，请解压后单独发布服务"
+            )
+        # 校验服务是否唯一,无安装包跳过逻辑后
+        app_obj = ApplicationHub.objects.filter(app_version=version, app_name=name).first()
+        if app_obj:
+            if self.product_is_repeat:
+                return True
+            elif self.test:
+                # if app_obj.service_set.count() != 0:
+                #    return self.update_package_status(
+                #        1, f"{name}-{version} 该服务存在且被安装或升级"
+                #    )
+                info['version'] = f"{info['version']}-{str(time.time())}"
+            else:
+                return self.update_package_status(
+                    1, f"{name}-{version} 已存在，请确认服务名称和版本号联合唯一"
+                )
+
+        # 校验md5
+        if is_product:
+            service_pk_name = service_package.rsplit("/", 1)[1]
+            md5_ser = public_utils.local_cmd(f'md5sum {service_package}')
+            if md5_ser[2] != 0:
+                return self.update_package_status(1, "md5sum命令执行失败")
+            md5_service = md5_ser[0].split()[0]
+            # 对合法服务的记录进行创建操作，
+            # 信息会追加入"product_service"字段并归入所属产品yaml，组件则不会有此值。
+            s_obj = UploadPackageHistory.objects.create(
+                operation_uuid=self.upload_obj.operation_uuid,
+                operation_user=self.upload_obj.operation_user,
+                package_name=service_pk_name,
+                package_md5=md5_service,
+                package_path=os.path.join(
+                    package_dir.get(
+                        "verified"), is_product
+                ),
+                package_status=0,
+                package_parent=self.upload_obj
+            )
+            info['package_id'] = s_obj.id
+        else:
+            dependence_product = info.get("extend_fields", {}).get("product")
+            if not dependence_product:
+                return self.update_package_status(1, f"不能无依赖产品上传")
+            product_obj = ProductHub.objects.filter(
+                pro_name=dependence_product.get("name"),
+                pro_version=dependence_product.get("version")
+            ).last()
+            product_obj = product_obj if product_obj else self.test_create_env(
+                dependence_product.get("name"),
+                dependence_product.get("version")
+            )
+            if not product_obj:
+                return self.update_package_status(
+                    1, f"归属的产品包在数据库中不存在"
+                )
+            pro_info = f"{product_obj.pro_name}-{product_obj.pro_version}"
+            # app_n_v_dc = dict(ApplicationHub.objects.filter(product=product_obj).values_list(
+            #    "app_name", "app_version")
+            # )
+            # if app_n_v_dc.get(name) == version:
+            #    return self.update_package_status(
+            #        1, f"依赖的产品包存在同服务同版本的服务包")
+            self.upload_obj.package_status = 0
+            self.upload_obj.package_path = os.path.join(
+                package_dir.get("verified"),
+                pro_info
+            )
+            self.upload_obj.save()
+            info["move_dir"] = [self.file_name]
+            self.get_publish_dir(info, valid_dir=pro_info)
+        return info
+
+    def product(self, info):
+        services, version, name = (info.get(key) for key in ['service', 'version', 'name'])
+        self.get_image(name)
+        count = ProductHub.objects.filter(pro_version=version, pro_name=name).count()
+        if count != 0:
+            self.product_is_repeat = True
+        service_yml_dirs = os.path.join(self.tmp_dir, name)
+        # 成功的将会入库，未匹配到的则跳过逻辑。
+        # 获取该路径下所有的压缩包，并与包名组成dict
+        package_ls = [os.path.join(service_yml_dirs, i) for i in os.listdir(service_yml_dirs)]
+        service_packages_value = [p for p in package_ls if os.path.isfile(p) and 'tar' in p]
+        service_packages_key = [
+            service_package.rsplit("/", 1)[1].split("-")[0]
+            for service_package in
+            service_packages_value
+        ]
+        service_packages = dict(
+            zip(service_packages_key, service_packages_value))
+        # 对匹配到的yaml进行yaml校验，此时逻辑产品下服务包没有合法，
+        # 但产品内service字段存在的service必须有对应的yaml文件。
+
+        ser_ls = []
+        for i in services:
+            service_name = i.get('name')
+            service_package = service_packages.get(service_name)
+            if not service_package:
+                continue
+
+            service_dir = os.path.join(service_yml_dirs, name, f"{service_name}.yaml")
+            check_yaml = self.check_yaml(check_file=service_dir)
+            if not check_yaml:
+                return False
+            res = self.service(check_yaml, service_package=service_package, is_product=f"{name}-{version}")
+            if isinstance(res, dict):
+                ser_ls.append(
+                    {'name': service_name, 'version': res.get('version')}
+                )
+                info.setdefault("product_service", []).append(res)
+                info.setdefault("move_dir", []).append(service_package)
+            # 当返回ture时意味着该服务在产品内已存在 需要排查其他增量服务
+            elif res:
+                continue
+            else:
+                return False
+        self.get_publish_dir(info)
+        if not ser_ls:
+            return self.update_package_status(1, "产品包已存在，或产品包下无可用服务")
+        info['service'] = ser_ls
+        return info
+
+    def component(self, info):
+        count = ApplicationHub.objects.filter(app_version=info.get('version'),
+                                              app_name=info.get('name')).count()
+        if count != 0:
+            return self.update_package_status(
+                1, f"安装包{self.package_name}已存在:请确保name联合version唯一")
+        self.get_image(info.get('name'))
+        info["move_dir"] = [self.file_name]
+        self.get_publish_dir(info)
+        return info
+
+    def run(self):
+        check_list = ['get_md5', 'unzip_package', 'check_yaml']
+        res = None
+        for _ in check_list:
+            res = getattr(self, _)()
+            if not res:
+                return False
+        return getattr(self, res.get('kind'))(res)
+
+
 @shared_task
-def front_end_verified(uuid, operation_user, package_name, random_str, ver_dir, upload_obj):
+def front_end_verified(package_name, random_str, ver_dir, upload_obj, is_test=False):
     """
      前端发布界面校验逻辑及后端校验逻辑公共类
      params
@@ -145,205 +413,20 @@ def front_end_verified(uuid, operation_user, package_name, random_str, ver_dir, 
     """
     upload_obj = UploadPackageHistory.objects.get(id=upload_obj)
     package_path = os.path.join(package_hub, ver_dir)
-    file_name = os.path.join(package_path, package_name)
-    # md5校验生成
-    md5_out = public_utils.local_cmd(f'md5sum {file_name}')
-    if md5_out[2] != 0:
-        upload_obj.package_status = 1
-        upload_obj.error_msg = "md5sum命令执行失败"
-        upload_obj.save()
-        return None
-    md5sum = md5_out[0].split()[0]
-    md5 = md5sum
-    upload_obj.package_md5 = md5
-    upload_obj.save()
-    # 实例化状态更新公共类对象
-    public_action = PublicAction(md5)
-    touch_name = file_name[:-7] if \
-        file_name[-7:] == ".tar.gz" else file_name[:-3]
-    tmp_dir = os.path.join(package_path, touch_name + random_str)
-    # 创建临时校验路径
-    os.mkdir(tmp_dir)
-    tar_out = public_utils.local_cmd(f'tar -xmf {file_name} -C {tmp_dir}')
-    if tar_out[2] != 0:
-        return public_action.update_package_status(
-            1,
-            f"安装包{package_name}解压失败或者压缩包格式不合规")
-    app_name = package_name.split('-', 1)[0]
-    tmp_dir = os.path.join(tmp_dir, app_name)
-    # 查询临时路径下符合规范的yaml
-    check_file = os.path.join(tmp_dir, f'{app_name}.yaml')
-    if not os.path.exists(check_file):
-        return public_action.update_package_status(
-            1,
-            f"安装包{package_name}:{app_name}.yaml文件不存在")
-    # yaml内容进行标准校验
-    explain_yml = ExplainYml(public_action, check_file).explain_yml()
-    # 这个校验可能用不到
-    if isinstance(explain_yml, bool):
-        return None
-    kind = explain_yml[1].get("kind")
-    versions = explain_yml[1].get("version")
-    name = explain_yml[1].get("name")
-    pro_name = f"{name}-{versions}"
-    # 校验图片
-    image = None
-    if kind == 'product' or kind == 'component':
-        try:
-            image_dir = os.path.join(tmp_dir, f'{app_name}.svg')
-            if os.path.exists(image_dir):
-                with open(image_dir, 'r') as fp:
-                    image = fp.read()
-        except UnicodeDecodeError as e:
-            logger.error(f'{package_name}:图片格式异常{e}')
-            return public_action.update_package_status(
-                1,
-                f"{package_name}图片格式异常")
-    # yaml分为产品，组建，和服务逻辑。产品必须包含服务。因此需对产品类型做子级服务校验
-    if kind == 'product':
-        service = explain_yml[1].get("service")
-        count = ProductHub.objects.filter(pro_version=versions,
-                                          pro_name=name).count()
-        if count != 0:
-            return public_action.update_package_status(
-                1,
-                f"安装包{package_name}已存在:请确保name联合version唯一")
-        explain_service_list = []
-        yml_dirs = os.path.join(tmp_dir, app_name)
-        # 查找产品包路径下符合规则的tar与产品字段内service字段进行比对，
-        # 成功的将会入库，未匹配到的则跳过逻辑。
-        service_name = [os.path.join(tmp_dir, i) for i in os.listdir(tmp_dir)]
-        service_packages_value = [
-            p for p in service_name if
-            os.path.isfile(p) and 'tar' in p]
-        service_packages_key = [service_package.rsplit("/", 1)[1].split("-")[0]
-                                for service_package in
-                                service_packages_value]
-        service_package = dict(
-            zip(service_packages_key, service_packages_value))
-        # 对匹配到的yaml进行yaml校验，此时逻辑产品下服务包没有合法，
-        # 但产品内service字段存在的service必须有对应的yaml文件。
-        name_version = []
-        for i in service:
-            service_dir = os.path.join(yml_dirs, f"{i.get('name')}.yaml")
-            if not os.path.exists(service_dir):
-                return public_action.update_package_status(
-                    1,
-                    f"安装包{package_name}:{i.get('name')}.yaml文件不存在")
-            # 子集服务进行yaml标准校验
-            explain_service_yml = ExplainYml(public_action,
-                                             service_dir).explain_yml()
-            if isinstance(explain_service_yml, bool):
-                return None
-            ser_name = i.get('name')
-            name_version.append(
-                {'name': ser_name, 'version': explain_service_yml[1].get('version')})
-            service_pk = service_package.get(ser_name)
-            if not service_pk:
-                continue
-            ser_kind = explain_service_yml[1].get("kind", "")
-            if ser_kind != "service":
-                return public_action.update_package_status(
-                    1,
-                    f"安装包{package_name}类型错误，请解压后将服务单独发布服务")
-            # 校验服务是否唯一,无安装包跳过逻辑后
-            count = ApplicationHub.objects.filter(app_version=ser_name,
-                                                  app_name=i.get("version")).count()
-            if count != 0:
-                return public_action.update_package_status(
-                    1,
-                    f"安装包{package_name}服务{ser_name}已存在:请确保name联合version唯一")
-            # 校验md5
-            service_pk_name = service_pk.rsplit("/", 1)[1]
-            md5_ser = public_utils.local_cmd(f'md5sum {service_pk}')
-            if md5_ser[2] != 0:
-                return public_action.update_package_status(
-                    1, "md5sum命令执行失败")
-            md5_service = md5_ser[0].split()[0]
-            # 对合法服务的记录进行创建操作，
-            # 信息会追加入"product_service"字段并归入所属产品yaml，组件则不会有此值。
-            UploadPackageHistory.objects.create(
-                operation_uuid=uuid,
-                operation_user=operation_user,
-                package_name=service_pk_name,
-                package_md5=md5_service,
-                package_path=os.path.join(
-                    package_dir.get(
-                        "verified"), pro_name
-                ),
-                package_status=0,
-                package_parent=upload_obj
-            )
-            explain_service_yml[1]['package_name'] = service_pk_name
-            explain_service_list.append(explain_service_yml[1])
-        explain_yml[1]['product_service'] = explain_service_list
-        explain_yml[1]['service'] = name_version
-        tmp_dir = [tmp_dir, versions]
-    elif kind == 'service':
-        dependence_product = explain_yml[1].get(
-            "extend_fields", {}).get("product")
-        if not dependence_product:
-            return public_action.update_package_status(
-                1,
-                f"安装包{package_name}不能无依赖产品上传")
-        product_version = dependence_product.get("version", "")
-        if not product_version:
-            product_obj = ProductHub.objects.filter(pro_name=dependence_product.get("name")
-                                                    ).last()
-
-        else:
-            product_obj = ProductHub.objects.filter(pro_name=dependence_product.get("name"),
-                                                    pro_version=product_version).last()
-        if not product_obj:
-            return public_action.update_package_status(
-                1,
-                f"安装包{package_name}依赖的产品包不存在")
-        # 将版本追加至最新版本
-        dependence_product["version"] = product_obj.pro_version
-        app_obj = ApplicationHub.objects.filter(product=product_obj)
-        for obj in app_obj:
-            if obj.app_name == explain_yml[1]['name'] and \
-                    obj.app_version == explain_yml[1]['version']:
-                return public_action.update_package_status(
-                    1,
-                    f"安装包{package_name}依赖的产品包存在同服务同版本的服务包")
-        upload_obj.package_status = 0
-        upload_obj.package_path = os.path.join(
-            package_dir.get("verified"),
-            f"{product_obj.pro_name}-{product_obj.pro_version}"
-        )
-        upload_obj.save()
-        tmp_dir = [file_name, versions, tmp_dir]
-    else:
-        count = ApplicationHub.objects.filter(app_version=versions,
-                                              app_name=name).count()
-        if count != 0:
-            return public_action.update_package_status(
-                1,
-                f"安装包{package_name}已存在:请确保name联合version唯一")
-        tmp_dir = [file_name, versions, tmp_dir]
-    explain_yml[1]['image'] = image
-    explain_yml[1]['package_name'] = package_name
-    explain_yml[1]['tmp_dir'] = tmp_dir
+    json_obj = ProduceJson(upload_obj, package_name, package_path, random_str, is_test)
     # 开启写入中间结果，包含发布入库所有的信息
-    middle_data = os.path.join(project_dir, 'data', f'middle_data-{uuid}.json')
-    with open(middle_data, mode='a', encoding='utf-8') as f:
-        f.write(json.dumps(explain_yml[1], ensure_ascii=False) + '\n')
-    # 提示存在逻辑注释，改存在校验失败逻辑
-    # name = explain_yml[1]['name']
-    # version = explain_yml[1]['version']
-    # if explain_yml[1]['kind'] == 'product':
-    #    count = ProductHub.objects.filter(pro_version=version,
-    #                                      pro_name=name).count()
-    # else:
-    #    count = ApplicationHub.objects.filter(app_version=version,
-    #                                          app_name=name).count()
-    # if count:
-    #    count = "已存在,将覆盖"
-    # else:
-    #    count = None
-    # 无校验失败则会更新数据库状态为校验成功
-    return public_action.update_package_status(0)
+    write_info = json_obj.run()
+    if isinstance(write_info, dict):
+        write_info['package_id'] = upload_obj.id
+        write_info['image'] = json_obj.image
+        middle_data = os.path.join(project_dir, 'data', f'middle_data-{upload_obj.operation_uuid}.json')
+        with open(middle_data, mode='a', encoding='utf-8') as f:
+            f.write(json.dumps(write_info, ensure_ascii=False) + '\n')
+        return json_obj.update_package_status(0)
+    else:
+        exec_clear([json_obj.file_name, json_obj.tmp_dir])
+        # "未知异常或产品下无可扫描的安装包"
+        return json_obj.update_package_status(1)
 
 
 class ExplainYml:
@@ -391,7 +474,7 @@ class ExplainYml:
         except Exception as e:
             self.db_obj.update_package_status(
                 1,
-                f"yml包格式错误，检查yml文件{self.yaml_dir}:{e}")
+                f"yml包格式错误或文件不存在,请检查yml文件{self.yaml_dir}:{e}")
             return False
         # 将公共字段抽出校验，生成中间结果
         kind = settings.pop('kind', None)
@@ -420,6 +503,26 @@ class ExplainYml:
                 1,
                 f"yml校验name或version校验失败，检查yml文件{self.yaml_dir}")
             return False
+
+        # 校验默认部署模式是否在所有部署模式中
+        default_deploy_mode = settings.pop("default_deploy_mode", None)
+        deploy_set = set()
+        for dependence in dependencies:
+            deploy_mode_ls = dependence.get("deploy_mode", None)
+            if deploy_mode_ls:
+                deploy_mode_ls = deploy_mode_ls.split(",")
+                for deploy_mode in deploy_mode_ls:
+                    deploy_set.add(deploy_mode)
+        if default_deploy_mode is not None and \
+                default_deploy_mode not in deploy_set:
+            self.db_obj.update_package_status(
+                1, f"yml校验default_deploy_mode字段异常，检查文件{self.yaml_dir}")
+            return False
+        deploy_mode_info = {
+            "deploy_mode_ls": list(deploy_set),
+            "default_deploy_mode": default_deploy_mode,
+        }
+
         # 对剩余字段进行自定义校验
         yml = getattr(self, kind)(settings)
         if isinstance(yml, bool):
@@ -429,6 +532,7 @@ class ExplainYml:
             "name": name,
             "version": version,
             "dependencies": dependencies,
+            "deploy_mode_info": deploy_mode_info,
             "extend_fields": settings
         }
         db_filed.update(yml[1])
@@ -479,7 +583,7 @@ class ExplainYml:
         # level 默认0 monitor不做校验
         first_check = {"ports", "install",
                        "control"}
-        if not self.check_obj.weak_check(settings, first_check, attention=str(first_check)):
+        if not self.check_obj.weak_check(settings, first_check, attention=""):
             return False
         # auto_launch 校验 不填写默认给true
         settings["auto_launch"] = settings.get("auto_launch", "true")
@@ -503,7 +607,7 @@ class ExplainYml:
         control_check = self.check_obj.weak_check(
             control,
             control_weak_check,
-            attention=str(control_weak_check)) if control else 1
+            attention='control')
         if not control_check:
             return False
         control_strong_check = self.check_obj.strong_check(
@@ -525,6 +629,13 @@ class ExplainYml:
             return False
         db_filed['install'] = install
         # monitor 校验
+        # monitor = settings.pop('monitor', None)
+        # monitor_weak_check = {"process_name", "metric_port", "type", "health"}
+        # monitor_check = self.check_obj.weak_check(
+        #    monitor, monitor_weak_check,
+        #    attention='monitor') if monitor else 1
+        # if not monitor_check:
+        #    return False
         db_filed['monitor'] = settings.pop('monitor', None)
         return True, db_filed
 
@@ -571,25 +682,6 @@ class ExplainYml:
             return False
         db_filed.update(result[1])
         return True, db_filed
-
-
-def exec_clear(clear_dir):
-    # 清理逻辑，当发布完成时对临时路径进行清空处理，
-    # 此逻辑会考虑状态为正在校验和正在发布状态的情况
-    # 存在清理跳过，后期会考虑只选择一段时间内状态非中间态不做清理逻辑。，
-    online = UploadPackageHistory.objects.filter(
-        is_deleted=False,
-        package_status__in=[2,
-                            5]).count()
-    if len(clear_dir) <= 28:
-        logger.error(f'{clear_dir}路径异常')
-        return None
-    if online == 0 or 'back_end_verified' in clear_dir:
-        clear_out = public_utils.local_cmd(
-            f'rm -rf {clear_dir}')
-        logger.info(clear_dir)
-        if clear_out[2] != 0:
-            logger.error('清理环境失败')
 
 
 def clear_check(need_rm):
@@ -639,13 +731,56 @@ def publish_bak_end(uuid, exc_len):
                 if valid_uuids.count() != 0 and valid_success != 0:
                     publish_entry(uuid)
                 else:
-                    exec_clear("{0}/*".format(os.path.join(
-                        package_hub, package_dir.get('back_end_verified'))))
+                    exec_clear(["{0}/*".format(os.path.join(
+                        package_hub, package_dir.get('back_end_verified')))])
                 exc_task = False
     finally:
         re = redis.Redis(host=OMP_REDIS_HOST, port=OMP_REDIS_PORT, db=9,
                          password=OMP_REDIS_PASSWORD)
         re.delete('back_end_verified')
+
+
+class PushUtil:
+
+    def __init__(self, upload_obj, info):
+        self.upload_obj = upload_obj
+        self.info = info
+
+    def update_package_status(self, status, msg=None):
+        self.upload_obj.package_status = status
+        self.upload_obj.error_msg = msg
+        self.upload_obj.save()
+        logger.info(msg)
+        return False
+
+    def check_local_cmd(self, *args, msg=None):
+        # _out, _err, _code
+        if args[2] != 0:
+            return self.update_package_status(4, msg if msg else args[1])
+        return True
+
+    def move_file(self):
+        target_dir = self.info['target_dir']
+        if not os.path.exists(target_dir):
+            os.mkdir(target_dir)
+        for _ in self.info['move_dir']:
+            if not _.endswith("gz"):
+                return self.update_package_status(4, msg=f"文件不合法{_}")
+        return self.check_local_cmd(*public_utils.local_cmd(
+            f"mv {' '.join(self.info['move_dir'])} {target_dir}"
+        ))
+
+    def run(self):
+        mv_status = self.move_file()
+        clear_status = exec_clear(clear_dirs=self.info.get('clear_dir'))
+        if mv_status and clear_status:
+            self.upload_obj.package_status = 3
+            self.upload_obj.save()
+            return True
+        else:
+            self.upload_obj.error_msg = "清理目录异常，查看日志"
+            self.upload_obj.save()
+            return False
 
 
 @shared_task
@@ -657,44 +792,20 @@ def publish_entry(uuid):
     注：此异步任务的调用的前提必须是校验已完成状态
     """
     # 修改校验无误的安装包的状态为正在发布状态。
-    valid_uuids = UploadPackageHistory.objects.filter(
+    UploadPackageHistory.objects.filter(
         is_deleted=False,
         operation_uuid=uuid,
         package_parent__isnull=True,
-        package_status=0)
-    valid_uuids.update(package_status=5)
-    valid_uuids = UploadPackageHistory.objects.filter(
-        is_deleted=False,
-        operation_uuid=uuid,
-        package_parent__isnull=True,
-        package_status=5)
-    valid_packages = {}
-    # 从库获取校验合法的安装包名称
-    if valid_uuids:
-        for j in valid_uuids:
-            valid_packages[j.package_name] = j
+        package_status=0).update(package_status=5)
 
     json_data = os.path.join(project_dir, 'data', f'middle_data-{uuid}.json')
     with open(json_data, "r", encoding="utf8") as fp:
         lines = fp.readlines()
-    valid_info = []
-    # 将匹配到的安装包和中间结果的安装包比对，将安装包名替换成历史记录表的model对象
     for line in lines:
-        json_line = json.loads(line)
-        valid_obj = valid_packages.get(json_line.get('package_name'))
-        if json_line.get("extend_fields").get("product"):
-            valid_info.append(json_line)
-        # 升级包单独逻辑
-        elif valid_obj:
-            json_line['package_name'] = valid_obj
-            valid_info.append(json_line)
-    valid_packages_obj = []
-    valid_dir = None
-    # 中间结果转入创表函数
-    product_obj = None
-    tmp_dir = []
-    front_dir = []
-    for line in valid_info:
+        line = json.loads(line)
+        up_obj = UploadPackageHistory.objects.get(id=line['package_id'])
+        if not PushUtil(up_obj, line).run():
+            continue
         if line.get('kind') == 'product':
             CreateDatabase(line).create_product()
         elif line.get('kind') == 'service':
@@ -703,55 +814,11 @@ def publish_entry(uuid):
                                                     pro_version=product.get(
                                                         "version")
                                                     ).last()
-            upload_history_obj = None
-            for j in valid_uuids:
-                if j.package_name == line.get('package_name'):
-                    upload_history_obj = j
-            # 更新服务的upload历史状态和已有服务关联
-            upload_history_obj.package_parent = product_obj.pro_package
-            upload_history_obj.save()
+            up_obj.package_parent = product_obj.pro_package
+            up_obj.save()
             CreateDatabase(line).create_service([line], product_obj)
-            line['package_name'] = upload_history_obj
         else:
             CreateDatabase(line).create_component()
-        tmp_dir = line.get('tmp_dir')
-        if len(tmp_dir[0]) <= 28:
-            line['package_name'].package_status = 4
-            line['package_name'].save()
-            logger.error(f'{tmp_dir[0]}路径异常')
-            return None
-        # 匹配到的安装包移动至对应路径
-        # 产品包路径 package_hub/xxx/random/product_name/xxx
-        # 组件路径   package_hub/xxx/app.tar.gz
-        # 产品目标路径   verified/product_name-version/xxx
-        # 组件目标路径   verified/app.tar.gz
-
-        valid_name = tmp_dir[0].rsplit('/', 1)
-        valid_pk = f"{valid_name[1]}-{tmp_dir[1]}" if len(
-            tmp_dir) == 2 else valid_name[1]
-        if product_obj and line.get('kind') == 'service':
-            valid_pk = f"{product_obj.pro_name}-{product_obj.pro_version}/{valid_name[1]}"
-
-        valid_dir = os.path.join(project_dir, 'package_hub',
-                                 'verified', valid_pk)
-        move_tmp = "/".join(valid_name)
-        move_out = public_utils.local_cmd(
-            f'rm -rf {valid_dir} && mv {move_tmp} {valid_dir}')
-        if move_out[2] != 0:
-            line['package_name'].package_status = 4
-            line['package_name'].save()
-            logger.error('移动或删除失败')
-        valid_packages_obj.append(line['package_name'].id)
-        if "front_end_verified" in tmp_dir[0]:
-            front_dir.append(tmp_dir)
-    clear_dir = os.path.dirname(tmp_dir[0]) if os.path.isfile(valid_dir) else \
-        os.path.dirname(os.path.dirname(tmp_dir[0]))
-    UploadPackageHistory.objects.filter(id__in=valid_packages_obj).update(
-        package_status=3)
-    need_rm = clear_check(front_dir)
-    if not need_rm:
-        need_rm = f"{clear_dir}/*"
-    exec_clear(need_rm)
 
 
 def check_monitor_data(detail_obj):
@@ -784,22 +851,28 @@ def check_monitor_data(detail_obj):
         "metric_port": None,
         "run_port": [],
         "only_process": False,
+        "health": "",
         "process_key_word": None,
         "type": None
     }
-    run_port_key_list = list()
-    run_port_value_list = list()
+    run_port_key_list = run_port_value_list = list()
     app_monitor = detail_obj.service.service.app_monitor
     if not app_monitor:
         return False, _ret_dic
+    _health = app_monitor.get("health")
     run_port_key_list = app_monitor.get("run_port", [])
     if len(run_port_key_list) > 0:
         run_port_value_list = [get_port(key) for key in run_port_key_list]
         if None not in run_port_value_list:
             _ret_dic["run_port"] = run_port_value_list
+
     _ret_dic["type"] = app_monitor.get("type")
     _ret_dic["process_key_word"] = app_monitor.get("process_name")
-
+    if isinstance(_health, str) and "port" in _health.lower():
+        _health = get_port(_health.replace("{", "").replace("}", ""))
+    elif isinstance(_health, dict):
+        _health = get_port(list(_health.keys())[0])
+    _ret_dic["health"] = _health
     if isinstance(app_monitor.get("metric_port"), str):
         _metric_port_key = app_monitor.get(
             "metric_port", "").replace("{", "").replace("}", "")
@@ -808,18 +881,95 @@ def check_monitor_data(detail_obj):
     else:
         _metric_port_key = None
     if detail_obj.service.service_port is not None:
+        # _ret_dic["listen_port"] = get_port("service_port")
         _ret_dic["metric_port"] = get_port(_metric_port_key)
     if _ret_dic["metric_port"]:
         return True, _ret_dic
     if _ret_dic["process_key_word"]:
         _ret_dic["only_process"] = True
         return True, _ret_dic
+    # TODO DOIM全部用进程监控
+    DOIM_UNIC_PROCESS_KEY_DICT = {
+        "ProxyWebExpress": "proxywebexpress",
+        "pyweb": "DOIM/Server/webexpress/python/index.py",
+        "mxagentrun": "MxAgent",
+        "WebExpress": "webexpress/WebExpress",
+        "TSManager": "TaskDispatcherManager",
+    }
+    if detail_obj.service.service.app_name.lower() == "doim":
+        _service_name = detail_obj.service.service_instance_name.split("-")[0]
+        _ret_dic = {
+            "listen_port": get_port(_service_name),
+            "metric_port": None,
+            "only_process": True,
+            "health": "",
+            "process_key_word": DOIM_UNIC_PROCESS_KEY_DICT.get(_service_name, _service_name),
+            "type": app_monitor.get("type")
+        }
+        return True, _ret_dic
     return False, _ret_dic
+
+
+def add_single_service_prometheus(prometheus, tuple_item):
+    """添加单个服务到prometheus"""
+    detail_obj, _monitor_dic = tuple_item
+    instance_name = detail_obj.service.service_instance_name
+    service_port = _monitor_dic.get("listen_port")
+    run_port = _monitor_dic.get("run_port", [])
+    health = _monitor_dic.get("health")
+    # 获取数据目录、日志目录
+    app_install_args = detail_obj.install_detail_args.get(
+        "install_args", [])
+    data_dir = log_dir = base_dir = ""
+    username = password = ""
+    for info in app_install_args:
+        if info.get("key", "") == "base_dir":
+            base_dir = info.get("default", "")
+        if info.get("key", "") == "data_dir":
+            data_dir = info.get("default", "")
+        if info.get("key", "") == "log_dir":
+            log_dir = info.get("default", "")
+        if info.get("key", "") == "username":
+            username = info.get("default", "")
+        if info.get("key", "") == "password":
+            password = info.get("default", "")
+    # TODO 后期优化
+    ser_name = detail_obj.service.service.app_name
+    if ser_name == "hadoop":
+        ser_name = instance_name.split("_", 1)[0]
+    elif ser_name == 'doim':
+        ser_name = instance_name.split("-", 1)[0]
+    prom_data_dict = {
+        "service_name": ser_name,
+        "instance_name": instance_name,
+        "data_path": data_dir,
+        "app_path": base_dir,
+        "log_path": log_dir,
+        "env": "default",
+        "ip": detail_obj.service.ip,
+        "listen_port": service_port,
+        "run_port": run_port,
+        "health": health,
+        "metric_port": _monitor_dic.get("metric_port"),
+        "only_process": _monitor_dic.get("only_process"),
+        "process_key_word": _monitor_dic.get("process_key_word"),
+        "username": username,
+        "password": password,
+    }
+    # 添加服务到 prometheus
+    is_success, message = prometheus.add_service(prom_data_dict)
+    if not is_success:
+        logger.error(
+            f"Add Prometheus Failed {instance_name}, error: {message}")
+        return False, f"Add Prometheus Failed {instance_name}, error: {message}"
+    return True, f"Add Prometheus success {instance_name}"
 
 
 def add_prometheus(main_history_id, queryset=None):
     """ 添加服务到 Prometheus """
     logger.info("Add Prometheus Begin")
+    new_queryset = list()
+    res = False
     prometheus = PrometheusUtils()
     # TODO 不同类型服务添加监控方式不同，后续版本优化
     # 仅更新已经安装完成的最新服务
@@ -827,63 +977,34 @@ def add_prometheus(main_history_id, queryset=None):
     queryset = queryset if queryset else DetailInstallHistory.objects.filter(
         main_install_history_id=main_history_id,
         install_step_status=DetailInstallHistory.INSTALL_STATUS_SUCCESS
-    )
-    for detail_obj in queryset:
-        try:
-            _flag, _monitor_dic = check_monitor_data(detail_obj=detail_obj)
-            logger.info(
-                f"Add Prometheus get monitor_dic for "
-                f"{detail_obj}: {_monitor_dic}")
-        except Exception as e:
-            logger.info(
-                f"Add Prometheus get monitor_dic Failed: "
-                f"{detail_obj}; {str(e)}")
-            continue
-        if not _flag:
-            continue
-        # TODO 已是否具有端口作为是否需要添加监控的依据，后续版本优化
-        instance_name = detail_obj.service.service_instance_name
-        service_port = _monitor_dic.get("listen_port")
-        run_port = _monitor_dic.get("run_port", [])
-        # 获取数据目录、日志目录
-        app_install_args = detail_obj.install_detail_args.get(
-            "install_args", [])
-        data_dir = log_dir = ""
-        username = password = ""
-        for info in app_install_args:
-            if info.get("key", "") == "data_dir":
-                data_dir = info.get("default", "")
-            if info.get("key", "") == "log_dir":
-                log_dir = info.get("default", "")
-            if info.get("key", "") == "username":
-                username = info.get("default", "")
-            if info.get("key", "") == "password":
-                password = info.get("default", "")
-        # TODO 后期优化
-        ser_name = detail_obj.service.service.app_name
-        if ser_name == "hadoop":
-            ser_name = instance_name.split("_", 1)[0]
-        # 添加服务到 prometheus
-        is_success, message = prometheus.add_service({
-            "service_name": ser_name,
-            "instance_name": instance_name,
-            "data_path": data_dir,
-            "log_path": log_dir,
-            "env": "default",
-            "ip": detail_obj.service.ip,
-            "listen_port": service_port,
-            "run_port": run_port,
-            "metric_port": _monitor_dic.get("metric_port"),
-            "only_process": _monitor_dic.get("only_process"),
-            "process_key_word": _monitor_dic.get("process_key_word"),
-            "username": username,
-            "password": password,
-        })
-        if not is_success:
-            logger.error(
-                f"Add Prometheus Failed {instance_name}, error: {message}")
-            continue
-        logger.info(f"Add Prometheus Success {instance_name}")
+    ).exclude(service__service_split=1)
+    if not queryset:
+        return
+    # TODO 已是否具有metrics端口或process_name作为是否需要添加监控的依据，后续版本优化
+    # tuple_list: [(detail_obj, _ret_dic)...]
+    tuple_list = [(item, check_monitor_data(item)[1]) for item in queryset if check_monitor_data(item)[0]]
+    # new_queryset: [detail_obj, ...]
+    new_queryset = [i[0] for i in tuple_list]
+    for i in range(2):
+        res, msg = prometheus.write_prometheus_yml(new_queryset)
+        if res:
+            break
+    if not res:
+        return
+    prometheus.write_target_json(new_queryset)
+    with ThreadPoolExecutor(THREAD_POOL_MAX_WORKERS) as executor:
+        _future_list = list()
+        for tuple_item in tuple_list:
+            _future_obj = executor.submit(add_single_service_prometheus, *(prometheus, tuple_item))
+            _future_list.append(_future_obj)
+
+        error_message = ""
+        for future in as_completed(_future_list):
+            res_flag, message = future.result()
+            if not res_flag:
+                error_message += \
+                    f"add prometheus: (execute_flag: {res_flag}; execute_msg: {message})"
+    prometheus.reload_prometheus()
     logger.info("Add Prometheus End")
 
 
@@ -916,7 +1037,7 @@ def make_inspection(username):
 
 
 @shared_task
-def install_service(main_history_id, username="admin"):
+def install_service(main_history_id, username="admin", action=None):
     """
     安装服务
     :param main_history_id: MainInstallHistory 主表 id
@@ -933,7 +1054,7 @@ def install_service(main_history_id, username="admin"):
         else:
             logger.error(
                 "Install Service Task Failed: can not find {main_history_id}")
-        executor = InstallServiceExecutor(main_history_id, username)
+        executor = InstallServiceExecutor(main_history_id, username, action=action)
         executor.main()
         logger.error(f"Install Service Task Success [{main_history_id}]")
     except Exception as err:

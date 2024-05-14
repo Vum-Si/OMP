@@ -4,8 +4,13 @@
 import json
 from rest_framework import serializers
 
-from db_models.models import Service, ApplicationHub
+from db_models.models import Service, ApplicationHub, CollectLogRuleHistory, ClearLogRule, Host
 from utils.common.serializers import DynamicFieldsModelSerializer
+from rest_framework_bulk import BulkSerializerMixin, BulkListSerializer
+from utils.plugin.crontab_utils import change_task
+from operator import itemgetter
+from utils.common.exceptions import OperateError
+from services.tasks import LogRuleExec
 
 
 class ServiceStatusSerializer(DynamicFieldsModelSerializer):
@@ -184,17 +189,74 @@ class ServiceActionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class ServiceDeleteSerializer(serializers.ModelSerializer):
-    """ 服务删除序列化类 """
-
-    class Meta:
-        """ 元数据 """
-        model = Service
-        fields = '__all__'
-
-
 class AppListSerializer(serializers.ModelSerializer):
     class Meta:
         """ 元数据 """
         model = ApplicationHub
         fields = '__all__'
+
+
+class LogCollectSerializer(serializers.ModelSerializer):
+    class Meta:
+        """ 元数据 """
+        model = CollectLogRuleHistory
+        fields = '__all__'
+
+
+class LogClearRuleSerializer(BulkSerializerMixin, serializers.ModelSerializer):
+    host = serializers.CharField(source="host.ip")
+
+    def update(self, instance, validated_data):
+        update_keys = ["exec_value", "exec_rule"]
+        host_args = [instance.id, instance.host.ip,
+                     instance.host.data_folder, instance.exec_dir,
+                     instance.exec_type]
+        exec_args = itemgetter(
+            *update_keys)(validated_data)
+        host_args.extend(exec_args)
+        exec_obj = LogRuleExec([host_args], int(validated_data.get("switch")))
+        if not exec_obj.change_clear_action():
+            raise OperateError("修改状态异常")
+        return super(LogClearRuleSerializer, self).update(instance, validated_data)
+
+    class Meta:
+        """ 元数据 """
+        model = ClearLogRule
+        fields = '__all__'
+        read_only_fields = (
+            "id", "service_instance_name", "md5",
+            "created", "exec_dir", "exec_type",
+            "host")
+
+
+class HostCronRuleSerializer(BulkSerializerMixin, serializers.ModelSerializer):
+
+    def update(self, instance, validated_data):
+        data = {
+            "crontab_detail": validated_data.get("crontab_detail", {}),
+            "is_on": True,
+            "task_func": "services.tasks.log_clear_exec",
+            "task_name": f"service_log_cron_task_{instance.id}"
+        }
+        change_task(instance.id, data)
+
+        return super(BulkSerializerMixin, self).update(instance, validated_data)
+
+    class Meta:
+        """ 元数据 """
+        model = Host
+        fields = ("id", "ip", "crontab_detail")
+        read_only_fields = ("id", "ip")
+        list_serializer_class = BulkListSerializer
+
+
+class GetSerUrlSerializer(serializers.ModelSerializer):
+    """ 服务动作序列化类 """
+    app_name = serializers.CharField(source="service.app_name")
+    username = serializers.CharField(source="service_connect_info.service_username", allow_null=True, allow_blank=True)
+    password = serializers.CharField(source="service_connect_info.service_password", allow_null=True, allow_blank=True)
+
+    class Meta:
+        """ 元数据 """
+        model = Service
+        fields = ('ip', 'service_port', 'app_name', 'username', 'password',)

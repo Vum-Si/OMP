@@ -167,7 +167,7 @@ class BaseInit(object):
     def cmd(self, command):
         """ 执行shell 命令 """
         if hasattr(self, 'is_sudo'):
-            if command.lstrip().startswith("echo"):
+            if command.lstrip().startswith("echo") or "&&" in command.lstrip():
                 command = "sudo sh -c '{0}'".format(command)
             else:
                 command = "sudo {0}".format(command)
@@ -179,7 +179,8 @@ class BaseInit(object):
             shell=True,
         )
         stdout, stderr = p.communicate()
-        _out, _err, _code = stdout, stderr, p.returncode
+        _out, _err, _code = stdout.decode(
+            "utf8"), stderr.decode("utf8"), p.returncode
         logger.debug(
             "Get command({0}) stdout: {1}; stderr: {2}; ret_code: {3}".format(
                 command, _out, _err, _code
@@ -203,13 +204,19 @@ class BaseInit(object):
 
     def __get_os_version(self):
         logging.debug('开始获取系统版本信息')
-        # match = False
-        _, _, _code = self.cmd('systemctl --version')
-        if _code != 0:
-            logger.error("执行失败，当前操作系统不支持本脚本")
-            exit(1)
-        self.os_version = 7
-        logging.debug('获取系统版本信息完成')
+        import platform
+        try:
+            self.os_name, self.os_version, _ = platform.linux_distribution()
+        except AttributeError:
+            # python 3.8以上 完全删除 linux_distribution 函数，用 distro 包取代
+            if sys.version_info >= (3, 8):
+                import distro
+                self.os_name, self.os_version, _ = distro.linux_distribution()
+            else:
+                self.os_name = platform.system()
+                self.os_version = platform.release()
+
+        logger.info('获取系统版本信息完成: {} - {}'.format(self.os_name, self.os_version))
 
     def set_opts(self, **kwargs):
         """ 根据kwargs 设置参数"""
@@ -238,7 +245,7 @@ class BaseInit(object):
                     f()
                     logger.info("执行 完成: {}".format(method_note))
                 else:
-                    logger.warn("安装方法列表错误，{} 方法不存在".format(method_note))
+                    logger.info("安装方法列表错误，{} 方法不存在".format(method_note))
             else:
                 logging.info("执行结束, 完整日志保存在 {}".format(log_path))
         except TypeError:
@@ -252,8 +259,9 @@ class BaseInit(object):
 class InitHost(BaseInit):
     """ 初始化节点信息 """
 
-    def __init__(self, host_name, local_ip):
+    def __init__(self, host_name, local_ip, system_name=None):
         self.m_list = [
+            ('env_set_bash', '设置解释器bash'),
             ('env_set_timezone', '设置时区'),
             ('env_set_firewall', '关闭防火墙'),
             ('env_set_disable_ipv6', '设置关闭ipv6'),
@@ -266,23 +274,34 @@ class InitHost(BaseInit):
         # TODO
         self.hostname = host_name
         self.local_ip = local_ip
+        self.system_name = system_name
+
+    def env_set_bash(self):
+        if self.system_name == "ubuntu":
+            self.cmd("rm -rf /usr/bin/sh && ln -s /bin/bash /usr/bin/sh")
 
     def env_set_timezone(self):
         """ 设置时区 """
         timezone = "PRC"
-        self.cmd("test -f /etc/timezone && rm -f /etc/timezone")
-        self.cmd("rm -f /etc/localtimze")
-        self.cmd(
-            "ln -sf /usr/share/zoneinfo/{0} /etc/localtime".format(timezone))
+        if self.system_name == "ubuntu":
+            self.cmd("timedatectl set-timezone {0}".format(timezone))
+        else:
+            self.cmd("test -f /etc/timezone && rm -f /etc/timezone")
+            self.cmd("rm -f /etc/localtimze")
+            self.cmd(
+                "ln -sf /usr/share/zoneinfo/{0} /etc/localtime".format(timezone))
 
     def env_set_firewall(self):
         """ 关闭 firewall """
-        _, _, _code = self.cmd(
-            "systemctl status firewalld.service | egrep -q 'Active: .*(dead)'"
-        )
-        if _code != 0:
-            self.cmd("systemctl stop firewalld.service >/dev/null 2>&1")
-            self.cmd("systemctl disable firewalld.service >/dev/null 2>&1")
+        if self.system_name == "ubuntu":
+            self.cmd("ufw disable")
+        else:
+            _, _, _code = self.cmd(
+                "systemctl status firewalld.service | egrep -q 'Active: .*(dead)'"
+            )
+            if _code != 0:
+                self.cmd("systemctl stop firewalld.service >/dev/null 2>&1")
+                self.cmd("systemctl disable firewalld.service >/dev/null 2>&1")
 
     def env_set_disable_ipv6(self):
         """ 关闭ipv6 """
@@ -300,6 +319,9 @@ class InitHost(BaseInit):
     def env_set_language(self):
         """ 设置语言 """
         self.cmd("localectl set-locale LANG=en_US.UTF-8")
+        _out, _err, _code = self.cmd("cat ~/.bashrc|grep LC_ALL")
+        if _code != 0:
+            self.cmd('echo -e "\nexport LC_ALL=en_US.UTF-8" >> ~/.bashrc')
 
     def env_set_file_limit(self):
         """ 设置打开的文件句柄数 """
@@ -308,12 +330,15 @@ class InitHost(BaseInit):
         _nr_open_out, _, _ = self.cmd("cat /proc/sys/fs/nr_open")
         nr_open = int(_nr_open_out)
         if file_max < 655350:
+            file_max = 655350
             self.cmd("sed -i '/fs.file-max/d' /etc/sysctl.conf")
             self.cmd("echo 'fs.file-max = 655350' >>/etc/sysctl.conf")
             self.cmd("sysctl -p 1>/dev/null")
-            file_max = 655350
-        elif file_max > nr_open:
-            file_max = nr_open - 5000
+        else:
+            if "CentOS" not in self.os_name:
+                file_max = 655350
+            else:
+                file_max = nr_open - 5000
 
         self.cmd("sed -i '/nofile/d' /etc/security/limits.conf")
         self.cmd(
@@ -345,6 +370,8 @@ class InitHost(BaseInit):
 
     def env_set_disable_selinux(self):
         """ 禁用 selinux """
+        if self.system_name == "ubuntu":
+            return
         if os.path.exists("/etc/selinux/config"):
             self.cmd(
                 "sed -i 's#^SELINUX=.*#SELINUX=disabled#g' /etc/selinux/config")
@@ -361,8 +388,9 @@ class InitHost(BaseInit):
 
 
 class ValidInit(BaseInit):
-    def __init__(self):
+    def __init__(self, system_name=None):
         self.m_list = [
+            ('valid_set_bash', '校验解释器bash'),
             ('valid_env_timezone', '校验时区'),
             ('valid_env_firewall', '校验防火墙'),
             ('valid_env_language', '校验语言'),
@@ -371,21 +399,40 @@ class ValidInit(BaseInit):
             ('valid_env_disable_selinux', '校验selinux'),
             ('valid_host_name', '校验host_name'),
         ]
+        self.system_name = system_name
+
+    def valid_set_bash(self):
+        assert os.readlink('/usr/bin/sh') == "bash" or \
+               os.readlink('/usr/bin/sh') == "/bin/bash" or \
+               os.readlink('/usr/bin/sh') == "/usr/bin/bash", "校验解释器bash失败"
 
     def valid_env_timezone(self):
         """ 校验时区 """
-        assert os.readlink(
-            '/etc/localtime') == "/usr/share/zoneinfo/PRC", "时区校验失败"
+        if self.system_name == "ubuntu":
+            _out, _err, _code = self.cmd("timedatectl")
+            assert "prc" in _out.lower() or "shanghai" in _out.lower(), "时区校验失败"
+        else:
+            assert os.readlink('/etc/localtime') == "/usr/share/zoneinfo/PRC" or os.readlink(
+                '/etc/localtime') == "/usr/share/zoneinfo/Asia/Shanghai", "时区校验失败"
 
     def valid_env_firewall(self):
         """ 校验防火墙 """
-        _, _, _code = self.cmd(
-            "systemctl status firewalld.service | egrep -q 'Active: .*(dead)'"
-        )
+        if self.system_name == "ubuntu":
+            _, _err, _code = self.cmd("ufw status |grep inactive")
+            if "root" in _err and _code == 1:
+                logger.warning("该用户无法查询防火墙状态，请用root或sudo执行ufw status 自行判定")
+                _code = 0
+        else:
+            _, _, _code = self.cmd(
+                "systemctl status firewalld.service | egrep -q 'Active: .*(dead)'"
+            )
         assert _code == 0, "防火墙校验失败"
 
     def valid_env_language(self):
         """ 校验语言 """
+        if self.system_name == "ubuntu":
+            if self.cmd('locale|grep "to default locale"')[2] == 0:
+                logger.info("请注意该系统缺少语言包，请package_hub/deb下将安装包移动目标节点 并执行安装dpkg --install *.deb")
         assert self.cmd(
             "localectl status |grep LANG=en_US.UTF-8")[2] == 0, "语言环境校验失败"
 
@@ -398,8 +445,11 @@ class ValidInit(BaseInit):
         nr_open = int(_nr_open_out)
         if file_max < 655350:
             _err = "文件句柄数校验失败"
-        elif file_max > nr_open:
-            file_max = nr_open - 5000
+        else:
+            if "CentOS" not in self.os_name:
+                file_max = 655350
+            else:
+                file_max = nr_open - 5000
 
         if self.cmd(
                 'grep "*               -       nofile          {0}" /etc/security/limits.conf'.format(
@@ -424,8 +474,8 @@ class ValidInit(BaseInit):
 
     def valid_env_kernel(self):
         """ 校验内核参数 """
-        _list = [i.strip() for i in self.read_file('/etc/sysctl.conf',
-                                                   res='list') if not i.strip().startswith('#')]
+        _list = [i.strip() for i in self.read_file(
+            '/etc/sysctl.conf', res='list') if not i.strip().startswith('#')]
         for i in KERNEL_PARAM.split('\n'):
             if i.startswith('#'):
                 continue
@@ -433,6 +483,8 @@ class ValidInit(BaseInit):
 
     def valid_env_disable_selinux(self):
         """ 校验selinux """
+        if self.system_name == "ubuntu":
+            return
         assert "SELINUX=disabled" in [
             i.strip() for i in self.read_file('/etc/selinux/config', res='list') if
             not i.strip().startswith('#')
@@ -496,25 +548,37 @@ def usage(error=None):
     exit(0)
 
 
-def main():
+def get_system_name():
+    _out, _err, _code = BaseInit().cmd("cat /etc/os-release |grep NAME")
+    if _code != 0:
+        print("无法判定系统版本")
+        sys.exit(1)
+    system_ls = ["ubuntu", "centos", "kylin", "red hat", "redhat"]
+    for system in system_ls:
+        if system in _out.lower():
+            return system
+    print("未找到系统版本，按通用系统处理，可能存在未知问题，请上报系统版本，进行后续适配，{0}".format(_out))
+    return "common"
+
+
+def main(host_name, local_ip):
     command_list = ('init', 'valid', 'init_valid', 'help', 'write_hostname')
     try:
+        system_name = get_system_name()
         if sys.argv[1] not in command_list:
             usage(error='参数错误: {}'.format(sys.argv[1:]))
         if sys.argv[1] in ['init', 'init_valid']:
             if len(sys.argv) != 4:
                 usage(error='参数错误: {}'.format(sys.argv[1:]))
-            host_name = sys.argv[2]
-            local_ip = sys.argv[3]
-            init = InitHost(host_name, local_ip)
+            init = InitHost(host_name, local_ip, system_name)
             init.run()
             logger.info("init success")
             if sys.argv[1] == 'init_valid':
-                check = ValidInit()
+                check = ValidInit(system_name=system_name)
                 check.run()
                 logger.info("valid success")
         elif sys.argv[1] == 'valid':
-            check = ValidInit()
+            check = ValidInit(system_name=system_name)
             check.run()
             logger.info("valid success")
         elif sys.argv[1] == "write_hostname":
@@ -528,4 +592,15 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # 适配不填写主机名的
+    hostname = sys.argv[2]
+
+    if len(sys.argv) == 2:
+        l_ip = sys.argv[2]
+        hostname = "docp" + "".join(
+            item.zfill(3) for item in l_ip.split("."))
+    elif sys.argv[1] == "write_hostname":
+        l_ip = None
+    else:
+        l_ip = sys.argv[3]
+    main(hostname, l_ip)

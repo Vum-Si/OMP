@@ -2,7 +2,7 @@ import { Form, InputNumber, Input } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { randomNumber } from "@/utils/utils";
 
-const RenderNum = ({ data, form }) => {
+const RenderNum = ({ data, form, context }) => {
   const [num, setNum] = useState(data.deploy_mode.default);
   const numRef = useRef(data.deploy_mode.default);
 
@@ -27,7 +27,7 @@ const RenderNum = ({ data, form }) => {
     <>
       <div style={{ flex: 3 }}>
         <Form.Item
-          label="部署数量"
+          label={context.deployNum}
           name={`${data.name}=num`}
           style={{ marginBottom: 0, width: 180 }}
         >
@@ -60,9 +60,7 @@ const RenderNum = ({ data, form }) => {
             step={data.deploy_mode.step}
             min={1}
             max={32}
-            style={{
-              width: 100,
-            }}
+            style={{ width: 100 }}
           />
         </Form.Item>
       </div>
@@ -71,17 +69,30 @@ const RenderNum = ({ data, form }) => {
       >
         {num > 1 && (
           <Form.Item
-            label="集群名称"
+            label={context.cluster + context.ln + context.name}
             name={`${data.name}=name`}
             style={{ marginBottom: 0, width: 240 }}
             rules={[
               {
                 required: true,
-                message: "请输入集群名称",
+                message:
+                  context.input +
+                  context.ln +
+                  context.cluster +
+                  context.ln +
+                  context.name,
               },
             ]}
           >
-            <Input placeholder="请输入集群名称" />
+            <Input
+              placeholder={
+                context.input +
+                context.ln +
+                context.cluster +
+                context.ln +
+                context.name
+              }
+            />
           </Form.Item>
         )}
       </div>

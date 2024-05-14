@@ -7,12 +7,13 @@ THIS_SCRIPT="${CURRENT_DIR}/$(basename $0)"
 PROJECT_FOLDER="$(dirname ${CURRENT_DIR})"
 
 # 解决openssl依赖的问题
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${PROJECT_FOLDER}/component/env/lib/
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${PROJECT_FOLDER}/component/env/lib/:${PROJECT_FOLDER}/component/CloudPanguDB/lib/
 
 PYTHON3="${PROJECT_FOLDER}/component/env/bin/python3"
 OMP_SCRIPT="${PROJECT_FOLDER}/scripts/omp"
 TMP_LOG_PATH="${PROJECT_FOLDER}/tmp/install_omp.log"
 TMP_CRONTAB_TXT_PATH="${PROJECT_FOLDER}/tmp/crontab.txt"
+LOKI_DATA_CHUNKS="${PROJECT_FOLDER}/data/loki/chunks"
 
 test -d "${PROJECT_FOLDER}/tmp" || mkdir "${PROJECT_FOLDER}/tmp"
 
@@ -47,6 +48,18 @@ get_local_ip() {
 
 }
 
+function check_omp_env() {
+    check_count=$(ps -ef | grep "${PROJECT_FOLDER}/component" |grep -v grep |wc -l)
+    check_agent=$(ps -ef | grep -E 'omp_salt_agent|omp_monitor_agent' |grep -v grep |wc -l)
+    if [[ $check_count -ne 0 ]]; then
+      echo "存在未杀死的进程"
+      exit 1
+    fi
+    if [[ $check_agent -ne 0 ]]; then
+      echo -e "\033[31m 存在未杀死的omp_salt_agent或omp_monitor_agent请注意区分查看!!!!  \033[0m"
+    fi
+}
+
 function echo_omp_url() {
     echo " "
     echo "=========OMP平台访问信息================"
@@ -59,18 +72,36 @@ function echo_omp_url() {
 
 # 平台端安装逻辑
 function install_omp() {
-  ack="N"
-  while [[ "$ack" == "N" ]] || [[ "$ack" == "n" ]]; do
-    get_local_ip
-    read -p "确认当前主机ip为【$local_ip】请输入 Y, 重新选择请输入N > " ack
-  done
+  check_omp_env
+  if [[ ! -n $1 ]]; then
+    ack="N"
+    while [[ "$ack" == "N" ]] || [[ "$ack" == "n" ]]; do
+      get_local_ip
+      read -p "确认当前主机ip为【$local_ip】请输入 Y, 重新选择请输入N > " ack
+    done
+  else
+    local_ip=$1
+  fi
+  # 初始化主机
+  # >>>>>>>>>>>>>>>>>>start>>>>>>>>>>>>>>>>
+  sudo -n true 2>/dev/null
+  if  [[ $? -eq 0 ]] ;then
+    h_name=$(hostname)
+    init_host="${PROJECT_FOLDER}/package_hub/_modules/init_host.py"
+    $PYTHON3 $init_host init $h_name $local_ip
+  else
+    echo "该用户为普通用户，不支持主机初始化，可能存在无法安装风险，请自行执行判定执行init_host.py"
+  fi
+  # >>>>>>>>>>>>>>>>>end>>>>>>>>>>>>>>>>>>>>>
+
   update_conf_path="${PROJECT_FOLDER}/scripts/source/update_conf.py"
   run_user=$(whoami)
-  $PYTHON3 $update_conf_path $local_ip $run_user
+  $PYTHON3 $update_conf_path $local_ip $run_user 'all'
   if [[ $? -ne 0 ]]; then
     echo "OMP配置更新失败"
     exit 1
   fi
+  bash $OMP_SCRIPT grafana start
   install_mysql_redis_path="${PROJECT_FOLDER}/scripts/source/install_mysql_redis.py"
   $PYTHON3 $install_mysql_redis_path
   if [[ $? -ne 0 ]]; then
@@ -79,6 +110,8 @@ function install_omp() {
   fi
   MANAGE_PATH="${PROJECT_FOLDER}/omp_server/manage.py"
   $PYTHON3 $MANAGE_PATH migrate >> $TMP_LOG_PATH
+  # 确认grafana能够成功启动后，再更新grafana的数据
+  check_grafana_up
   UPDATE_DATA_PATH="${PROJECT_FOLDER}/scripts/source/update_data.py"
   $PYTHON3 $UPDATE_DATA_PATH
   bash $OMP_SCRIPT all start
@@ -98,9 +131,6 @@ function check_grafana_up() {
       return 0
     fi
     sleep 30
-    if [[ $i -eq 5 ]]; then
-      bash $OMP_SCRIPT grafana start
-    fi
     let i++
   done
   echo "Grafana start failed in 300s, please check!"
@@ -109,9 +139,6 @@ function check_grafana_up() {
 
 # 监控端安装逻辑
 function install_monitor_server() {
-  bash $OMP_SCRIPT grafana start
-  # 确认grafana能够成功启动后，再更新grafana的数据
-  check_grafana_up
   update_grafana_path="${PROJECT_FOLDER}/scripts/source/update_grafana.py"
   $PYTHON3 $update_grafana_path $local_ip
   if [[ $? -ne 0 ]]; then
@@ -127,13 +154,12 @@ function omp_keep_alive() {
   oka_crontab=$(crontab -l | grep "omp all start")
   if test -z "$oka_crontab"
   then
-    crontab < $TMP_CRONTAB_TXT_PATH
+    crontab $TMP_CRONTAB_TXT_PATH
     echo "omp server端保活任务添加成功"
   else
     echo "omp server端保活任务添加成功"
   fi
 }
-
 
 install_omp "$@"
 install_monitor_server "$@"

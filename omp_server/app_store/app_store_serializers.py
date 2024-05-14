@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+import yaml
 from django.conf import settings
 
 from rest_framework import serializers
@@ -27,7 +28,10 @@ from app_store.install_utils import (
     ValidateExistService, ValidateInstallService,
     CreateInstallPlan
 )
-from utils.parse_config import HADOOP_ROLE
+from app_store.new_install_utils import DeployTypeUtil
+from utils.parse_config import (
+    HADOOP_ROLE, TEMPLATE_CLUSTER_CHECK
+)
 
 logger = logging.getLogger("server")
 
@@ -63,6 +67,48 @@ class ServiceListSerializer(ModelSerializer):
         # return Service.objects.filter(
         #     service__product__pro_name=obj.pro_name).count()
         return Product.objects.filter(product=obj).count()
+
+
+class DeleteComponentSerializer(ModelSerializer):
+    """
+    基础组件序列化
+    """
+    name = serializers.SerializerMethodField()
+    versions = serializers.SerializerMethodField()
+
+    class Meta:
+        """ 元数据 """
+        model = ApplicationHub
+        fields = ("name", "versions")
+
+    def get_name(self, obj):
+        return obj.app_name
+
+    def get_versions(self, obj):
+        return [f"{obj.app_version}|{obj.app_package.package_name}"]
+
+
+class DeleteProDuctSerializer(ModelSerializer):
+    """
+    产品序列化
+    """
+    name = serializers.SerializerMethodField()
+    versions = serializers.SerializerMethodField()
+
+    class Meta:
+        """ 元数据 """
+        model = ProductHub
+        fields = ("name", "versions")
+
+    def get_name(self, obj):
+        return f"{obj.pro_name}|{obj.pro_version}"
+
+    def get_versions(self, obj):
+        app_ls = []
+        app_values_obj = ApplicationHub.objects.filter(product=obj)
+        for obj in app_values_obj:
+            app_ls.append(f"{obj.app_name}|{obj.app_version}|{obj.app_package.package_name}")
+        return app_ls
 
 
 class UploadPackageSerializer(Serializer):
@@ -130,8 +176,7 @@ class UploadPackageSerializer(Serializer):
                     upload_obj.delete()
                     raise OperateError("文件写入过程失败")
 
-        front_end_verified_init(uuid, operation_user,
-                                package_name, upload_obj.id, md5)
+        front_end_verified_init(package_name, upload_obj.id, md5=md5)
         return validated_data
 
 
@@ -183,13 +228,15 @@ class ApplicationDetailSerializer(ModelSerializer):  # NOQA
     app_labels = serializers.SerializerMethodField()
     app_package_md5 = serializers.SerializerMethodField()
     app_operation_user = serializers.SerializerMethodField()
+    app_package_name = serializers.SerializerMethodField()
+    deploy_list = serializers.SerializerMethodField()
 
     class Meta:
         """ 元数据 """
         model = ApplicationHub
         fields = ("app_name", "app_version", "app_logo", "app_description",
-                  "created", "app_dependence", "app_instances_info",
-                  "app_labels", "app_package_md5", "app_operation_user")
+                  "created", "app_dependence", "app_instances_info", "app_package_name",
+                  "app_labels", "app_package_md5", "app_operation_user", "deploy_list")
 
     def get_app_instances_info(self, obj):  # NOQA
         """ 获取服务安装实例信息 """
@@ -219,6 +266,16 @@ class ApplicationDetailSerializer(ModelSerializer):  # NOQA
     def get_app_operation_user(self, obj):  # NOQA
         return obj.app_package.operation_user
 
+    def get_app_package_name(self, obj):  # NOQA
+        return obj.app_package.package_name
+
+    def get_deploy_list(self, obj):
+        """ 获取服务的部署信息列表 """
+        deploy_list = []
+        if obj.deploy_mode:
+            deploy_list = obj.deploy_mode.get("deploy_mode_ls", [])
+        return deploy_list
+
 
 class ProductDetailSerializer(ModelSerializer):  # NOQA
     """ 产品详情序列化器 """
@@ -227,6 +284,7 @@ class ProductDetailSerializer(ModelSerializer):  # NOQA
     pro_labels = serializers.SerializerMethodField()
     pro_package_md5 = serializers.SerializerMethodField()
     pro_operation_user = serializers.SerializerMethodField()
+    pro_package_name = serializers.SerializerMethodField()
     pro_services = serializers.SerializerMethodField()
 
     class Meta:
@@ -234,7 +292,7 @@ class ProductDetailSerializer(ModelSerializer):  # NOQA
         model = ProductHub
         fields = ("pro_name", "pro_version", "pro_logo", "pro_description",
                   "created", "pro_dependence", "pro_services",
-                  "pro_instances_info",
+                  "pro_instances_info", "pro_package_name",
                   "pro_labels", "pro_package_md5", "pro_operation_user")
 
     def get_pro_instances_info(self, obj):  # NOQA
@@ -271,6 +329,9 @@ class ProductDetailSerializer(ModelSerializer):  # NOQA
             logger.error(e)
             logger.error("获取服务包user值失败！")
 
+    def get_pro_package_name(self, obj):  # NOQA
+        return obj.pro_package.package_name
+
     def get_pro_services(self, obj):  # NOQA
         pro_services_list = []
         apps = ApplicationHub.objects.filter(product_id=obj.id)
@@ -288,7 +349,8 @@ class ProductDetailSerializer(ModelSerializer):  # NOQA
                 "name": app.app_name,
                 "version": app.app_version,
                 "created": time.strftime("%Y-%m-%d %H:%M:%S", time.strptime(str(app.created), "%Y-%m-%d %H:%M:%S.%f")),
-                "md5": uph.package_md5
+                "md5": uph.package_md5,
+                "package_name": uph.package_name
             }
             pro_services_list.append(app_dict)
             pro_app_name_list.append(app.app_name)
@@ -640,6 +702,11 @@ class ServiceInstallHistorySerializer(ModelSerializer):
 class DeploymentPlanValidateSerializer(Serializer):
     """ 部署计划服务信息验证序列化类 """
 
+    CLUSTER_APP = (
+        "mysql", "zookeeper", "tengine", "arangodb", "elasticsearch",
+        "kafka", "nacos", "redis", "minio", "postgresql", "hadoop", "flink",
+        "rocketmq", "mongodb", "pushgateway", "sentinel", "victoriaMetrics")
+
     instance_name_ls = serializers.ListField(
         child=serializers.CharField(),
         help_text="主机实例名列表",
@@ -653,6 +720,85 @@ class DeploymentPlanValidateSerializer(Serializer):
         required=True, allow_empty=False,
         error_messages={"required": "必须包含[host_list]字段"}
     )
+
+    def _cluster_number_check(self, service_data_ls, result_dict):
+        """ 集群数量校验 """
+        service_dt = {}
+        # 循环记录涉及集群服务的不同节点
+        for service_data in service_data_ls:
+            app_name = service_data.get("service_name", "unKnow")
+            if app_name.lower() in self.CLUSTER_APP:
+                instance_name = service_data.get("instance_name", "unKnow")
+                if app_name in service_dt:
+                    if instance_name not in service_dt[app_name]:
+                        service_dt[app_name].append(instance_name)
+                else:
+                    service_dt[app_name] = [instance_name]
+        logger.info(service_dt)
+        # 校验服务数量
+        for app_name, instance_ls in service_dt.items():
+            if app_name.lower() in ("arangodb", "elasticsearch", "kafka", "nacos",
+                                    "hadoop", "flink", "mongodb", "victoriaMetrics") \
+                    and len(instance_ls) == 2:
+                result_dict["error"].append({
+                    "row": -3,
+                    "instance_name": "-",
+                    "service_name": app_name,
+                    "validate_error": f"{app_name}集群模式应至少为3个节点"
+                })
+            elif app_name.lower() in ("pushgateway", "sentinel", "postgresql"):
+                if len(instance_ls) != 1:
+                    result_dict["error"].append({
+                        "row": -3,
+                        "instance_name": "-",
+                        "service_name": app_name,
+                        "validate_error": f"{app_name}当前仅支持单节点部署"
+                    })
+            elif app_name.lower() == "mysql":
+                if len(instance_ls) >= 3:
+                    result_dict["error"].append({
+                        "row": -3,
+                        "instance_name": "-",
+                        "service_name": app_name,
+                        "validate_error": "mysql仅支持双主模式+keepalived"
+                    })
+            elif app_name.lower() == "zookeeper":
+                if len(instance_ls) % 2 != 1:
+                    result_dict["error"].append({
+                        "row": -3,
+                        "instance_name": "-",
+                        "service_name": app_name,
+                        "validate_error": "zookeeper集群数量需为2n+1"
+                    })
+            elif app_name.lower() == "redis":
+                if len(instance_ls) != 1 \
+                        and len(instance_ls) != 3:
+                    result_dict["error"].append({
+                        "row": -3,
+                        "instance_name": "-",
+                        "service_name": app_name,
+                        "validate_error": "redis集群模式仅支持3节点"
+                    })
+            elif app_name.lower() == "minio":
+                if len(instance_ls) != 1 and \
+                        (len(instance_ls) < 4 or len(instance_ls) % 2 == 1):
+                    result_dict["error"].append({
+                        "row": -3,
+                        "instance_name": "-",
+                        "service_name": app_name,
+                        "validate_error": "minio集群最少4节点，且为2n"
+                    })
+            elif app_name.lower() == "rocketmq":
+                if len(instance_ls) != 1 \
+                        and len(instance_ls) % 2 == 1:
+                    result_dict["error"].append({
+                        "row": -3,
+                        "instance_name": "-",
+                        "service_name": app_name,
+                        "validate_error": "rocketmq集群数量需为2n"
+                    })
+
+        return result_dict
 
     def validate(self, attrs):
         """ 校验主机数据列表 """
@@ -680,6 +826,64 @@ class DeploymentPlanValidateSerializer(Serializer):
         app_queryset = _queryset.filter(
             id__in=new_app_id_list, is_release=True
         ).select_related("product")
+
+        # 校验部署模式字段
+        has_mode_service = list(
+            filter(lambda x: x.get("mode", False), service_data_ls))
+        mode_service_dict = {
+            i.get("service_name"): i.get("mode")
+            for i in has_mode_service
+        }
+        mode_pro_dict = {}
+        for app in app_queryset:
+            has_mode = False
+            if app.app_name in mode_service_dict:
+                # 表格中指定了部署模式，校验服务是否支持
+                has_mode = True
+                if app.deploy_mode is None:
+                    mode_service_dict.pop(app.app_name)
+                    result_dict["error"].append({
+                        "row": -3,
+                        "instance_name": "-",
+                        "service_name": app.app_name,
+                        "validate_error": "该服务不支持部署模式字段"
+                    })
+                    continue
+                target_mode = mode_service_dict.get(app.app_name)
+                deploy_mode_ls = app.deploy_mode.get("deploy_mode_ls", [])
+                if target_mode not in deploy_mode_ls:
+                    mode_service_dict.pop(app.app_name)
+                    result_dict["error"].append({
+                        "row": -3,
+                        "instance_name": "-",
+                        "service_name": app.app_name,
+                        "validate_error": f"该服务不支持 {target_mode} 模式"
+                    })
+                    continue
+            else:
+                # 表格中没有指定部署模式，则指定为默认的部署模式
+                if app.deploy_mode is not None:
+                    default_deploy_mode = app.deploy_mode.get(
+                        "default_deploy_mode", None)
+                    if default_deploy_mode is not None:
+                        has_mode = True
+                        mode_service_dict[app.app_name] = default_deploy_mode
+            # 如果 app 有部署模式，且有产品
+            if has_mode and app.product is not None:
+                pro_name = app.product.pro_name
+                if pro_name not in mode_pro_dict:
+                    # 记录服务所属产品的部署类型
+                    mode_pro_dict[pro_name] = mode_service_dict.get(
+                        app.app_name)
+                else:
+                    # 如果已经记录类型，则校验是否和已经记录类型一致
+                    if mode_service_dict.get(app.app_name) != mode_pro_dict.get(pro_name):
+                        result_dict["error"].append({
+                            "row": -3,
+                            "instance_name": "-",
+                            "service_name": app.app_name,
+                            "validate_error": f"请确保产品 {pro_name} 下所有服务的部署模式一致"
+                        })
 
         # 获取 application 对应的 product 信息
         app_now = app_queryset.exclude(product__isnull=True)
@@ -717,10 +921,6 @@ class DeploymentPlanValidateSerializer(Serializer):
                                           f"缺失依赖产品 {name}"
                     })
 
-        # 验证所有 product 下的 application 都已经包含
-        app_target_all = ApplicationHub.objects.filter(
-            product_id__in=pro_id_list)
-
         # 所有 affinity 为 tengine 字段 (Web 服务)，不参与比较
         now_set = set(filter(
             lambda x: x.extend_fields.get("affinity") != "tengine", app_now))
@@ -745,6 +945,10 @@ class DeploymentPlanValidateSerializer(Serializer):
             if not app.app_dependence:
                 continue
             dependence_list = json.loads(app.app_dependence)
+            # 按照服务部署类型，过滤依赖
+            dependence_list = DeployTypeUtil(
+                app, dependence_list
+            ).get_dependence_by_deploy(mode_service_dict.get(app.app_name))
             # 校验依赖项的指定版本是否存在
             for dependence in dependence_list:
                 name = dependence.get("name")
@@ -770,6 +974,9 @@ class DeploymentPlanValidateSerializer(Serializer):
         # hadoop 实例列表、角色集合
         hadoop_instance_ls = []
         hadoop_role_set = set()
+        # 必须补充角色的基础组件列表
+        must_role_dict = {
+        }
 
         for service_data in service_data_ls:
             # 校验主机数据是否已经存在
@@ -806,6 +1013,10 @@ class DeploymentPlanValidateSerializer(Serializer):
                     hadoop_role_set = hadoop_role_set | set(
                         service_data.get("role").split(","))
                 continue
+            # 必须补充角色的服务
+            if app_name in must_role_dict.keys():
+                must_role_dict[app_name].append(service_data)
+                continue
             result_dict["correct"].append(service_data)
 
         # 如果存在 hadoop 实例，则校验角色
@@ -813,14 +1024,45 @@ class DeploymentPlanValidateSerializer(Serializer):
             key_name = "single"
             if len(hadoop_instance_ls) > 1:
                 key_name = "cluster"
-            diff = set(HADOOP_ROLE.get(key_name)) - hadoop_role_set
-            if diff:
+            hadoop_role_ls = HADOOP_ROLE.get(key_name)
+            same = set(hadoop_role_ls) == hadoop_role_set
+            if not same:
                 for hadoop_instance in hadoop_instance_ls:
-                    hadoop_instance["validate_error"] = f"缺少角色{','.join(diff)}"
+                    err_msg = f"{key_name}模式下，" \
+                              f"角色需要为{','.join(hadoop_role_ls)}"
+                    hadoop_instance["validate_error"] = err_msg
                     result_dict["error"].append(hadoop_instance)
             else:
                 for hadoop_instance in hadoop_instance_ls:
                     result_dict["correct"].append(hadoop_instance)
+
+        # 较验必须含有角色的实例
+        for app_name, instance_ls in must_role_dict.items():
+            if len(instance_ls) == 1:
+                result_dict["correct"].append(instance_ls[0])
+            elif len(instance_ls) > 1:
+                role_list = list(map(lambda x: x.get("role", ""), instance_ls))
+                role_set = set(role_list)
+                error_msg = None
+                if role_list.count("master") > 1:
+                    error_msg = f"{app_name} 角色 master 唯一"
+                if not error_msg and not role_set == {"master", "slave"}:
+                    error_msg = f"{app_name} 角色必须为 master 或 slave"
+                # 若有错误信息
+                if error_msg:
+                    for instance in instance_ls:
+                        instance["validate_error"] = error_msg
+                        result_dict["error"].append(instance)
+                else:
+                    for instance in instance_ls:
+                        result_dict["correct"].append(instance)
+            else:
+                continue
+
+        # 基础组件集群模式个数的严格校验
+        if TEMPLATE_CLUSTER_CHECK:
+            result_dict = self._cluster_number_check(
+                service_data_ls, result_dict)
 
         # 按照 row 行号对列表进行排序
         for v in result_dict.values():
@@ -868,6 +1110,7 @@ class ExecutionRecordSerializer(ModelSerializer):
     state_display = serializers.CharField(source="get_state_display")
     can_rollback = serializers.SerializerMethodField()
     duration = serializers.SerializerMethodField()
+    service_instance_name = serializers.SerializerMethodField()
 
     def get_can_rollback(self, obj):
         if obj.module != "UpgradeHistory":
@@ -882,11 +1125,42 @@ class ExecutionRecordSerializer(ModelSerializer):
             return "-"
         return timedelta_strftime(obj.end_time - obj.created)
 
+    @staticmethod
+    def str_to_int(obj):
+        try:
+            return int(obj.module_id)
+        except ValueError:
+            return obj.module_id
+
+    def get_service_instance_name(self, obj):
+        modules_dc = {
+            "UpgradeHistory": "UpgradeDetail",
+            "RollbackHistory": "RollbackDetail",
+            "MainInstallHistory": "DetailInstallHistory"
+        }
+        field_dc = {
+            "UpgradeHistory": {"history": self.str_to_int(obj)},
+            "RollbackHistory": {"history": self.str_to_int(obj)},
+            "MainInstallHistory": {"main_install_history__operation_uuid": obj.module_id}
+        }
+        read_obj = modules_dc.get(obj.module)
+        module_obj = getattr(models, read_obj).objects.filter(
+            **field_dc.get(obj.module)
+        )[:6]
+        if read_obj == "RollbackDetail":
+            module_obj = [i.upgrade for i in module_obj if i.upgrade]
+
+        instance_ls = [obj.service.service_instance_name for obj in module_obj[:5] if obj.service]
+        instance_str = ",".join(instance_ls)
+        if len(module_obj) == 6:
+            instance_str = instance_str + "..."
+        return instance_str
+
     class Meta:
         model = ExecutionRecord
         fields = ("id", "operator", "count", "state", "state_display",
                   "can_rollback", "duration", "created", "end_time",
-                  "module", "module_id")
+                  "module", "module_id", "service_instance_name")
 
 
 class ProductCompositionSerializer(ModelSerializer):
@@ -964,44 +1238,98 @@ class ProductCompositionSerializer(ModelSerializer):
         fields = ("pro_name", "pro_version", "pro_services", "pro_ser_others")
 
 
-class DeleteComponentSerializer(ModelSerializer):
-    """
-    基础组件序列化
-    """
-    name = serializers.SerializerMethodField()
-    versions = serializers.SerializerMethodField()
-
-    class Meta:
-        """ 元数据 """
-        model = ApplicationHub
-        fields = ("name", "versions")
-
-    def get_name(self, obj):
-        return obj.app_name
-
-    def get_versions(self, obj):
-        return [obj.app_version]
+class InstallTempSerializer(Serializer):
+    pro_info = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="产品信息列表",
+        required=True, allow_empty=False,
+        error_messages={"required": "必须包含[pro_info]产品信息字段"}
+    )
 
 
-class DeleteProDuctSerializer(ModelSerializer):
-    """
-    产品序列化
-    """
-    name = serializers.SerializerMethodField()
-    versions = serializers.SerializerMethodField()
+class InstallTempFirstSerializer(InstallTempSerializer):
+    support_dpcp_yaml_version = serializers.CharField(
+        max_length=64,
+        help_text="产品版本模版",
+        required=True,
+        error_messages={"required": "必须包含[support_dpcp_yaml_version]产品版本模版字段"}
+    )
 
-    class Meta:
-        """ 元数据 """
-        model = ProductHub
-        fields = ("name", "versions")
+    model_style = serializers.CharField(
+        max_length=64,
+        help_text="部署模式",
+        required=True,
+        error_messages={"required": "必须包含[model_style]部署模式字段"}
+    )
 
-    def get_name(self, obj):
-        return f"{obj.pro_name}|{obj.pro_version}"
+    def validate(self, attrs):
+        for _ in attrs.get("pro_info"):
+            if not isinstance(_.get("pro_version"), str):
+                raise ValidationError({
+                    "pro_version": f"版本列表存在异常"
+                })
+        model_dc = {"全高可用模式": 1, "单服务模式": 2, "基础组件高可用": 3}
+        model_dc = model_dc.get(attrs["model_style"])
+        if not model_dc:
+            raise ValidationError({
+                "model_style": f"请选择正确模式"
+            })
+        attrs["model_style"] = model_dc
+        return attrs
 
-    def get_versions(self, obj):
-        app_ls = []
-        app_values = ApplicationHub.objects.filter(
-            product=obj).values_list("app_name", "app_version")
-        for app in app_values:
-            app_ls.append(f"{app[0]}|{app[1]}")
-        return app_ls
+
+class InstallTempLastSerializer(Serializer):
+    uuid = serializers.CharField(
+        max_length=64,
+        help_text="uuid",
+        required=True,
+        error_messages={"required": "必须包含[uuid]字段"}
+    )
+
+
+class InstallTempSecondSerializer(InstallTempSerializer, InstallTempLastSerializer):
+    uuid = serializers.CharField(
+        max_length=64,
+        help_text="uuid",
+        required=True,
+        error_messages={"required": "必须包含[uuid]字段"}
+    )
+    host_info = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="主机信息表",
+        required=True, allow_empty=False,
+        error_messages={"required": "必须包含[host_info]主机信息字段"}
+    )
+    deploy_app = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="基础组件依赖信息",
+        required=True, allow_empty=False,
+        error_messages={"required": "必须包含[deploy_app]基础组件依赖信息字段"}
+    )
+    redundant_mem = serializers.CharField(
+        max_length=64,
+        help_text="冗余系数",
+        required=True,
+        error_messages={"required": "必须包含[redundant_mem]冗余系数字段"}
+    )
+    default_mem = serializers.IntegerField(
+        help_text="默认内存",
+        required=True,
+        error_messages={"required": "必须包含[default_mem]默认内存字段"}
+    )
+    omp_mem = serializers.IntegerField(
+        help_text="OMP默认内存",
+        required=True,
+        error_messages={"required": "必须包含[omp_mem]默认内存字段"}
+    )
+
+    def validate(self, attrs):
+        fields_dc = {"host_info": {"count", "mem"},
+                     "pro_info": {"pro_name", "pro_version", "pro_count"},
+                     "deploy_app": {"app_name", "app_version", "app_count", "mem"}
+                     }
+        for filed, child in fields_dc.items():
+            for f in attrs[filed]:
+                if not child.issuperset(f):
+                    raise ValidationError(f"字段{filed}包含子字段异常")
+        return attrs

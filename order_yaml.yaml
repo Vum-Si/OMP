@@ -1,0 +1,132 @@
+#暂时无cpu计算（后面yaml实装后可使用），当内存不足时例如某节点128g但已占用64g则可单拉出来填写资源清单。
+# num mem cpu ip为必填 其余选填生成模版后可自行填写
+version: 5.6.0
+hosts:
+  - num: 1
+    mem: 24
+    cpu: 16
+    ip:
+      - docp010000014242
+    port: 36000
+    username: commonuser
+    password: yunzhihui123
+    data_folder: /data
+    operate_system: CentOS
+    run_user: commonuser
+    ntpd_server:
+  - num: 2
+    mem: 32
+    cpu: 16
+    ip:
+      - docp010000014247
+      - docp010000014243
+      - docp010000014244
+      - docp010000014245
+    port: 36000
+    username: commonuser
+    password: yunzhihui123
+    data_folder: /data
+    operate_system: CentOS
+    run_user: commonuser
+    ntpd_server:
+
+#版本不填写为数据库id最大的
+product:
+  - name: douc
+    version: 5.7.0
+  - name: doia
+    version: 5.7.0
+  - name: lcap
+    version: 5.7.0
+  - name: wisebot
+    version: 5.7.0
+  - name: dosm
+    version: 5.7.0
+  - name: lcap
+    version: 5.7.0
+  - name: openApi
+    version: 5.7.0
+  - name: doopCore
+    version: 5.7.0
+  - name: openApi
+    version: 5.7.0
+  - name: doop
+    version: 5.7.0
+  - name: docp
+    version: 5.7.0
+  - name: apm
+    version: 5.7.0
+  - name: dola
+    version: 5.7.0
+  - name: domm
+    version: 5.7.0
+  - name: dcim
+    version: 5.7.0
+  - name: dohd
+    version: 5.7.0
+  - name: dodi
+    version: 5.7.0
+  - name: doem
+    version: 5.7.0
+  - name: dokb
+    version: 5.7.0
+  - name: cmdb
+    version: 5.7.0
+  - name: docpM
+    version: 5.7.0
+  - name: docc
+    version: 5.7.0
+  - name: automation
+    version: 5.7.0
+  - name: dodp
+    version: 5.7.0
+
+#当false时，产品不考虑依赖。以product列表为准。默认true
+is_need_product_dependnece: false
+
+
+#当基础组件无特殊要求时(单节点)则不填写
+component:
+
+
+#默认大小 单位mb,web不计算内存。基础组件jdk等不计算内存。
+default_mem: 512
+#总内存占用百分比
+default_percent: 1
+#自研服务个数 默认是1 如果是2除web以外x2，优先级低于component，web与tengine的个数有关
+server_count: 1
+
+
+#此处不用调整，意为集群最小个数
+component_template:
+  minio: 4
+  hadoop: 3
+  zookeeper: 3
+  kafka: 3
+  victoriaMetrics: 3
+
+
+#非web的绑定关系,一般不需调整
+affinity:
+  wkhtmltox:
+    - apmDataService
+  tengine:
+    - lcapDevServer
+    - lcapServer
+  clickhouse:
+    - dodpClickhouseAgent
+  hadoop:
+    - flink
+  prometheus:
+    - pushgateway
+
+# 默认0-1之间的系数
+redundant_mem: 0.1
+
+# 有几处暂时无法完成的,需要人工介入
+# 1。主主模式暂时无法完成绑定模式 （后期考虑合并vip模式的服务）
+# 2。自研服务的部署模式暂不可添加
+# 3。cpu相关均衡无计算。因为无来源
+# 4。如果单台服务剩余内存大于最大单个服务内存，则可以分配完成，否则可能存在分配不均匀且部分服务无法分配的情况。
+# 5。doiaAlgoBaseServer绑定暂时无法百分百合适  建议修改基础组建
+

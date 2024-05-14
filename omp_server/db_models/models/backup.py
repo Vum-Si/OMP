@@ -8,7 +8,7 @@ from db_models.mixins import TimeStampMixin
 class BackupCustom(models.Model):
     field_k = models.CharField("自定义字段k", max_length=64, null=False)
     field_v = models.CharField("自定义字段v", max_length=256, null=False)
-    notes = models.CharField("备注", max_length=32, default="")
+    notes = models.CharField("备注", max_length=64, default="")
 
     class Meta:
         db_table = 'omp_backup_custom'

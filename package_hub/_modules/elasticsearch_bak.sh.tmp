@@ -1,0 +1,197 @@
+#!/bin/bash
+
+# 自定义变量
+operation=${operation}
+backup_dir=${backup_dir}
+
+# 公共变量
+service_name="elasticsearch"
+BasePath=$(cd `dirname $0`; pwd)
+nowTime=$(date +%Y%m%d%H%M)
+count=0
+# 请求重试机制
+max_count=6
+
+# OMP提取参数
+ip=${cw_o_ip}
+elasticsearch_host=${cw_o_ip}
+elasticsearch_port=${cw_o_service_port}
+elasticsearch_config_dir=${cw_o_base_dir}/config
+username=${cw_o_username}
+password=${cw_o_password}
+
+
+snapshot_repository="my_backup" # 备份仓库名称，可以根据需求修改
+curl_command="curl -s "
+if [ -n "$username" ] && [ -n "$password" ]; then
+  curl_command="$curl_command -u $username:$password -X "
+else
+  curl_command="$curl_command -X "
+fi
+
+# 创建目录和设置权限
+mkdir -p "$backup_dir"
+permissions=$(stat -c "%a" "$elasticsearch_config_dir")
+owner=$(stat -c "%U" "$elasticsearch_config_dir")
+group=$(stat -c "%G" "$elasticsearch_config_dir")
+chmod "$permissions" "$backup_dir"
+chown "$owner":"$group" "$backup_dir"
+
+function request_omp() {
+  if [[ -z "$rq_body" ]]; then
+    if [[ -z "$1" ]]; then
+      echo "need request result"
+      exit 1
+    fi
+    # $1 结果(必填)  $2 消息  $3 omp抓取路径 要确定是一个单独的文件
+    rq_body="{\"result\":\"$1\",\"message\":\"$2\",\"remote_path\":\"$3\",\"ip\":\"$ip\",\"need_push\":\"$need_push\"}"
+  fi
+  RES=$(curl --location --request POST 'http://${cw_o_master_url}p/' --header 'Content-Type: application/json' --data "$rq_body"|grep "\"code\":0")
+  code=$?
+  # 存在返回证明有异常 或者状态码非0
+  if [[ -z "$RES" ]] || [[ $code != 0 ]];then
+    echo $RES
+    if [[ "$count" -lt "$max_count" ]];then
+      sleep 5
+      let count+=1
+      request_omp $1 $2 $3
+    fi
+    exit 1
+  else
+    exit 0
+  fi
+}
+
+
+# 日志函数
+log() {
+  local current_time
+  current_time=$(date +'%Y-%m-%d %H:%M:%S')
+  echo "[$current_time] $1"
+}
+
+create_repository() {
+  repository_response=$($curl_command PUT "http://$elasticsearch_host:$elasticsearch_port/_snapshot/$snapshot_repository" -H 'Content-Type: application/json' -d '{
+    "type": "fs",
+    "settings": {
+      "location": "'"$backup_dir"'",
+      "compress": true
+    }
+  }')
+
+  if echo "$repository_response" | grep -q '"acknowledged":true'; then
+    log "仓库创建成功: $repository_response"
+  else
+    if [ -z "$repository_response" ]; then
+      request_omp 1 "仓库创建失败: 请检查服务状态，返回值为空"
+    else
+      log $repository_response
+      request_omp 1 "仓库创建失败，请检查挂载路径是否一致或是否备份执行的集群不完整"
+    fi
+    exit 1
+  fi
+}
+
+# 备份Elasticsearch数据函数
+backup_elasticsearch() {
+  log "开始备份 Elasticsearch 数据"
+  log "集群模式需提前准备nfs共享备份文件夹"
+  check_and_update_config
+
+  # 执行Elasticsearch的快照API进行备份
+
+  snapshot_name="snapshot_$(date +'%Y%m%d%H%M%S')"
+  create_repository
+  snapshot_response=$($curl_command PUT "http://$elasticsearch_host:$elasticsearch_port/_snapshot/$snapshot_repository/$snapshot_name?wait_for_completion=true" -H 'Content-Type: application/json' -d '{
+  "indices": "*",
+  "ignore_unavailable": true,
+  "include_global_state": false
+  }')
+
+  if [ $? -eq 0 ]; then
+    log "$snapshot_response"
+    request_omp 0 "备份完成" $backup_dir
+  else
+    log "$snapshot_response"
+    request_omp 1 "备份失败"
+  fi
+}
+
+# 恢复Elasticsearch数据函数
+restore_elasticsearch() {
+  log "开始恢复 Elasticsearch 数据"
+  check_and_update_config
+  create_repository
+
+  # 获取最新的快照名称
+  snapshot_info=$($curl_command GET "http://$elasticsearch_host:$elasticsearch_port/_snapshot/$snapshot_repository/_all")
+  latest_snapshot=$(echo "$snapshot_info" | grep -o '"snapshot":"[^"]*' | sed 's/"snapshot":"//' | tail -n 1)
+
+  # 恢复快照到Elasticsearch中
+  restore_response=$($curl_command POST "http://$elasticsearch_host:$elasticsearch_port/_snapshot/$snapshot_repository/$latest_snapshot/_restore" -H 'Content-Type: application/json')
+  if echo "$restore_response" | grep -q '{"accepted":true}'; then
+    log "恢复完成: $restore_response"
+  else
+    log "恢复失败: $restore_response"
+  fi
+}
+
+# 检查并更新elasticsearch.yml文件中的path.repo配置项函数
+check_and_update_config() {
+  # 检查elasticsearch.yml文件是否存在
+  if [ ! -f "$elasticsearch_config_dir/elasticsearch.yml" ]; then
+    request_omp 1 "错误：找不到elasticsearch.yml文件，请检查配置目录路径"
+    exit 1
+  fi
+
+  # 检查elasticsearch.yml文件是否包含path.repo配置项
+  if grep -q "path.repo" "$elasticsearch_config_dir/elasticsearch.yml"; then
+    log "elasticsearch.yml文件中已存在path.repo配置项"
+  else
+    echo "path.repo: [\"$backup_dir\"]" >>"$elasticsearch_config_dir/elasticsearch.yml"
+    "$elasticsearch_config_dir"/../scripts/elasticsearch restart
+    log "已将备份目录添加到elasticsearch.yml文件中，等待完全启动"
+    retries=0
+    while true; do
+      elasticsearch_status=$("$elasticsearch_config_dir"/../scripts/elasticsearch status | awk '{print $2}')
+      if [ "$elasticsearch_status" = "[running]" ]; then
+        echo "Elasticsearch is running."
+        break
+      else
+        if [[ $retries == 3 ]]; then
+          request_omp 1 "elasticsearch启动过慢或无法启动"
+          exit 1
+        fi
+        sleep 20
+        retries=$((retries + 1))
+      fi
+    done
+  fi
+}
+
+
+fs_type=$(df -T $backup_dir|tail -n 1| awk '{print $2}')
+b_dir=$(echo $backup_dir | awk -F'/' '{print $2}')
+showmount -e $ip |grep /$b_dir
+ser_nfs=`echo $?`
+if [ $ser_nfs -eq 0 ] || [[ $fs_type == nfs* ]]; then
+  log "监测到nfs"
+else
+  request_omp 1 "该路径未检测到nfs请先安装nfs"
+  exit 1
+fi
+
+
+
+# 根据参数执行备份或恢复操作
+case "$operation" in
+"backup")
+  backup_elasticsearch
+  ;;
+"restore")
+  restore_elasticsearch
+  ;;
+*)
+  backup_elasticsearch
+  ;;
+esac

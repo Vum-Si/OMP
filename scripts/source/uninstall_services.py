@@ -114,7 +114,7 @@ class UninstallServices(object):
             else:
                 del_file = True
             uninstall_exec_action.delay(
-                action="4", instance=service_obj.id, operation_user="command_line", del_file=del_file)
+                action="4", id=service_obj.id, operation_user="command_line", del_file=del_file)
 
     def uninstall_all_services(self, uninstall_list):
         """卸载所有的服务"""

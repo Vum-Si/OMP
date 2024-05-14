@@ -10,32 +10,31 @@ import { useHistory, useLocation } from "react-router-dom";
 import { fetchPut } from "src/utils/request";
 
 const { Link } = Anchor;
-// 状态渲染规则
-const renderStatus = {
-  0: "等待回滚",
-  1: "正在回滚",
-  2: "回滚成功",
-  3: "回滚失败",
-  4: "正在注册",
-};
 
-const Content = () => {
+const Content = ({ context, locale }) => {
+  const renderStatus = {
+    0: context.waiting,
+    1: context.rollbacking,
+    2: context.succeeded,
+    3: context.installFailed,
+    4: context.registering,
+  };
   const history = useHistory();
   const viewHeight = useSelector((state) => state.layouts.viewSize.height);
   // 在轮训时使用ref存值
   const openNameRef = useRef(null);
   const location = useLocation();
-  console.log(location?.state?.history);
-
+  if (!location?.state?.history) {
+    history.push({
+      pathname: "/application_management/install-record",
+    });
+  }
   const [loading, setLoading] = useState(true);
-
   const [retryLoading, setRetryLoading] = useState(false);
-
   const [data, setData] = useState({
     detail: {},
     rollback_state: 0,
   });
-
   // 轮训的timer控制器
   const timer = useRef(null);
 
@@ -68,7 +67,7 @@ const Content = () => {
   const retryRollback = () => {
     setRetryLoading(true);
     fetchPut(
-      `${apiRequest.appStore.queryRollbackProcess}/${location?.state?.history}`
+      `${apiRequest.appStore.queryRollbackProcess}/${location?.state?.history}/`
     )
       .then((res) => {
         handleResponse(res, (res) => {
@@ -93,18 +92,13 @@ const Content = () => {
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          paddingTop: 20,
-        }}
-      >
+      <div style={{ display: "flex", paddingTop: 20 }}>
+        {/* -- 左侧回滚细节 -- */}
         <Spin spinning={loading}>
           <div
             id="Step4Wrapper"
             style={{
               flex: 1,
-              //backgroundColor: "#fff",
               height: viewHeight - 270,
               overflowY: "auto",
             }}
@@ -118,6 +112,8 @@ const Content = () => {
                     title={item.service_name}
                     data={item.rollback_details}
                     idx={idx}
+                    context={context}
+                    locale={locale}
                   />
                 );
               })}
@@ -125,39 +121,64 @@ const Content = () => {
           </div>
         </Spin>
 
+        {/* -- 右侧状态栏 -- */}
         <div
           style={{
-            //height: 300,
             width: 200,
             backgroundColor: "#fff",
             marginLeft: 20,
-            height: viewHeight - 270,
-            overflowY: "auto",
             paddingTop: 10,
           }}
         >
           <div style={{ paddingLeft: 5 }}>
             <Anchor
-              style={{}}
               affix={false}
               getContainer={() => {
                 let con = document.getElementById("Step4Wrapper");
                 return con;
               }}
-              onClick={(e) => {
-                e.preventDefault();
+              onClick={(e) => e.preventDefault()}
+              style={{
+                height: viewHeight - 270,
+                overflowY: "auto",
               }}
             >
               {data?.rollback_detail?.map((item, idx) => {
-                let hasError =
-                  item.rollback_details.filter((a) => a.rollback_state == 3)
-                    .length !== 0;
+                let ingArr = 0;
+                let successArr = 0;
+                let errArr = 0;
+                for (let i = 0; i < item.rollback_details.length; i++) {
+                  const element = item.rollback_details[i];
+                  switch (element.rollback_state) {
+                    case 0:
+                      break;
+                    case 1:
+                      ingArr += 1;
+                      break;
+                    case 2:
+                      successArr += 1;
+                      break;
+                    case 3:
+                      errArr += 1;
+                      break;
+                    default:
+                      break;
+                  }
+                }
+                let colorRes = "#f0c242";
+                if (errArr !== 0) {
+                  colorRes = "#da4e48";
+                } else if (successArr === item.rollback_details.length) {
+                  colorRes = "rgb(118,204,104)";
+                } else if (ingArr > 0) {
+                  colorRes = "rgba(0, 0, 0, 0.85)";
+                }
                 return (
                   <div style={{ padding: 5 }} key={idx}>
                     <Link
                       href={`#a${idx}`}
                       title={
-                        <span style={{ color: hasError && "rgb(218, 78, 72)" }}>
+                        <span style={{ color: colorRes }}>
                           {item.service_name}
                         </span>
                       }
@@ -169,6 +190,8 @@ const Content = () => {
           </div>
         </div>
       </div>
+
+      {/* -- 底部进度条 -- */}
       <div
         style={{
           position: "fixed",
@@ -196,40 +219,24 @@ const Content = () => {
         </div>
         <div style={{ width: "70%" }}>
           <Progress
-            percent={(data.success_count / data.all_count * 100).toFixed()}
+            percent={((data.success_count / data.all_count) * 100).toFixed()}
             status={data.rollback_state == 3 && "exception"}
           />
         </div>
-        <div style={{ paddingLeft: 60 }}>
+        <div style={{ paddingLeft: 40 }}>
           {data.rollback_state == 3 && (
             <Button
               loading={retryLoading}
-              style={{ marginLeft: 10 }}
+              style={{ marginLeft: 4 }}
               type="primary"
               //disabled={unassignedServices !== 0}
               onClick={() => {
                 retryRollback();
               }}
             >
-              重试
+              {context.retry}
             </Button>
           )}
-
-          <Button
-            style={{ marginLeft: 10 }}
-            type="primary"
-            //disabled={unassignedServices !== 0}
-            onClick={() => {
-              history.push({
-                pathname: "/application_management/install-record",
-                state: {
-                  tabKey: "backoff",
-                },
-              });
-            }}
-          >
-            完成
-          </Button>
         </div>
       </div>
     </div>

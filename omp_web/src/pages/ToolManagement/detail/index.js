@@ -9,23 +9,36 @@ import { useHistory, useLocation } from "react-router-dom";
 import styles from "./index.module.less";
 import Readme from "./Readme.js";
 import initLogo from "../initLogo/tools.svg";
+import { locales } from "@/config/locales";
 
-const kindMap = ["管理工具", "检查工具", "安全工具", "其他工具"];
-
-const argType = {
-  select: "单选",
-  file: "文件",
-  input: "单行文本",
+const msgMap = {
+  "en-US": {
+    targetMsg:
+      "The target object type of the tool can be a host or a specific service",
+  },
+  "zh-CN": {
+    targetMsg: "实用工具操作的目标对象类型，可以是主机或者具体服务",
+  },
 };
 
-const Details = () => {
+const Details = ({ locale }) => {
   const history = useHistory();
   const [loading, setLoading] = useState(false);
-  // console.log([...location].pop())
-  // let href = window.location.href.split("#")[0];
   const locationArr = useLocation().pathname.split("/");
-
   const [info, setInfo] = useState({});
+  const context = locales[locale].common;
+  const kindMap = [
+    context.management + context.ln + context.tool,
+    context.check + context.ln + context.tool,
+    context.security + context.ln + context.tool,
+    context.other + context.ln + context.tool,
+  ];
+
+  const argType = {
+    select: context.radio,
+    file: context.file,
+    input: context.text,
+  };
 
   const queryInfo = () => {
     setLoading(true);
@@ -51,22 +64,18 @@ const Details = () => {
     <OmpContentWrapper wrapperStyle={{ padding: "20px 30px" }}>
       <Spin spinning={loading}>
         <div className={styles.header}>
+          {/* -- logo -- */}
           {!info.logo ? (
             <div className={styles.icon}>
               <div
                 style={{
                   width: 80,
                   height: 80,
-                  // borderRadius: "50%",
-                  // border: "1px solid #a8d0f8",
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
-                  // marginLeft: 10,
-                  // marginRight: 10,
                   overflow: "hidden",
                   fontSize: 22,
-                  // backgroundImage: "linear-gradient(to right, #4f85f6, #669aee)",
                   backgroundColor: "#f5f5f5",
                   color: "#fff",
                 }}
@@ -79,7 +88,6 @@ const Details = () => {
                     alignItems: "center",
                   }}
                 >
-                  {/* {info.name && info.name[0].toLocaleUpperCase()} */}
                   <img
                     style={{
                       width: "65px",
@@ -98,16 +106,11 @@ const Details = () => {
                 style={{
                   width: 80,
                   height: 80,
-                  // borderRadius: "50%",
-                  // border: "1px solid #a8d0f8",
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
-                  // marginLeft: 10,
-                  // marginRight: 10,
                   overflow: "hidden",
                   fontSize: 22,
-                  // backgroundImage: "linear-gradient(to right, #4f85f6, #669aee)",
                   backgroundColor: "#f5f5f5",
                   color: "#fff",
                 }}
@@ -120,7 +123,6 @@ const Details = () => {
                     alignItems: "center",
                   }}
                 >
-                  {/* {info.name && info.name[0].toLocaleUpperCase()} */}
                   <img
                     style={{
                       width: "65px",
@@ -134,6 +136,8 @@ const Details = () => {
               </div>
             </div>
           )}
+
+          {/* -- 执行/下载/返回 -- */}
           <div className={styles.headerContent}>
             <div className={styles.headerContentTitle}>{info.name}</div>
             <div className={styles.headerContentDescribe}>
@@ -151,15 +155,13 @@ const Details = () => {
                   });
                 }}
               >
-                执行
+                {context.execute}
               </Button>
               <Button
                 style={{ padding: "3px 20px", height: 30, marginLeft: 20 }}
-                onClick={() => {
-                  downloadFile(`/${info.tar_url}`);
-                }}
+                onClick={() => downloadFile(`/${info.tar_url}`)}
               >
-                下载
+                {context.download}
               </Button>
             </div>
           </div>
@@ -170,38 +172,21 @@ const Details = () => {
                 history?.goBack();
               }}
             >
-              返回
+              {context.back}
             </Button>
           </div>
         </div>
+
+        {/* -- 类别/执行对象 -- */}
         <div className={styles.detailInfo}>
           <div className={styles.detailItem}>
-            <div className={styles.detailItemLabel}>工具类别</div>
+            <div className={styles.detailItemLabel}>{context.type}</div>
             <div>{kindMap[info.kind]}</div>
           </div>
-          {/* <div className={styles.detailItem}>
-          <div className={styles.detailItemLabel}>
-            执行位置
-            <Tooltip placement="right" title={"提示信息"}>
-              <QuestionCircleOutlined
-                style={{
-                  marginLeft: 10,
-                  fontSize: 16,
-                  position: "relative",
-                  top: 1,
-                }}
-              />
-            </Tooltip>
-          </div>
-          <div>目标主机</div>
-        </div> */}
           <div className={styles.detailItem} style={{ paddingBottom: 10 }}>
             <div className={styles.detailItemLabel}>
-              执行对象
-              <Tooltip
-                placement="right"
-                title={"实用工具操作的目标对象类型，可以是主机或者具体服务"}
-              >
+              {context.target}
+              <Tooltip placement="right" title={msgMap[locale].targetMsg}>
                 <QuestionCircleOutlined
                   style={{
                     marginLeft: 10,
@@ -212,38 +197,44 @@ const Details = () => {
                 />
               </Tooltip>
             </div>
-            <div>{info.target_name == "host" ? "主机" : info.target_name}</div>
+            <div>
+              {info.target_name == "host" ? context.host : info.target_name}
+            </div>
           </div>
         </div>
+
+        {/* -- 执行参数 -- */}
         <div className={styles.detailContent}>
-          <div className={styles.detailContentTitle}>执行参数</div>
+          <div className={styles.detailContentTitle}>
+            {context.execute + context.ln + context.parameter}
+          </div>
           <div className={styles.tableContainer}>
             <Table
               size="middle"
               columns={[
                 {
-                  title: "名称",
+                  title: context.name,
                   key: "name",
                   dataIndex: "name",
                   align: "center",
                   render: (text) => text || "-",
                 },
                 {
-                  title: "类型",
+                  title: context.type,
                   key: "type",
                   dataIndex: "type",
                   align: "center",
                   render: (text) => (text ? argType[text] : "-"),
                 },
                 {
-                  title: "默认值",
+                  title: context.default + context.ln + context.value,
                   key: "default",
                   dataIndex: "default",
                   align: "center",
                   render: (text) => text || "-",
                 },
                 {
-                  title: "必填字段",
+                  title: context.required,
                   key: "required",
                   dataIndex: "required",
                   align: "center",
@@ -255,34 +246,37 @@ const Details = () => {
             />
           </div>
         </div>
+
         {info && info.templates && info.templates.length > 0 && (
           <div className={styles.detailContent}>
-            <div className={styles.detailContentTitle}>下载示例文件</div>
+            <div className={styles.detailContentTitle}>
+              {context.download +
+                context.ln +
+                context.example +
+                context.ln +
+                context.file}
+            </div>
             <div className={styles.tableContainer}>
               <Table
                 size="middle"
                 columns={[
                   {
-                    title: "名称",
+                    title: context.name,
                     key: "name",
                     dataIndex: "name",
                     align: "center",
                     width: 300,
                   },
                   {
-                    title: "操作",
+                    title: context.action,
                     key: "sub_url",
                     dataIndex: "sub_url",
                     align: "center",
                     width: 100,
                     render: (text) => {
                       return (
-                        <a
-                          onClick={() => {
-                            downloadFile(`/${text}`);
-                          }}
-                        >
-                          下载
+                        <a onClick={() => downloadFile(`/${text}`)}>
+                          {context.download}
                         </a>
                       );
                     },

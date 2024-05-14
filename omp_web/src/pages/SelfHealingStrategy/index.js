@@ -4,38 +4,37 @@ import { useState, useEffect } from "react";
 import { handleResponse } from "@/utils/utils";
 import { fetchGet, fetchDelete, fetchPost, fetchPut } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
-import { ExclamationCircleOutlined } from "@ant-design/icons";
+import styles from "./index.module.less";
 import getColumnsConfig from "./config/columns";
 import { AddStrategyModal } from "./StrategyModal";
-import { useHistory, useLocation } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const BackupStrategy = () => {
-  const location = useLocation();
+const msgMap = {
+  "en-US": {
+    delLeft: "Are you sure to",
+    delRight: "this strategy?",
+  },
+  "zh-CN": {
+    delLeft: "确认要",
+    delRight: "该策略吗?",
+  },
+};
 
-  const history = useHistory();
-
+const BackupStrategy = ({ locale }) => {
   const [loading, setLoading] = useState(false);
-
   const [dataSource, setDataSource] = useState([]);
-
-  // 自定义参数
-
   // 增/改自愈策略共用
   const [strategyRow, setStrategyRow] = useState({});
   const [strategyModalType, setStrategyModalType] = useState("add");
   const [strategyModalVisibility, setStrategyModalVisibility] = useState(false);
   const [strategyLoading, setStrategyLoading] = useState(false);
   const [keyArr, setKeyArr] = useState([]);
-
   // 自愈策略表单
   const [strategyForm] = Form.useForm();
-
   // 自愈组件全量数据
   const [canHealingIns, setcanHealingIns] = useState([]);
-
   // 删除策略
   const [deleteStrategyModal, setDeleteStrategyModal] = useState(false);
-
   // 策略表单初始值
   const strategyFormInit = {
     repair_instance: [],
@@ -44,6 +43,7 @@ const BackupStrategy = () => {
     instance_tp: 0,
     used: false,
   };
+  const context = locales[locale].common;
 
   // 策略列表查询
   const fetchData = () => {
@@ -95,7 +95,7 @@ const BackupStrategy = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success("添加自愈策略成功");
+            message.success(context.add + context.ln + context.succeeded);
             strategyForm.setFieldsValue(strategyFormInit);
             fetchData();
             setKeyArr([]);
@@ -123,7 +123,7 @@ const BackupStrategy = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success("修改自愈策略成功");
+            message.success(context.edit + context.ln + context.succeeded);
             strategyForm.setFieldsValue(strategyFormInit);
             fetchData();
             setKeyArr([]);
@@ -148,7 +148,7 @@ const BackupStrategy = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success("删除成功");
+            message.success(context.delete + context.ln + context.succeeded);
             fetchData();
             setDeleteStrategyModal(false);
           } else {
@@ -168,6 +168,7 @@ const BackupStrategy = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部添加/刷新 -- */}
       <div style={{ display: "flex" }}>
         <Button
           style={{ marginRight: 10 }}
@@ -179,15 +180,17 @@ const BackupStrategy = () => {
             setStrategyModalVisibility(true);
           }}
         >
-          添加策略
+          {context.add}
         </Button>
 
         <div style={{ display: "flex", marginLeft: "auto" }}>
           <Button style={{ marginLeft: 10 }} onClick={() => fetchData()}>
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -203,17 +206,17 @@ const BackupStrategy = () => {
             setStrategyModalType,
             setStrategyModalVisibility,
             strategyForm,
-            queryCanHealing
+            queryCanHealing,
+            context
           )}
           dataSource={dataSource}
-          pagination={{
-            pageSize: 10,
-          }}
+          pagination={{ pageSize: 10 }}
           rowKey={(record) => record.id}
           noScroll={true}
         />
       </div>
 
+      {/* -- 添加策略 -- */}
       <AddStrategyModal
         strategyModalType={strategyModalType}
         addStrategy={addStrategy}
@@ -226,31 +229,23 @@ const BackupStrategy = () => {
         strategyFormInit={strategyFormInit}
         keyArr={keyArr}
         setKeyArr={setKeyArr}
+        context={context}
       />
 
+      {/* -- 删除策略 -- */}
       <OmpMessageModal
         visibleHandle={[deleteStrategyModal, setDeleteStrategyModal]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
-        onFinish={() => {
-          deleteStrategy();
-        }}
+        onFinish={() => deleteStrategy()}
       >
         <div style={{ padding: "20px" }}>
-          确定 <span style={{ fontWeight: 500 }}>删除</span> 该策略吗？
+          {msgMap[locale].delLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {context.delete}{" "}
+          </span>
+          {msgMap[locale].delRight}
         </div>
       </OmpMessageModal>
     </OmpContentWrapper>

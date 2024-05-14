@@ -1,6 +1,6 @@
+import { OmpToolTip } from "@/components";
 import { DownOutlined } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
-import { OmpToolTip } from "@/components";
 
 const stepOpen = {
   marginTop: 10,
@@ -22,29 +22,26 @@ const stepNotOpen = {
   backgroundColor: "#f9f9f9",
 };
 
-// 状态渲染规则
-const renderStatus = {
-  0: <span style={{ color: "#f0c242" }}>等待回滚</span>,
-  1: <span style={{ color: "rgba(0, 0, 0, 0.85)" }}>正在回滚</span>,
-  2: <span style={{ color: "rgb(118,204,104)" }}>回滚成功</span>,
-  3: <span style={{ color: "#da4e48" }}>回滚失败</span>,
-};
-
-const RollbackDetail = ({ title, ip, status, log, instance_name }) => {
+const RollbackDetail = ({ title, ip, status, log, instance_name, context }) => {
   const containerRef = useRef(null);
-
   const [openName, setOpenName] = useState("");
+  const renderStatus = {
+    0: <span style={{ color: "#f0c242" }}>{context.waiting}</span>,
+    1: (
+      <span style={{ color: "rgba(0, 0, 0, 0.85)" }}>
+        {context.rollbacking}
+      </span>
+    ),
+    2: <span style={{ color: "rgb(118,204,104)" }}>{context.succeeded}</span>,
+    3: <span style={{ color: "#da4e48" }}>{context.rollbackFailed}</span>,
+  };
 
   useEffect(() => {
     containerRef.current.scrollTop = containerRef.current.scrollHeight;
   }, [log]);
 
   return (
-    <div
-      style={{
-        padding: 10,
-      }}
-    >
+    <div style={{ padding: 10 }}>
       <div
         style={{
           display: "flex",
@@ -65,7 +62,7 @@ const RollbackDetail = ({ title, ip, status, log, instance_name }) => {
               }
             }}
           >
-            查看详细回滚信息
+            {context.view + context.ln + context.detail}
             <DownOutlined
               style={{
                 transform: `rotate(${
@@ -83,7 +80,7 @@ const RollbackDetail = ({ title, ip, status, log, instance_name }) => {
         ref={containerRef}
         style={openName == `${title}=${ip}` ? stepOpen : stepNotOpen}
       >
-        {log || "暂无数据"}
+        {log || context.noData}
       </div>
     </div>
   );

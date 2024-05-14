@@ -1,11 +1,13 @@
 import { Modal, Button } from "antd";
+import { ExclamationCircleOutlined } from "@ant-design/icons";
 
 const OmpMessageModal = ({
   visibleHandle,
   children,
-  title,
+  title = null,
   onFinish,
   noFooter,
+  context = null,
   loading = false,
   afterClose = () => {},
   disabled = false,
@@ -14,9 +16,23 @@ const OmpMessageModal = ({
   return (
     <Modal
       {...residualParam}
-      title={title}
+      title={
+        title || (
+          <span>
+            <ExclamationCircleOutlined
+              style={{
+                fontSize: 20,
+                color: "#f0a441",
+                paddingRight: "10px",
+                position: "relative",
+                top: 2,
+              }}
+            />
+            {context?.reminder || "提示"}
+          </span>
+        )
+      }
       visible={visibleHandle[0]}
-      //onOk={() => }
       onCancel={() => visibleHandle[1](false)}
       footer={null}
       destroyOnClose
@@ -40,7 +56,7 @@ const OmpMessageModal = ({
               style={{ marginRight: 16 }}
               onClick={() => visibleHandle[1](false)}
             >
-              取消
+              {context?.cancel || "取消"}
             </Button>
             <Button
               loading={loading}
@@ -49,7 +65,7 @@ const OmpMessageModal = ({
               onClick={onFinish}
               disabled={disabled}
             >
-              确定
+              {context?.ok || "确认"}
             </Button>
           </>
         )}

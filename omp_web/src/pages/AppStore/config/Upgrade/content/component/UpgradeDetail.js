@@ -1,6 +1,6 @@
+import { OmpToolTip } from "@/components";
 import { DownOutlined } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
-import { OmpToolTip } from "@/components";
 
 const stepOpen = {
   marginTop: 10,
@@ -22,17 +22,16 @@ const stepNotOpen = {
   backgroundColor: "#f9f9f9",
 };
 
-// 状态渲染规则
-const renderStatus = {
-  0: <span style={{ color: "#f0c242" }}>等待升级</span>,
-  1: <span style={{ color: "rgba(0, 0, 0, 0.85)" }}>正在升级</span>,
-  2: <span style={{ color: "rgb(118,204,104)" }}>升级成功</span>,
-  3: <span style={{ color: "#da4e48" }}>升级失败</span>,
-};
-
-const UpgradeDetail = ({ title, ip, status, log, instance_name }) => {
+const UpgradeDetail = ({ title, ip, status, log, instance_name, context }) => {
+  const renderStatus = {
+    0: <span style={{ color: "#f0c242" }}>{context.waiting}</span>,
+    1: (
+      <span style={{ color: "rgba(0, 0, 0, 0.85)" }}>{context.upgrading}</span>
+    ),
+    2: <span style={{ color: "rgb(118,204,104)" }}>{context.succeeded}</span>,
+    3: <span style={{ color: "#da4e48" }}>{context.installFailed}</span>,
+  };
   const containerRef = useRef(null);
-
   const [openName, setOpenName] = useState("");
 
   useEffect(() => {
@@ -40,11 +39,7 @@ const UpgradeDetail = ({ title, ip, status, log, instance_name }) => {
   }, [log]);
 
   return (
-    <div
-      style={{
-        padding: 10,
-      }}
-    >
+    <div style={{ padding: 10 }}>
       <div
         style={{
           display: "flex",
@@ -54,7 +49,6 @@ const UpgradeDetail = ({ title, ip, status, log, instance_name }) => {
         <div style={{ flex: 3 }}>
           <OmpToolTip maxLength={24}>{instance_name}</OmpToolTip>
         </div>
-
         <div style={{ flex: 1 }}>{renderStatus[status]}</div>
         <div style={{ flex: 6, textAlign: "right", paddingRight: 50 }}>
           <a
@@ -66,7 +60,7 @@ const UpgradeDetail = ({ title, ip, status, log, instance_name }) => {
               }
             }}
           >
-            查看详细升级信息
+            {context.view + context.ln + context.detail}
             <DownOutlined
               style={{
                 transform: `rotate(${
@@ -84,7 +78,7 @@ const UpgradeDetail = ({ title, ip, status, log, instance_name }) => {
         ref={containerRef}
         style={openName == `${title}=${ip}` ? stepOpen : stepNotOpen}
       >
-        {log || "暂无数据"}
+        {log || context.noData}
       </div>
     </div>
   );

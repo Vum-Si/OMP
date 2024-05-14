@@ -24,34 +24,40 @@ import {
   UploadOutlined,
 } from "@ant-design/icons";
 import star from "./asterisk.svg";
+import { locales } from "@/config/locales";
 
-const ToolExecution = () => {
+const msgMap = {
+  "en-US": {
+    timeMsg:
+      "The timeout period for executing on the target, after which the task will exit",
+    userMsg: "Using agent users",
+    userDetailMsg:
+      "The username that the tool executes on the target host, please ensure that you have the corresponding user permissions",
+  },
+  "zh-CN": {
+    timeMsg: "在目标上执行的超时时间，超过该时间后，任务将退出",
+    userMsg: "使用纳管用户",
+    userDetailMsg: "工具在目标主机执行的用户名，请确保具有相应用户权限",
+  },
+};
+
+const ToolExecution = ({ locale }) => {
   const history = useHistory();
   const locationArr = useLocation().pathname.split("/");
-
   const [loading, setLoading] = useState(false);
-
   const [executionLoading, setExecutionLoading] = useState(false);
-
   const [form] = Form.useForm();
-
   const [conf, setConf] = useState();
-
   // 是否采用纳管用户
   const [isUseManagement, setIsUseManagement] = useState(true);
-
   // 执行对象弹框控制器
   const [executionTarget, setExecutionTarget] = useState(false);
-
   // 选中的数据
   const [checkedList, setCheckedList] = useState([]);
-
   // 执行对象数据
   const [executionData, setExecutionData] = useState([]);
-
   // 是否展示执行对象校验信息
   const [isShowErrMsg, setIsShowErrMsg] = useState(false);
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -59,20 +65,20 @@ const ToolExecution = () => {
     ordering: "",
     searchParams: {},
   });
-
   // 执行对象列表
   const [executionList, setExecutionList] = useState([]);
+  const context = locales[locale].common;
 
   const initColumns = [
     {
-      title: "实例名称",
+      title: context.instance + context.ln + context.name,
       key: "instance_name",
       dataIndex: "instance_name",
       align: "center",
       ellipsis: true,
       width: 150,
       fixed: "left",
-      render: (text, record) => {
+      render: (text) => {
         return (
           <Tooltip title={text}>
             <div style={{ paddingTop: 2 }}>{text}</div>
@@ -81,13 +87,13 @@ const ToolExecution = () => {
       },
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "ip",
       dataIndex: "ip",
       align: "center",
       ellipsis: true,
       width: 120,
-      render: (text, record) => {
+      render: (text) => {
         let v = text || "-";
         return (
           <Tooltip title={v}>
@@ -97,13 +103,13 @@ const ToolExecution = () => {
       },
     },
     {
-      title: "Agent状态",
+      title: context.hostAgent,
       key: "host_agent_state",
       dataIndex: "host_agent_state",
       align: "center",
       ellipsis: true,
       width: 120,
-      render: (text, record) => {
+      render: (text) => {
         let v = text || "-";
         return (
           <Tooltip title={v}>
@@ -113,10 +119,8 @@ const ToolExecution = () => {
       },
     },
   ];
-
   // 执行对象columns
   const [executionColumns, setExecutionColumn] = useState(initColumns);
-
   // 扩展
   const [extendForm, setExtendForm] = useState([]);
 
@@ -287,8 +291,8 @@ const ToolExecution = () => {
               }}
               beforeUpload={(file, fileList) => {
                 const fileSize = file.size / 1024 / 1024; //单位是mb
-                if (Math.ceil(fileSize) > 20) {
-                  message.error("仅支持传入20MB以内文件");
+                if (Math.ceil(fileSize) > 200) {
+                  message.error("仅支持传入200MB以内文件");
                   return Upload.LIST_IGNORE;
                 }
                 // return Upload.LIST_IGNORE;
@@ -367,7 +371,7 @@ const ToolExecution = () => {
             message.warning(res.data.message);
           }
           if (res.data.code == 0) {
-            message.success("执行命令下发成功");
+            message.success(context.execute + context.ln + context.succeeded);
             setTimeout(() => {
               history.push(
                 `/utilitie/tool-management/tool-execution-results/${res.data.data.id}`
@@ -391,14 +395,14 @@ const ToolExecution = () => {
       wrapperStyle={{ padding: 0, paddingBottom: 30, backgroundColor: "#fff" }}
     >
       <div className={styles.header}>
-        <div>创建任务: {conf?.name}</div>
+        <div>
+          {context.create + context.ln + context.task} : {conf?.name}
+        </div>
         <Button
           style={{ padding: "3px 20px", height: 30 }}
-          onClick={() => {
-            history?.goBack();
-          }}
+          onClick={() => history?.goBack()}
         >
-          返回
+          {context.back}
         </Button>
       </div>
       <div style={{ paddingTop: 20 }}>
@@ -410,24 +414,27 @@ const ToolExecution = () => {
             style={{ paddingTop: 10 }}
             onFinish={() => {
               if (executionData.length !== 0) {
-                console.log("通过校验了");
                 performTasks();
               }
             }}
             form={form}
           >
             <Form.Item
-              label="任务标题"
+              label={context.task + context.ln + context.name}
               name="task_name"
-              rules={[{ required: true, message: "请输入任务标题" }]}
+              rules={[
+                {
+                  required: true,
+                  message: context.input + context.ln + context.name,
+                },
+              ]}
             >
               <Input
-                placeholder="请输入任务标题"
-                style={{
-                  width: 460,
-                }}
+                placeholder={context.input + context.ln + context.name}
+                style={{ width: 460 }}
               />
             </Form.Item>
+
             <Form.Item
               name="target_objs"
               extra={
@@ -446,7 +453,7 @@ const ToolExecution = () => {
                       top: isShowErrMsg ? 0 : -20,
                     }}
                   >
-                    请选择执行对象
+                    {context.select + context.ln + context.target}
                   </span>
                 </div>
               }
@@ -456,7 +463,7 @@ const ToolExecution = () => {
                     src={star}
                     style={{ position: "relative", top: -3, left: -4 }}
                   />
-                  执行对象
+                  {context.execute + context.ln + context.target}
                 </span>
               }
             >
@@ -497,7 +504,7 @@ const ToolExecution = () => {
                       setIsShowErrMsg(true);
                     }}
                   >
-                    清除
+                    {context.clear}
                   </Button>
                   <Button
                     style={{ padding: "3px 20px", height: 30, marginLeft: 15 }}
@@ -507,15 +514,21 @@ const ToolExecution = () => {
                       setCheckedList(executionData);
                     }}
                   >
-                    添加
+                    {context.add}
                   </Button>
                 </div>
               </div>
             </Form.Item>
+
             <Form.Item
-              label="超时时间"
+              label={context.timeout}
               name="timeout"
-              rules={[{ required: true, message: "请输入超时时间" }]}
+              rules={[
+                {
+                  required: true,
+                  message: context.input + context.ln + context.timeout,
+                },
+              ]}
             >
               <Form.Item
                 name="timeout"
@@ -543,7 +556,7 @@ const ToolExecution = () => {
                 <InputNumber />
               </Form.Item>
               <span name="miao" style={{ paddingLeft: 5 }}>
-                秒
+                s
               </span>
               <span
                 name="tishi"
@@ -554,44 +567,47 @@ const ToolExecution = () => {
                 }}
               >
                 {" "}
-                <Tooltip title="工具在目标主机执行的超时时间，超过该时间后，任务将退出">
+                <Tooltip title={msgMap[locale].timeMsg}>
                   <QuestionCircleOutlined />
                 </Tooltip>
               </span>
             </Form.Item>
+
             <Form.Item
               name="runuser"
-              label="执行用户"
+              label={context.runUser}
               rules={[
-                { required: !isUseManagement, message: "请输入执行用户" },
+                {
+                  required: !isUseManagement,
+                  message: context.input + context.ln + context.runUser,
+                },
               ]}
             >
               <Form.Item name="runuser" noStyle>
                 <Input
                   disabled={isUseManagement}
                   style={{ width: 140 }}
-                  placeholder="请输入执行用户"
+                  placeholder={context.input + context.ln + context.runUser}
                 />
               </Form.Item>
               <span style={{ paddingLeft: 15 }}>
                 <Checkbox
                   onChange={(e) => {
-                    form.setFieldsValue({
-                      runuser: null,
-                    });
+                    form.setFieldsValue({ runuser: null });
                     setIsUseManagement(e.target.checked);
                   }}
                   checked={isUseManagement}
                 >
-                  使用纳管用户
+                  {msgMap[locale].userMsg}
                 </Checkbox>
-                <Tooltip title="工具在目标主机执行的用户名，请确保具有相应用户权限">
+                <Tooltip title={msgMap[locale].userDetailMsg}>
                   <QuestionCircleOutlined
                     style={{ position: "relative", left: 15 }}
                   />
                 </Tooltip>
               </span>
             </Form.Item>
+
             {extendForm.map((item) => {
               return getExtendFormComponent(item);
             })}
@@ -614,25 +630,21 @@ const ToolExecution = () => {
                     }
                   }}
                 >
-                  执行
+                  {context.execute}
                 </Button>
               </Form.Item>
             </div>
           </Form>
         </Spin>
       </div>
+
       <Modal
-        title="选择执行对象"
+        title={context.select + context.ln + context.target}
         width={800}
-        afterClose={() => {
-          setCheckedList([]);
-        }}
-        onCancel={() => {
-          setExecutionTarget(false);
-        }}
+        afterClose={() => setCheckedList([])}
+        onCancel={() => setExecutionTarget(false)}
         visible={executionTarget}
         footer={null}
-        //width={1000}
         loading={executionLoading}
         bodyStyle={{
           paddingLeft: 30,
@@ -647,7 +659,7 @@ const ToolExecution = () => {
               scroll={{ x: executionColumns.length * 150 }}
               loading={executionLoading}
               columns={executionColumns}
-              onChange={(e, filters, sorter) => {
+              onChange={(e) => {
                 setTimeout(() => {
                   queryExecutionList(e);
                 }, 200);
@@ -667,13 +679,15 @@ const ToolExecution = () => {
                       top: -3,
                     }}
                   >
-                    <p>已选中 {checkedList.length} 条</p>
+                    <p>
+                      {context.selected} {checkedList.length} {context.tiao}
+                    </p>
                     <p style={{ color: "rgb(152, 157, 171)" }}>
-                      共计{" "}
+                      {context.total}{" "}
                       <span style={{ color: "rgb(63, 64, 70)" }}>
                         {pagination.total}
-                      </span>{" "}
-                      条
+                      </span>
+                      {context.tiao}
                     </p>
                   </div>
                 ),
@@ -693,18 +707,19 @@ const ToolExecution = () => {
                 justifyContent: "space-between",
               }}
             >
-              <Button onClick={() => setExecutionTarget(false)}>取消</Button>
+              <Button onClick={() => setExecutionTarget(false)}>
+                {context.cancel}
+              </Button>
               <Button
                 type="primary"
                 style={{ marginLeft: 16 }}
                 loading={executionLoading}
-                // disabled={checkedList.length == 0}
                 onClick={() => {
                   setExecutionData(checkedList);
                   setExecutionTarget(false);
                 }}
               >
-                确认
+                {context.ok}
               </Button>
             </div>
           </div>

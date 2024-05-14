@@ -7,6 +7,7 @@ import {
   FormOutlined,
 } from "@ant-design/icons";
 
+// 添加自定义参数
 export const AddCustomModal = ({
   customModalType,
   addCustom,
@@ -16,6 +17,7 @@ export const AddCustomModal = ({
   setAddModalVisibility,
   updateCustomInfo,
   setUpdateCustomData,
+  context,
 }) => {
   return (
     <Modal
@@ -36,7 +38,17 @@ export const AddCustomModal = ({
             )}
           </span>
           <span>
-            {customModalType === "add" ? "添加自定义参数" : "编辑自定义参数"}
+            {customModalType === "add"
+              ? context.add +
+                context.ln +
+                context.custom +
+                context.ln +
+                context.param
+              : context.edit +
+                context.ln +
+                context.custom +
+                context.ln +
+                context.param}
           </span>
         </span>
       }
@@ -47,8 +59,8 @@ export const AddCustomModal = ({
       <Spin spinning={loading}>
         <Form
           name="custom"
-          labelCol={{ span: 4 }}
-          wrapperCol={{ span: 18 }}
+          labelCol={{ span: 5 }}
+          wrapperCol={{ span: 16 }}
           onFinish={(data) => {
             if (customModalType === "add") {
               addCustom(data);
@@ -64,44 +76,47 @@ export const AddCustomModal = ({
           }}
         >
           <Form.Item
-            label="参数名称"
+            label={context.param + context.ln + context.name}
             name="field_k"
             key="field_k"
             rules={[
               {
                 required: true,
-                message: "请输入参数名称",
+                message: context.input + context.ln + context.name,
               },
             ]}
           >
             <Input
-              placeholder={"请输入参数名称"}
+              placeholder={context.input + context.ln + context.name}
               disabled={customModalType === "update"}
               maxLength={64}
             />
           </Form.Item>
 
           <Form.Item
-            label="参数值"
+            label={context.param + context.ln + context.value}
             name="field_v"
             key="field_v"
             rules={[
               {
                 required: true,
-                message: "请输入参数值",
+                message: context.param + context.ln + context.value,
               },
             ]}
           >
             <Input.TextArea
               rows={4}
               style={{ width: 480 }}
-              placeholder={"请输入参数值"}
+              placeholder={context.param + context.ln + context.value}
               maxLength={256}
             />
           </Form.Item>
 
-          <Form.Item label="备注" name="notes" key="notes">
-            <Input placeholder={"请输入备注"} maxLength={32} />
+          <Form.Item label={context.notes} name="notes" key="notes">
+            <Input
+              placeholder={context.input + context.ln + context.notes}
+              maxLength={32}
+            />
           </Form.Item>
 
           <Form.Item
@@ -120,10 +135,10 @@ export const AddCustomModal = ({
                 });
               }}
             >
-              取消
+              {context.cancel}
             </Button>
             <Button type="primary" htmlType="submit">
-              确定
+              {context.ok}
             </Button>
           </Form.Item>
         </Form>
@@ -132,6 +147,7 @@ export const AddCustomModal = ({
   );
 };
 
+// 定义参数
 export const CustomModal = ({
   modalVisibility,
   setModalVisibility,
@@ -144,29 +160,27 @@ export const CustomModal = ({
   deleteCustomInfo,
   modalForm,
   setRow,
+  context,
 }) => {
   const [searchName, setSearchName] = useState("");
 
   const columns = [
     {
-      title: "序号",
+      title: context.row,
       key: "_idx",
       dataIndex: "_idx",
       align: "center",
       ellipsis: true,
       width: 40,
-      render: (text, record) => {
-        return text;
-      },
     },
     {
-      title: "名称",
+      title: context.name,
       key: "field_k",
       dataIndex: "field_k",
       align: "center",
       ellipsis: true,
       width: 80,
-      render: (text, record) => {
+      render: (text) => {
         return (
           <Tooltip title={text}>
             <span>{text ? text : "-"}</span>
@@ -175,21 +189,21 @@ export const CustomModal = ({
       },
     },
     {
-      title: "值",
+      title: context.value,
       key: "field_v",
       dataIndex: "field_v",
       align: "center",
       ellipsis: true,
-      width: 150,
+      width: 120,
     },
     {
-      title: "备注",
+      title: context.notes,
       key: "notes",
       dataIndex: "notes",
       align: "center",
       ellipsis: true,
-      width: 100,
-      render: (text, record) => {
+      width: 140,
+      render: (text) => {
         return (
           <Tooltip title={text}>
             <span>{text ? text : "-"}</span>
@@ -198,7 +212,7 @@ export const CustomModal = ({
       },
     },
     {
-      title: "操作",
+      title: context.action,
       width: 60,
       key: "",
       dataIndex: "",
@@ -221,14 +235,14 @@ export const CustomModal = ({
                   });
                 }}
               >
-                编辑
+                {context.edit}
               </a>
 
               <a
                 style={{ marginLeft: 10 }}
                 onClick={() => deleteCustomInfo(record.id)}
               >
-                删除
+                {context.delete}
               </a>
             </div>
           </div>
@@ -246,16 +260,13 @@ export const CustomModal = ({
           <span style={{ position: "relative", left: "-10px" }}>
             <CopyOutlined />
           </span>
-          <span>自定义参数</span>
+          <span>{context.custom + context.ln + context.parameter}</span>
         </span>
       }
       width={860}
-      onCancel={() => {
-        setModalVisibility(false);
-      }}
+      onCancel={() => setModalVisibility(false)}
       visible={modalVisibility}
       footer={null}
-      //width={1000}
       bodyStyle={{
         paddingLeft: 30,
         paddingRight: 30,
@@ -273,11 +284,9 @@ export const CustomModal = ({
         >
           <div style={{ flex: 1 }}>
             <Input
-              placeholder="请输入名称"
+              placeholder={context.input + context.ln + context.name}
               suffix={<SearchOutlined style={{ color: "#b6b6b6" }} />}
-              style={{
-                width: 220,
-              }}
+              style={{ width: 220 }}
               value={searchName}
               onChange={(e) => {
                 setSearchName(e.target.value);
@@ -314,7 +323,7 @@ export const CustomModal = ({
                   setAddModalVisibility(true);
                 }}
               >
-                添加参数
+                {context.add + context.ln + context.param}
               </Button>
             </div>
           </div>
@@ -335,7 +344,9 @@ export const CustomModal = ({
           <div
             style={{ display: "flex", justifyContent: "center", marginTop: 20 }}
           >
-            <Button onClick={() => setModalVisibility(false)}>返回</Button>
+            <Button onClick={() => setModalVisibility(false)}>
+              {context.back}
+            </Button>
           </div>
         </div>
       </Spin>

@@ -15,6 +15,16 @@ import {
   InfoCircleOutlined,
 } from "@ant-design/icons";
 
+const msgMap = {
+  "en-US": {
+    openMsg:
+      "After opening, backup tasks will be regularly executed according to regular rules",
+  },
+  "zh-CN": {
+    openMsg: "开启后，将按照定时规则自动执行备份任务",
+  },
+};
+
 export const AddStrategyModal = ({
   strategyModalType,
   addStrategy,
@@ -24,13 +34,22 @@ export const AddStrategyModal = ({
   addModalVisibility,
   setAddModalVisibility,
   canBackupIns,
-  initData,
   strategyFormInit,
   keyArr,
   setKeyArr,
   weekData,
   frequency,
   setFrequency,
+  appName,
+  setAppName,
+  noteText,
+  setNoteText,
+  customValue,
+  setCustomValue,
+  strategyForm,
+  setNoteVisibility,
+  context,
+  locale,
 }) => {
   return (
     <Modal
@@ -40,6 +59,9 @@ export const AddStrategyModal = ({
         setAddModalVisibility(false);
         setKeyArr([]);
         modalForm.setFieldsValue(strategyFormInit);
+        setAppName(null);
+        setNoteText(null);
+        setCustomValue(null);
       }}
       visible={addModalVisibility}
       title={
@@ -52,7 +74,9 @@ export const AddStrategyModal = ({
             )}
           </span>
           <span>
-            {strategyModalType === "add" ? "添加备份策略" : "编辑备份策略"}
+            {strategyModalType === "add"
+              ? context.add + context.ln + context.strategy
+              : context.edit + context.ln + context.strategy}
           </span>
         </span>
       }
@@ -63,51 +87,75 @@ export const AddStrategyModal = ({
       <Spin spinning={loading}>
         <Form
           name="strategy"
-          labelCol={{ span: 4 }}
-          wrapperCol={{ span: 18 }}
-          onFinish={(data) => {
-            if (strategyModalType === "add") {
-              addStrategy(data);
-            } else {
-              updateStrategy(data);
-            }
-          }}
+          labelCol={{ span: 5 }}
+          wrapperCol={{ span: 16 }}
           form={modalForm}
           initialValues={strategyFormInit}
         >
           <Form.Item
-            label="备份实例"
+            label={context.backup + context.ln + context.instance}
             name="backup_instances"
             key="backup_instances"
             rules={[
               {
                 required: true,
-                message: "请选择备份实例",
+                message: context.select + context.ln + context.instance,
               },
             ]}
           >
             <Select
               mode="multiple"
-              placeholder="选择实例"
+              placeholder={context.select + context.ln + context.instance}
               allowClear
               maxTagCount="responsive"
+              onChange={(e) => {
+                if (e.length === 1) {
+                  const targetAppName = e[0].split("-")[0];
+                  setAppName(targetAppName);
+                  for (let i = 0; i < canBackupIns.length; i++) {
+                    const element = canBackupIns[i];
+                    if (element.app_name === targetAppName) {
+                      setNoteText(element.note);
+                      setCustomValue(element.backup_custom);
+                      break;
+                    }
+                  }
+                } else if (e.length === 0) {
+                  setKeyArr([]);
+                  strategyForm.setFieldsValue({
+                    backup_custom: [],
+                  });
+                  setAppName(null);
+                  setNoteText(null);
+                  setCustomValue(null);
+                }
+              }}
             >
               {canBackupIns?.map((e) => {
-                return (
-                  <Select.Option key={e} value={e}>
-                    {e}
-                  </Select.Option>
-                );
+                return e.backup_instances.map((c) => {
+                  return (
+                    <Select.Option
+                      key={c}
+                      value={c}
+                      disabled={appName !== null && e.app_name !== appName}
+                    >
+                      {c}
+                    </Select.Option>
+                  );
+                });
               })}
             </Select>
           </Form.Item>
 
           <Form.Item
-            label="备份路径"
+            label={context.save + context.ln + context.path}
             key="retain_path"
             name="retain_path"
             rules={[
-              { required: true, message: "请输入备份路径" },
+              {
+                required: true,
+                message: context.input + context.ln + context.path,
+              },
               {
                 validator: (rule, value, callback) => {
                   if (value) {
@@ -122,49 +170,42 @@ export const AddStrategyModal = ({
               },
             ]}
           >
-            <Input placeholder="请输入备份路径" />
+            <Input placeholder={context.input + context.ln + context.path} />
           </Form.Item>
 
           <Form.Item
-            label="备份保留"
+            label={context.save + context.ln + context.time}
             name="retain_day"
             rules={[
               {
                 required: true,
-                message: "请选择保留策略",
+                message: context.select + context.ln + context.time,
               },
             ]}
           >
-            <Select
-              style={{
-                width: 100,
-              }}
-            >
+            <Select style={{ width: 100 }}>
               <Select.Option key={-1} value={-1}>
-                永久保留
+                {context.forever}
               </Select.Option>
               <Select.Option key={1} value={1}>
-                1天
+                1{context.day}
               </Select.Option>
               <Select.Option key={7} value={7}>
-                7天
+                7{context.days}
               </Select.Option>
               <Select.Option key={30} value={30}>
-                30天
+                30{context.days}
               </Select.Option>
             </Select>
           </Form.Item>
 
-          <Form.Item label="定时备份">
+          <Form.Item label={context.open}>
             <Input.Group compact>
               <Form.Item name="is_on" noStyle valuePropName="checked">
                 <Switch style={{ borderRadius: "10px" }} />
               </Form.Item>
               <Form.Item noStyle>
-                <Tooltip
-                  placement="top"
-                  title={"开启定时后，将自动执行定时任务"}
-                >
+                <Tooltip placement="top" title={msgMap[locale].openMsg}>
                   <InfoCircleOutlined
                     name="icon"
                     style={{
@@ -181,29 +222,23 @@ export const AddStrategyModal = ({
           </Form.Item>
 
           <Form.Item
-            label="定时策略"
-            style={{
-              height: 32,
-            }}
+            label={context.regular + context.ln + context.rule}
+            style={{ height: 32 }}
           >
             <Input.Group compact>
               <Form.Item name={["strategy", "frequency"]} noStyle>
                 <Select
-                  style={{
-                    width: 100,
-                  }}
-                  onChange={(e) => {
-                    setFrequency(e);
-                  }}
+                  style={{ width: 100 }}
+                  onChange={(e) => setFrequency(e)}
                 >
                   <Select.Option value="day" key="day">
-                    每天
+                    {context.daily}
                   </Select.Option>
                   <Select.Option value="week" key="week">
-                    每周
+                    {context.weekly}
                   </Select.Option>
                   <Select.Option value="month" key="month">
-                    每月
+                    {context.monthly}
                   </Select.Option>
                 </Select>
               </Form.Item>
@@ -213,15 +248,11 @@ export const AddStrategyModal = ({
                   name={["strategy", "week"]}
                   style={{ display: "inline-block", marginLeft: "10px" }}
                 >
-                  <Select
-                    style={{
-                      width: 120,
-                    }}
-                  >
+                  <Select style={{ width: 120 }}>
                     {weekData.map((item, idx) => {
                       return (
-                        <Select.Option value={`${idx}`} key={item}>
-                          {item}
+                        <Select.Option value={`${idx}`} key={item.value}>
+                          {item.name}
                         </Select.Option>
                       );
                     })}
@@ -234,15 +265,12 @@ export const AddStrategyModal = ({
                   name={["strategy", "month"]}
                   style={{ display: "inline-block", marginLeft: "10px" }}
                 >
-                  <Select
-                    style={{
-                      width: 120,
-                    }}
-                  >
+                  <Select style={{ width: 120 }}>
                     {new Array(28).fill(0).map((item, idx) => {
                       return (
                         <Select.Option key={`${idx + 1}`} value={`${idx + 1}`}>
-                          {idx + 1}日
+                          {idx + 1}
+                          {context.ri}
                         </Select.Option>
                       );
                     })}
@@ -254,23 +282,19 @@ export const AddStrategyModal = ({
                 name={["strategy", "time"]}
                 style={{ display: "inline-block", marginLeft: "10px" }}
               >
-                <TimePicker
-                  //defaultValue={moment("00:00", "HH:mm")}
-                  format={"HH:mm"}
-                  allowClear={false}
-                />
+                <TimePicker format={"HH:mm"} allowClear={false} />
               </Form.Item>
             </Input.Group>
           </Form.Item>
 
           <Form.Item
-            label="自定义参数"
+            label={context.custom + context.ln + context.param}
             name="backup_custom"
             key="backup_custom"
           >
             <Select
               mode="multiple"
-              placeholder="选择自定义参数"
+              placeholder={context.select + context.ln + context.parameter}
               allowClear
               maxTagCount="responsive"
               onChange={(e) => {
@@ -281,8 +305,9 @@ export const AddStrategyModal = ({
                 );
               }}
               labelInValue
+              disabled={customValue === null}
             >
-              {initData?.map((e) => {
+              {customValue?.map((e) => {
                 return (
                   <Select.Option
                     key={e.id}
@@ -321,12 +346,28 @@ export const AddStrategyModal = ({
                 setAddModalVisibility(false);
                 setKeyArr([]);
                 modalForm.setFieldsValue(strategyFormInit);
+                setAppName(null);
+                setNoteText(null);
+                setCustomValue(null);
               }}
             >
-              取消
+              {context.cancel}
             </Button>
-            <Button type="primary" htmlType="submit">
-              确定
+            <Button
+              type="primary"
+              onClick={() => {
+                if (noteText !== null) {
+                  setNoteVisibility(true);
+                } else {
+                  if (strategyModalType === "add") {
+                    addStrategy(strategyForm.getFieldsValue());
+                  } else {
+                    updateStrategy(strategyForm.getFieldsValue());
+                  }
+                }
+              }}
+            >
+              {context.ok}
             </Button>
           </Form.Item>
         </Form>

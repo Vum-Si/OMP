@@ -7,6 +7,7 @@ from db_models.mixins import TimeStampMixin, DeleteMixin
 from utils.common.exceptions import GeneralError
 from .env import Env
 from .product import ApplicationHub
+from .host import Host
 
 
 class ServiceConnectInfo(TimeStampMixin):
@@ -40,7 +41,7 @@ class ClusterInfo(TimeStampMixin, DeleteMixin):
 
     objects = None
     cluster_service_name = models.CharField(
-        "集群所属服务", max_length=36,
+        "集群所属服务", max_length=128,
         null=True, blank=True, help_text="集群所属服务")
     # 选择的集群类型
     cluster_type = models.CharField(
@@ -199,11 +200,25 @@ class Service(TimeStampMixin):
     vip = models.GenericIPAddressField(
         "vip地址", null=True, blank=True, default=None, help_text="vip地址")
 
+    # 服务的部署类型，同产品下服务相同
+    deploy_mode = models.CharField(
+        "部署模式", max_length=128,
+        null=True, blank=True, help_text="部署模式")
+
     class Meta:
         """元数据"""
         db_table = 'omp_service'
         verbose_name = verbose_name_plural = "服务实例表"
         ordering = ("-created",)
+
+    @property
+    def get_install_args(self):
+        install_dc = {}
+        detail_obj = self.detailinstallhistory_set.first()
+        install_ls = detail_obj.install_detail_args.get("install_args", [])
+        for one_install in install_ls:
+            install_dc[one_install["key"]] = one_install["default"]
+        return install_dc
 
     def update_port(self, app_ports):
         """
@@ -221,6 +236,9 @@ class Service(TimeStampMixin):
         for app_port in app_ports:
             if app_port.get("key") not in port_dict:
                 service_ports.append(app_port)
+        # ToDo Tmp临时覆盖后续删除
+        if self.service.app_name == "hadoop":
+            service_ports = app_ports
         return service_ports
 
     def update_controllers(self, application, install_folder):
@@ -311,7 +329,7 @@ class Service(TimeStampMixin):
                 dependents.append(_dict)
         return dependents
 
-    def update_application(self, application, success, install_folder):
+    def update_application(self, application, success, install_folder=None):
         """
         更新服务信息
         :param application: 服务目标app
@@ -319,18 +337,27 @@ class Service(TimeStampMixin):
         :param install_folder: 安装目录（用于更新服务命令）
         :return: self
         """
+        # hadoop统一版本
+        if application.app_name == "hadoop":
+            Service.objects.filter(service__app_name="hadoop").update(
+                service=application)
         self.service = application
         self.service_port = json.dumps(
             self.update_port(json.loads(application.app_port or '[]'))
         )
+        from app_store.new_install_utils import DeployTypeUtil
+        dependence_list = DeployTypeUtil(
+            self.service, json.loads(application.app_dependence or '[]')
+        ).get_dependence_by_deploy(self.deploy_mode)
         self.service_dependence = json.dumps(
             self.update_dependence(
                 self.service_dependence,
-                json.loads(application.app_dependence or '[]')
+                dependence_list
             )
         )
-        self.service_controllers = self.update_controllers(
-            application, install_folder)
+        if install_folder:
+            self.service_controllers = self.update_controllers(
+                application, install_folder)
         if success:
             self.service_status = self.SERVICE_STATUS_NORMAL
         else:
@@ -379,3 +406,80 @@ class ServiceHistory(models.Model):
             **kwargs
         )
         return service_history
+
+
+class CollectLogRuleHistory(models.Model):
+    IS_RUNNING = 2
+    IS_SUCCESS = 0
+    IS_FAILED = 1
+    IS_REPEAT = 3
+    IS_DIFF = 4
+    IS_NO_FILE = 5
+    LOG_STATUS_STATUS = (
+        (
+            (IS_RUNNING, "采集中"),
+            (IS_SUCCESS, "录入成功"),
+            (IS_FAILED, "采集失败"),
+            (IS_REPEAT, "数据重复"),
+            (IS_DIFF, "数据不一致"),
+            (IS_NO_FILE, "文件不存在或无需配置规则")
+
+        )
+    )
+    service_instance_name = models.CharField(
+        "服务实例名称", max_length=64,
+        null=False, blank=False, help_text="服务实例名称")
+    operation_uuid = models.CharField(
+        "采集uuid", max_length=36,
+        null=False, blank=False, help_text="采集uuid")
+    created = models.DateTimeField(
+        '发生时间', null=True, auto_now_add=True, help_text='发生时间')
+    status = models.IntegerField(
+        "采集状态", choices=LOG_STATUS_STATUS,
+        default=2, help_text="采集状态")
+    result = models.CharField(
+        "提示信息", max_length=1024, default="", help_text="提示信息")
+
+    class Meta:
+        db_table = 'omp_collect_log_history'
+        verbose_name = verbose_name_plural = '服务日志清理规则采集记录'
+
+
+class ClearLogRule(models.Model):
+    IS_ON = 1
+    IS_OFF = 0
+    LOG_STATUS_STATUS = (
+        (
+            (IS_ON, "开启"),
+            (IS_OFF, "关闭"),
+        )
+    )
+    service_instance_name = models.CharField(
+        "服务实例名称", max_length=64,
+        null=False, blank=False, help_text="服务实例名称")
+    switch = models.IntegerField(
+        "清理状态", choices=LOG_STATUS_STATUS,
+        default=0, help_text="清理状态")
+    md5 = models.CharField(
+        "md5码", max_length=64,
+        null=False, blank=False, help_text="md5码")
+    created = models.DateTimeField(
+        '发生时间', null=True, auto_now_add=True, help_text='发生时间')
+    exec_dir = models.CharField(
+        "执行路径", max_length=512,
+        null=False, blank=False, help_text="执行路径")
+    exec_type = models.CharField(
+        "规则类型", max_length=64,
+        null=False, blank=False, help_text="规则类型")
+    exec_value = models.IntegerField(
+        "策略值", default=0, help_text="策略值")
+    exec_rule = models.CharField(
+        "通配规则", max_length=64,
+        null=False, blank=False, help_text="通配规则")
+    host = models.ForeignKey(
+        Host, on_delete=models.CASCADE, help_text="主机"
+    )
+
+    class Meta:
+        db_table = 'omp_clear_log_rule'
+        verbose_name = verbose_name_plural = '服务日志清理规则'

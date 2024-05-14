@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useHistory } from "react-router-dom";
 import { Button, Checkbox, Popover } from "antd";
 import styles from "./index.module.less";
+import * as R from "ramda";
+import { locales } from "@/config/locales";
 
 const colorObj = {
   normal: {
@@ -22,14 +23,51 @@ const colorObj = {
   },
 };
 
-function OmpStateBlock(props) {
-  const history = useHistory();
-  const { title, data = [] } = props;
-  const [allData, setAllData] = useState([]);
-  //console.log(data)
-  const [currentData, setCurrentData] = useState([]);
+const popContent = (item, context) => {
+  return (
+    <div>
+      {item.info.map((i, idx) => (
+        <div className={styles.popContent} key={idx}>
+          {i.ip && (
+            <span
+              className={styles.ip}
+              style={{ color: colorObj[item.frontendStatus]?.borderColor }}
+            >
+              {i.ip}
+            </span>
+          )}
+          <span>
+            {i.date ? (
+              <span>{i.date}</span>
+            ) : (
+              <span
+                style={{ color: colorObj[item.frontendStatus]?.borderColor }}
+              >
+                {item.frontendStatus === "noMonitored"
+                  ? context.noMonitored
+                  : context.normal}
+              </span>
+            )}
+          </span>
+          {i.describe && (
+            <span>
+              {i.describe.length > 100
+                ? i.describe.slice(0, 100) + "..."
+                : i.describe.slice(0, 100)}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
 
+const OmpStateBlock = (props) => {
+  const { locale, title, data = [] } = props;
+  const [allData, setAllData] = useState([]);
+  const [currentData, setCurrentData] = useState([]);
   const [isShowAll, setIsShowAll] = useState(false);
+  const context = locales[locale].common;
 
   useEffect(() => {
     if (data && data.length > 0) {
@@ -82,7 +120,9 @@ function OmpStateBlock(props) {
       <div className={styles.checkboxGroup}>
         <span className={styles.blockTitle}>{title}</span>
         <div>
+          {/* -- 异常 -- */}
           <Checkbox
+            key="abnormal"
             defaultChecked={true}
             onChange={(e) => {
               if (e.target.checked) {
@@ -110,9 +150,12 @@ function OmpStateBlock(props) {
               }
             }}
           >
-            异常
+            {context.abnormal}
           </Checkbox>
+
+          {/* -- 正常 -- */}
           <Checkbox
+            key="normal"
             defaultChecked={true}
             onChange={(e) => {
               if (e.target.checked) {
@@ -132,10 +175,12 @@ function OmpStateBlock(props) {
               }
             }}
           >
-            正常
+            {context.normal}
           </Checkbox>
 
+          {/* -- 未监控 -- */}
           <Checkbox
+            key="noMonitored"
             defaultChecked={true}
             onChange={(e) => {
               if (e.target.checked) {
@@ -157,18 +202,21 @@ function OmpStateBlock(props) {
               }
             }}
           >
-            未监控
+            {context.noMonitored}
           </Checkbox>
 
+          {/* -- 展开/收起 -- */}
           <Button
             className={styles.dropBtn}
             size={"small"}
             onClick={() => setIsShowAll(!isShowAll)}
           >
-            {isShowAll ? "收起" : "展开"}
+            {isShowAll ? context.close : context.all}
           </Button>
         </div>
       </div>
+
+      {/* -- 悬停展示 -- */}
       {currentData.length > 0 ? (
         <div
           style={isShowAll ? {} : { maxHeight: 170, overflowY: "scroll" }}
@@ -184,7 +232,10 @@ function OmpStateBlock(props) {
                     : props.link(item);
                 }}
               >
-                <Popover content={popContent(item || {})} title={"相关信息"}>
+                <Popover
+                  content={popContent(item || {}, context)}
+                  title={context.detail}
+                >
                   <Button
                     className={styles.stateButton}
                     style={colorObj[item.frontendStatus]}
@@ -197,47 +248,10 @@ function OmpStateBlock(props) {
           })}
         </div>
       ) : (
-        <div className={styles.emptyTable}>暂无数据</div>
+        <div className={styles.emptyTable}>{context.noData}</div>
       )}
     </div>
   );
-}
+};
 
 export default OmpStateBlock;
-
-function popContent(item) {
-  return (
-    <div>
-      {item.info.map((i) => (
-        <div className={styles.popContent}>
-          {i.ip && (
-            <span
-              className={styles.ip}
-              style={{ color: colorObj[item.frontendStatus]?.borderColor }}
-            >
-              {i.ip}
-            </span>
-          )}
-          <span>
-            {i.date ? (
-              <span>{i.date}</span>
-            ) : (
-              <span
-                style={{ color: colorObj[item.frontendStatus]?.borderColor }}
-              >
-                {item.frontendStatus === "noMonitored" ? "未监控" : "正常"}
-              </span>
-            )}
-          </span>
-          {i.describe && (
-            <span>
-              {i.describe.length > 100
-                ? i.describe.slice(0, 100) + "..."
-                : i.describe.slice(0, 100)}
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}

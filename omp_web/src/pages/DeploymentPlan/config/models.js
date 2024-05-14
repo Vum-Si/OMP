@@ -15,6 +15,58 @@ import { apiRequest } from "@/config/requestApi";
 import { useState, useRef } from "react";
 import XLSX from "xlsx";
 
+const msgMap = {
+  "en-US": {
+    uploadMsg: "Click or drag the file here to upload",
+    verifyHost: "Verifying host data",
+    verifyHostPass: "Host data verification passed",
+    verifyHostFiled: "Host data verification failed",
+    verifyService: "Verifying service data",
+    verifyServicePass: "Service data verification passed",
+    verifyServiceFiled: "Service data verification failed",
+    import: "Importing template",
+    importSuccess: "Import template successful",
+    importFailed: "Import template failed",
+    waitMsg: "If waiting too long, please check host agent",
+    enterInstall: "Entering installation, please wait",
+    addTotalLeft: "Add a total of",
+    addTotalRight: "hosts",
+    importLeft: "Import a total of",
+    importBetween: "products and",
+    importRight: "services",
+    fileTureMsg: "File parsing succeed",
+    fileFalseMsg: "File parsing failed",
+    fileSizeMsg: "File size must be less than 10M",
+    fileFormatMsg: "File format must be xlsx",
+    fileNoDataMsg:
+      "There is no valid data in the file parsing result. Please check the file content",
+  },
+  "zh-CN": {
+    uploadMsg: "点击或将文件拖拽到这里上传",
+    verifyHost: "正在校验主机数据",
+    verifyHostPass: "主机数据校验通过",
+    verifyHostFiled: "主机数据校验未通过",
+    verifyService: "正在校验服务数据",
+    verifyServicePass: "服务数据校验通过",
+    verifyServiceFiled: "服务数据校验未通过",
+    import: "正在导入模板",
+    importSuccess: "导入成功",
+    importFailed: "导入失败",
+    waitMsg: "如果长时间等待，请检查主机Agent状态",
+    enterInstall: "正在进入安装，请稍候",
+    addTotalLeft: "添加共计",
+    addTotalRight: "台主机",
+    importLeft: "导入共计",
+    importBetween: "个产品和",
+    importRight: "个服务",
+    fileTureMsg: "文件解析成功",
+    fileFalseMsg: "文件解析失败",
+    fileSizeMsg: "文件大小必须小于10M",
+    fileFormatMsg: "文件格式必须为xlsx",
+    fileNoDataMsg: "文件解析结果中无有效数据，请检查文件内容",
+  },
+};
+
 const getHeaderRow = (sheet) => {
   const headers = [];
   const range = XLSX.utils.decode_range(sheet["!ref"]);
@@ -52,34 +104,26 @@ class UploadExcelComponent extends React.Component {
         const { status } = info.file;
         if (status === "done") {
           //console.log(info.file);
-          message.success(`${info.file.name} 文件解析成功`);
+          message.success(msgMap[_this.props.locale].fileTureMsg);
         } else if (status === "error") {
-          message.error(
-            `${info.file.name} 文件解析失败, 请确保文件内容格式符合规范后重新上传`
-          );
+          message.error(msgMap[_this.props.locale].fileFalseMsg);
         }
       },
       beforeUpload(file, fileList) {
-        //console.log(file);
-        // bmf.md5(file,(err,md5)=>{
-        //   console.log(err,md5,"=====?---")
-        // })
-        // 校验文件大小
+        // 校验大小
         const fileSize = file.size / 1024 / 1024; //单位是M
-        //console.log(fileSize);
         if (Math.ceil(fileSize) > 10) {
-          message.error("仅支持传入10M以内文件");
+          message.error(msgMap[_this.props.locale].fileSizeMsg);
           return Upload.LIST_IGNORE;
         }
         if (!/\.(xlsx)$/.test(file.name)) {
-          message.error("仅支持传入.xlsx文件");
+          message.error(msgMap[_this.props.locale].fileFormatMsg);
           return Upload.LIST_IGNORE;
         }
       },
       customRequest(e) {
         _this.readerData(e.file).then(
           (msg) => {
-            //console.log(e);
             e.onSuccess();
           },
           () => {
@@ -90,9 +134,6 @@ class UploadExcelComponent extends React.Component {
     };
   };
   readerData = (rawFile) => {
-    // bmf.md5(rawFile,(err,md5)=>{
-    //   console.log(err,md5,"=====?")
-    // })
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
 
@@ -143,7 +184,7 @@ class UploadExcelComponent extends React.Component {
             <CloudUploadOutlined />
           </p>
           <p style={{ textAlign: "center", color: "#575757" }}>
-            点击或将文件拖拽到这里上传
+            {msgMap[this.props.locale].uploadMsg}
           </p>
           <p
             style={{
@@ -153,7 +194,7 @@ class UploadExcelComponent extends React.Component {
               paddingTop: 10,
             }}
           >
-            支持扩展名: .xlsx
+            {this.props.context.fileExtension + ": .xlsx"}
           </p>
         </Upload.Dragger>
       </div>
@@ -162,65 +203,57 @@ class UploadExcelComponent extends React.Component {
 }
 
 /* 导入执行计划 */
-export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
+export const ImportPlanModal = ({
+  importPlan,
+  setImportPlan,
+  context,
+  locale,
+}) => {
   const history = useHistory();
   const [dataSource, setDataSource] = useState([]);
   const [columns, setColumns] = useState([]);
-
   const [serviceDataSource, setServiceDataSource] = useState([]);
   const [serviceColumns, setServiceColumns] = useState([]);
-
   const [tableCorrectData, setTableCorrectData] = useState([]);
   const [tableErrorData, setTableErrorData] = useState([]);
   const [tableColumns, setTableColumns] = useState([]);
-
   const [serviceTableCorrectData, setServiceTableCorrectData] = useState([]);
   const [serviceTableErrorData, setServiceTableErrorData] = useState([]);
   const [serviceTableColumns, setServiceTableColumns] = useState([]);
-
   // 涉及数量信息
   const [numInfo, setNumInfo] = useState({});
-
   const [stepNum, setStepNum] = useState(0);
-
   const [loading, setLoading] = useState(false);
-
   // 导入部署步骤状态
   const [hostStep, setHostStep] = useState(null);
   const [serviceStep, setServiceStep] = useState(null);
   const [importStep, setImportStep] = useState(null);
-
   // 导入部署模板状态
   const [importResult, setImportResult] = useState(null);
-
   // 主机和服务的正确数据
   let hostCorrectData = null;
   let serviceCorrectData = null;
-
   // 轮训控制器
   const hostAgentTimer = useRef(null);
 
-  // 失败的columns
+  // 主机失败的columns
   const errorColumns = [
     {
-      title: "行数",
+      title: context.row,
       key: "row",
       dataIndex: "row",
       align: "center",
-      //render: nonEmptyProcessing,
       width: 60,
       ellipsis: true,
       fixed: "left",
     },
     {
-      title: "实例名称",
+      title: context.instanceName,
       key: "instance_name",
       dataIndex: "instance_name",
       align: "center",
-      //render: nonEmptyProcessing,
       width: 120,
       ellipsis: true,
-      //fixed: "left",
       render: (text) => {
         return (
           <Tooltip title={text}>
@@ -230,11 +263,9 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
       },
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "ip",
       dataIndex: "ip",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 120,
       render: (text) => {
@@ -245,14 +276,11 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
         );
       },
       ellipsis: true,
-      //fixed: "left"
     },
     {
-      title: "端口",
+      title: context.port,
       key: "port",
       dataIndex: "port",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 80,
       render: (text) => {
@@ -262,14 +290,11 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
           </Tooltip>
         );
       },
-      //ellipsis: true,
     },
     {
-      title: "数据分区",
+      title: context.dataFolder,
       key: "data_folder",
       dataIndex: "data_folder",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 180,
       render: (text) => {
@@ -282,7 +307,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
       ellipsis: true,
     },
     {
-      title: "用户名",
+      title: context.username,
       key: "username",
       dataIndex: "username",
       align: "center",
@@ -297,7 +322,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
       ellipsis: true,
     },
     {
-      title: "运行用户",
+      title: context.runUser,
       key: "run_user",
       dataIndex: "run_user",
       align: "center",
@@ -312,12 +337,10 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
       ellipsis: true,
     },
     {
-      title: "失败原因",
+      title: context.description,
       key: "validate_error",
       dataIndex: "validate_error",
       fixed: "right",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 240,
       render: (text) => {
@@ -334,7 +357,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
   // 服务失败的columns
   const serviceErrorColumns = [
     {
-      title: "行数",
+      title: context.row,
       key: "row",
       dataIndex: "row",
       align: "center",
@@ -347,14 +370,12 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
       },
     },
     {
-      title: "实例名称",
+      title: context.instanceName,
       key: "instance_name",
       dataIndex: "instance_name",
       align: "center",
-      //render: nonEmptyProcessing,
       width: 120,
       ellipsis: true,
-      //fixed: "left",
       render: (text) => {
         return (
           <Tooltip title={text}>
@@ -364,14 +385,12 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
       },
     },
     {
-      title: "服务名称",
+      title: context.service + context.ln + context.name,
       key: "service_name",
       dataIndex: "service_name",
       align: "center",
-      //render: nonEmptyProcessing,
       width: 140,
       ellipsis: true,
-      //fixed: "left",
       render: (text) => {
         return (
           <Tooltip title={text}>
@@ -382,14 +401,12 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
     },
     ,
     {
-      title: "运行内存",
+      title: context.memory,
       key: "memory",
       dataIndex: "memory",
       align: "center",
-      //render: nonEmptyProcessing,
       width: 80,
       ellipsis: true,
-      //fixed: "left",
       render: (text) => {
         return (
           <Tooltip title={text}>
@@ -399,12 +416,10 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
       },
     },
     {
-      title: "失败原因",
+      title: context.description,
       key: "validate_error",
       dataIndex: "validate_error",
       fixed: "right",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 260,
       render: (text) => {
@@ -422,7 +437,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
   const fetchBatchValidate = () => {
     setLoading(true);
     if (dataSource.length == 0) {
-      message.warning("节点信息中无有效数据，请补充后重新上传");
+      message.warning(msgMap[locale].fileNoDataMsg);
       setHostStep(false);
       setImportResult(false);
       return;
@@ -456,6 +471,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
             result.run_user = item[key];
             break;
           case "时间同步服务器":
+            if (item[key] === "") break;
             result.use_ntpd = true;
             result.ntpd_server = item[key];
             break;
@@ -518,7 +534,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
   const serviceDataValidate = () => {
     setLoading(true);
     if (serviceDataSource.length == 0) {
-      message.warning("服务分布中无有效数据，请补充后重新上传");
+      message.warning(msgMap[locale].fileNoDataMsg);
       setServiceStep(false);
       setImportResult(false);
       return;
@@ -541,6 +557,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
     let serviceArr = serviceDataSource.map((item) => {
       let result = {};
       for (const key in item) {
+        if (item[key] === "") continue;
         switch (key) {
           case "主机实例名[必填]":
             result.instance_name = item[key];
@@ -558,7 +575,10 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
             result.role = item[key];
             break;
           case "模式":
-            result.mode = item[key];
+            result.mode = item[key].toString();
+            break;
+          case "安装参数":
+            result.install_args = item[key].toString();
             break;
           default:
             break;
@@ -652,7 +672,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                   message.destroy();
                 }}
               >
-                [关闭]
+                [{context.close}]
               </a>
             </>,
             0
@@ -715,7 +735,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
               pathname: "/application_management/app_store/installation",
               state: {
                 uniqueKey: operation_uuid,
-                step: 3,
+                step: 4,
               },
             });
           }
@@ -784,7 +804,13 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
           <span style={{ position: "relative", left: "-10px" }}>
             <ImportOutlined />
           </span>
-          <span>导入部署模板</span>
+          <span>
+            {context.import +
+              context.ln +
+              context.deployment +
+              context.ln +
+              context.template}
+          </span>
         </span>
       }
       visible={importPlan}
@@ -814,10 +840,13 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
       }}
       destroyOnClose
     >
+      {/* -- 顶部步骤条 -- */}
       <Steps size="small" current={stepNum}>
-        <Steps.Step title="上传文件" />
-        <Steps.Step title="导入结果" />
+        <Steps.Step title={context.upload + context.ln + context.file} />
+        <Steps.Step title={context.result} />
       </Steps>
+
+      {/* -- step1 上传文件 -- */}
       <div style={{ paddingLeft: 10, paddingTop: 30 }}>
         <div
           style={{
@@ -826,9 +855,12 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
             overflow: "hidden",
           }}
         >
+          {/* -- 下载模板 -- */}
           <div style={{ display: "flex", alignItems: "center" }}>
-            <div style={{ flex: 1, fontWeight: 500 }}>下载模版: </div>
-            <div style={{ flex: 10, paddingLeft: 20 }}>
+            <div style={{ flex: 2, fontWeight: 500, textAlign: "right" }}>
+              {context.downloadTemplate + ":"}
+            </div>
+            <div style={{ flex: 16, paddingLeft: 20 }}>
               <Button
                 icon={<DownloadOutlined />}
                 size="middle"
@@ -841,15 +873,21 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                   document.body.removeChild(a);
                 }}
               >
-                点击下载
+                {context.template}
               </Button>
             </div>
           </div>
+
+          {/* -- 上传文件 -- */}
           <div style={{ display: "flex", marginTop: 30 }}>
-            <div style={{ flex: 1, fontWeight: 500 }}>上传文件: </div>
-            <div style={{ flex: 10, paddingLeft: 20 }}>
+            <div style={{ flex: 2, fontWeight: 500, textAlign: "right" }}>
+              {context.uploadFile + ":"}
+            </div>
+            <div style={{ flex: 16, paddingLeft: 20 }}>
               {importPlan && (
                 <UploadExcelComponent
+                  context={context}
+                  locale={locale}
                   onRemove={() => {
                     setDataSource([]);
                     setColumns([]);
@@ -927,12 +965,14 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                   type="primary"
                   disabled={columns.length == 0}
                 >
-                  开始导入
+                  {context.import}
                 </Button>
               </div>
             </div>
           </div>
         </div>
+
+        {/* -- step1 结果 -- */}
         {stepNum == 1 && (
           <>
             <div
@@ -944,6 +984,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                 flexDirection: "column",
               }}
             >
+              {/* -- 主机校验 -- */}
               <p
                 style={{
                   display: "flex",
@@ -953,13 +994,8 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
               >
                 {hostStep === null && (
                   <>
-                    <SyncOutlined
-                      spin
-                      style={{
-                        marginRight: 16,
-                      }}
-                    />
-                    正在校验主机数据 ...
+                    <SyncOutlined spin style={{ marginRight: 16 }} />
+                    {msgMap[locale].verifyHost + "..."}
                   </>
                 )}
                 {hostStep === true && (
@@ -971,7 +1007,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                         marginRight: 10,
                       }}
                     />
-                    主机数据校验通过
+                    {msgMap[locale].verifyHostPass}
                   </>
                 )}
                 {hostStep === false && (
@@ -983,11 +1019,12 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                         marginRight: 10,
                       }}
                     />
-                    主机数据校验未通过
+                    {msgMap[locale].verifyHostFiled}
                   </>
                 )}
               </p>
 
+              {/* -- 服务校验 -- */}
               {hostStep && (
                 <p
                   style={{
@@ -998,13 +1035,8 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                 >
                   {serviceStep === null && (
                     <>
-                      <SyncOutlined
-                        spin
-                        style={{
-                          marginRight: 16,
-                        }}
-                      />
-                      正在校验服务数据 ...
+                      <SyncOutlined spin style={{ marginRight: 16 }} />
+                      {msgMap[locale].verifyService + "..."}
                     </>
                   )}
                   {serviceStep === true && (
@@ -1016,7 +1048,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                           marginRight: 10,
                         }}
                       />
-                      服务数据校验通过
+                      {msgMap[locale].verifyServicePass}
                     </>
                   )}
                   {serviceStep === false && (
@@ -1028,12 +1060,13 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                           marginRight: 10,
                         }}
                       />
-                      服务数据校验未通过
+                      {msgMap[locale].verifyServiceFiled}
                     </>
                   )}
                 </p>
               )}
 
+              {/* -- 模板导入结果 -- */}
               {serviceStep && (
                 <p
                   style={{
@@ -1050,7 +1083,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                           marginRight: 16,
                         }}
                       />
-                      正在导入模板 ...
+                      {msgMap[locale].import + "..."}
                     </>
                   )}
                   {importStep === true && (
@@ -1062,7 +1095,7 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                           marginRight: 10,
                         }}
                       />
-                      部署模板导入成功
+                      {msgMap[locale].importSuccess}
                     </>
                   )}
                   {importStep === false && (
@@ -1074,12 +1107,13 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                           marginRight: 10,
                         }}
                       />
-                      部署模板导入失败
+                      {msgMap[locale].importFailed}
                     </>
                   )}
                 </p>
               )}
 
+              {/* -- 主机错误信息表格 -- */}
               {tableErrorData.length > 0 && (
                 <Table
                   bordered
@@ -1090,12 +1124,11 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                       ? tableErrorData
                       : tableCorrectData
                   }
-                  pagination={{
-                    pageSize: 5,
-                  }}
+                  pagination={{ pageSize: 5 }}
                 />
               )}
 
+              {/* -- 服务错误信息表格 -- */}
               {serviceTableErrorData.length > 0 && (
                 <Table
                   bordered
@@ -1106,32 +1139,65 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                       ? serviceTableErrorData
                       : serviceTableCorrectData
                   }
-                  pagination={{
-                    pageSize: 5,
-                  }}
+                  pagination={{ pageSize: 5 }}
                 />
               )}
 
+              {/* -- 导入 -- */}
               {importStep && (
                 <>
                   <p style={{ textAlign: "center" }}>
-                    成功创建 {numInfo.host_num} 台主机
+                    {msgMap[locale].addTotalLeft +
+                      " " +
+                      numInfo.host_num +
+                      " " +
+                      msgMap[locale].addTotalRight}
                   </p>
                   <p style={{ textAlign: "center" }}>
-                    本次共导入 {numInfo.product_num} 个产品，
-                    {numInfo.service_num} 个服务
+                    {msgMap[locale].importLeft +
+                      " " +
+                      numInfo.product_num +
+                      " " +
+                      msgMap[locale].importBetween +
+                      " " +
+                      numInfo.service_num +
+                      " " +
+                      msgMap[locale].importRight}
                   </p>
                 </>
               )}
             </div>
 
+            {/* -- 长时间等待提示 -- */}
+            {importResult && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "column",
+                  marginTop: 36,
+                }}
+              >
+                <p
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: 14,
+                  }}
+                >
+                  {msgMap[locale].waitMsg}
+                </p>
+              </div>
+            )}
+
+            {/* -- 进入安装提示 -- */}
             {importResult && (
               <div
                 style={{
                   display: "inline-block",
                   marginLeft: "50%",
                   transform: "translateX(-50%)",
-                  marginTop: 40,
                 }}
               >
                 <p
@@ -1147,27 +1213,26 @@ export const ImportPlanModal = ({ importPlan, setImportPlan }) => {
                       marginRight: 16,
                     }}
                   />
-                  即将进入安装，请稍后 ...
+                  {msgMap[locale].enterInstall + "..."}
                 </p>
               </div>
             )}
 
+            {/* -- 导入失败 -- */}
             {importResult === false && (
               <div
                 style={{
                   display: "inline-block",
                   marginLeft: "50%",
                   transform: "translateX(-50%)",
-                  marginTop: 40,
+                  marginTop: 30,
                 }}
               >
                 <Button
                   style={{ marginRight: 16 }}
-                  onClick={() => {
-                    setStepNum(0);
-                  }}
+                  onClick={() => setStepNum(0)}
                 >
-                  重新上传
+                  {context.back}
                 </Button>
               </div>
             )}

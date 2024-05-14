@@ -103,15 +103,17 @@ class ScanFile:
                 operation_user="admin"
             )
             log_print("后台安装包扫描提交至omp")
+            count = 0
             result = True
             while result:
                 valid_uuids = UploadPackageHistory.objects.filter(
                     operation_uuid=uuid,
                     package_parent__isnull=True,
                 ).exclude(
-                    package_status__in=[2, 5])
-                if len(exec_name) != valid_uuids.count():
+                    package_status__in=[2, 5, 0])
+                if len(exec_name) != valid_uuids.count() and count <= 180:
                     log_print("后台扫描中")
+                    count += 1
                     time.sleep(5)
                 # elif 4 in valid_uuids.values_list("package_status", flat=True):
                 #    log_print("后台扫描校验失败")

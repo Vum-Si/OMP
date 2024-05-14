@@ -31,9 +31,10 @@ from utils.prometheus.target_service_kafka import ServiceKafkaCrawl
 from utils.prometheus.target_service_nacos import ServiceNacosCrawl
 from utils.prometheus.target_service_rocketmq import ServiceRocketmqCrawl
 from utils.prometheus.target_service_zookeeper import ServiceZookeeperCrawl
+from utils.prometheus.target_service_redisgraph import ServiceRedisgraphCrawl
+from utils.prometheus.target_service_cloudpangudb import ServiceCloudPanguDBCrawl
 
 logger = logging.getLogger("server")
-
 
 open_source_class_dict = {
     "arangodb": ServiceArangodbCrawl,
@@ -55,7 +56,9 @@ open_source_class_dict = {
     "redis": ServiceRedisCrawl,
     "rocketmq": ServiceRocketmqCrawl,
     "tengine": ServiceTengineCrawl,
-    "zookeeper": ServiceZookeeperCrawl
+    "zookeeper": ServiceZookeeperCrawl,
+    "redisgraph": ServiceRedisgraphCrawl,
+    "CloudPanguDB": ServiceCloudPanguDBCrawl,
 }
 
 
@@ -78,6 +81,31 @@ def get_port_and_status(i):
     return [service_port, list(set(service_ports)), service_status]
 
 
+def is_monitor(i):
+    """
+    判断服务是否被监控
+    return: True  #监控
+    return: False  #未监控
+    """
+    service_port_ls = json.loads(i.get('service_port')) if i.get('service_port') else []
+    app_monitor = i.get('service__app_monitor', {})
+    if app_monitor == {} or not app_monitor:
+        return False
+    if app_monitor.get("process_name"):
+        return True
+    if isinstance(app_monitor.get("metric_port"), str):
+        _metric_port_key = app_monitor.get(
+            "metric_port", "").replace("{", "").replace("}", "")
+    elif isinstance(app_monitor.get("metric_port"), dict):
+        _metric_port_key = list(app_monitor.get("metric_port", {}).keys())[0]
+    else:
+        _metric_port_key = None
+    for item in service_port_ls:
+        if item.get("key") == _metric_port_key:
+            return True if item.get("default") else False
+    return False
+
+
 def _joint(i, ret, basics, service_port, service_ports, service_status):
     """
      组件巡检 统一数据组装
@@ -89,9 +117,16 @@ def _joint(i, ret, basics, service_port, service_ports, service_status):
     "desc: service_ports" 服务全部的端口
     """
     basic = [
-        {"name": "port_status", "name_cn": "监听端口", "value": service_ports},
-        {"name": "IP", "name_cn": "IP地址", "value": i.get('ip')},
-    ] + basics
+                {"name": "port_status", "name_cn": "监听端口", "value": service_ports},
+                {"name": "IP", "name_cn": "IP地址", "value": i.get('ip')},
+            ] + basics
+    service_status_dict = {1: "正常", 0: "停止"}
+    new_service_status = ''
+    if is_monitor(i):
+        try:
+            new_service_status = service_status_dict[int(ret["service_status"])]
+        except Exception as e:
+            new_service_status = service_status
     return {
         'id': random.randint(1, 99999999),
         'host_ip': i.get('ip'),
@@ -102,7 +137,7 @@ def _joint(i, ret, basics, service_port, service_ports, service_status):
         "run_time": ret.get('run_time', '-'),
         "service_name": i.get('service_instance_name'),
         "service_port": service_port,
-        "service_status": service_status,
+        "service_status": new_service_status or service_status,
         "service_type": "2",
         "basic": basic
     }
@@ -116,7 +151,7 @@ def target_service_thread(env, i):
     """
     # 获取每个服务的端口信息及服务状态
     _port_status = get_port_and_status(i)
-    if i.get('service__app_monitor', {}).get('type') == 'JavaSpringBoot':
+    if i.get('service__app_monitor') and i.get('service__app_monitor', {}).get('type') in ['JavaSpringBoot', 'Python']:
         _ = ServiceBase(env.name, i.get('ip'),
                         f'{i.get("service__app_name")}Exporter')
         _.run()

@@ -4,13 +4,12 @@ import {
   MenuFoldOutlined,
   DashboardOutlined,
   CaretDownOutlined,
-  QuestionCircleOutlined,
   CaretUpOutlined,
 } from "@ant-design/icons";
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import img from "@/config/logo/logo.svg";
 import styles from "./index.module.less";
-import routerConfig from "@/config/router.config";
+import getRouterConfig from "@/config/router.config";
 import { useHistory, useLocation } from "react-router-dom";
 import { CustomBreadcrumb, OmpModal } from "@/components";
 import { fetchGet, fetchPost } from "@/utils/request";
@@ -25,6 +24,7 @@ import {
 import { useDispatch } from "react-redux";
 import { getSetViewSizeAction } from "./store/actionsCreators";
 import { getMaintenanceChangeAction } from "@/pages/SystemManagement/store/actionsCreators";
+import { locales } from "@/config/locales";
 
 const { Header, Content, Footer, Sider } = Layout;
 const { SubMenu } = Menu;
@@ -45,33 +45,36 @@ const OmpLayout = (props) => {
     "/product-settings",
     "/system-settings",
   ];
-
-  const headerLink = [
-    // { title: "仪表盘", path: "/homepage" },
-    // { title: "应用商店", path: "/application_management/app_store" },
-    { title: "快速部署", path: "/application_management/deployment-plan" },
-    // { title: "数据上传", path: "/products-management/version/upload" },
-    // { title: "深度分析", path: "/operation-management/report" },
-    {
-      title: "监控平台",
-      path: "/proxy/v1/grafana/d/XrwAXz_Mz/mian-ban-lie-biao",
-    },
-  ];
-
   const [currentOpenedKeys, setCurrentOpenedKeys] = useState([]);
   const [selectedKeys, setSelectedKeys] = useState([]);
   //修改密码弹框
   const [showModal, setShowModal] = useState(false);
   //用户相关信息
   const [userInfo, setUserInfo] = useState({});
+  const context = locales[props.locale];
+  const comContext = context.common;
+  const headerLink = [
+    {
+      title: context.menu.top.deployment,
+      path: "/application_management/deployment-plan",
+    },
+    {
+      title: context.menu.top.grafana,
+      path: "/proxy/v1/grafana/d/XrwAXz_Mz/mian-ban-lie-biao",
+    },
+    // {
+    //   title: context.menu.top.container,
+    //   path: "/container-service",
+    // },
+  ];
 
   const menu = (
     <Menu className="menu">
-      <Menu.Item key="changePass" onClick={() => setShowModal(true)}>
-        修改密码
+      <Menu.Item key="changePassword" onClick={() => setShowModal(true)}>
+        {context.menu.top.user.changePassword}
       </Menu.Item>
       <Menu.Item key="logout" onClick={() => logout()}>
-        <span>退出登录</span>
+        {context.menu.top.user.logout}
       </Menu.Item>
     </Menu>
   );
@@ -81,7 +84,6 @@ const OmpLayout = (props) => {
   };
 
   const onPathChange = (e) => {
-    //console.log(e);
     if (e.key === history.location.pathname) {
       return;
     }
@@ -96,7 +98,6 @@ const OmpLayout = (props) => {
     const latestOpenKey = openKeys.find(
       (key) => currentOpenedKeys.indexOf(key) === -1
     );
-    //console.log(latestOpenKey)
     if (rootSubmenuKeys.indexOf(latestOpenKey) === -1) {
       setCurrentOpenedKeys(openKeys);
     } else {
@@ -115,7 +116,6 @@ const OmpLayout = (props) => {
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          console.log(res);
           if (res.code == 0) {
             message.success("修改密码成功, 请重新登录");
             setShowModal(false);
@@ -135,7 +135,6 @@ const OmpLayout = (props) => {
   useEffect(() => {
     try {
       let pathArr = location.pathname.split("/");
-      console.log(pathArr);
       if (pathArr[1] == "homepage") {
         setSelectedKeys(["/homepage"]);
       } else {
@@ -221,6 +220,7 @@ const OmpLayout = (props) => {
         onCollapse={toggle}
         collapsedWidth={50}
       >
+        {/* -- 页面 logo -- */}
         <div
           style={{
             position: "relative",
@@ -229,7 +229,6 @@ const OmpLayout = (props) => {
             height: 60,
             color: "white",
             justifyContent: "center",
-            // /marginBottom:10,
             backgroundColor: "#151a21",
           }}
         >
@@ -249,28 +248,23 @@ const OmpLayout = (props) => {
               }}
               onClick={() => history.push("/homepage")}
             >
-              {/* 运维管理平台 */}
-              运维工具包
+              {context.name}
             </div>
           )}
         </div>
+
+        {/* -- 左侧导航栏 -- */}
         <Menu
           mode="inline"
           style={{
             height: "calc(100% - 60px)",
-            //paddingTop:3,
-            // borderRight: "1px solid #d7d9e1",
             color: "rgba(0,0,0,0.65)",
             overflowY: "auto",
-            // position:"fixed",
-            // zIndex:1000,
           }}
-          //theme="dark"
           onClick={onPathChange}
           onOpenChange={onOpenChange}
           openKeys={currentOpenedKeys}
           selectedKeys={selectedKeys}
-          //theme="red"
           expandIcon={(e) => {
             if (e.isOpen) {
               return <CaretUpOutlined />;
@@ -282,9 +276,9 @@ const OmpLayout = (props) => {
           }}
         >
           <Menu.Item key="/homepage" icon={<DashboardOutlined />}>
-            仪表盘
+            {context.menu.left.dashboard}
           </Menu.Item>
-          {routerConfig.map((item) => {
+          {getRouterConfig(context).map((item) => {
             return (
               <SubMenu
                 key={item.menuKey}
@@ -301,7 +295,9 @@ const OmpLayout = (props) => {
           })}
         </Menu>
       </Sider>
+
       <Layout className="site-layout" style={{ width: "100%" }}>
+        {/* -- 顶部导航栏 -- */}
         <Header
           className="site-layout-background"
           style={{
@@ -315,6 +311,7 @@ const OmpLayout = (props) => {
             marginLeft: collapsed ? 49 : 199,
           }}
         >
+          {/* -- 顶部左侧路由 -- */}
           <div style={{ display: "flex" }}>
             {headerLink.map((item, idx) => {
               return (
@@ -325,14 +322,17 @@ const OmpLayout = (props) => {
                       : { cursor: disabled ? "not-allowed" : null }
                   }
                   className={
-                    !disabled || item.title === "快速部署"
+                    !disabled || item.title === context.menu.top.deployment
                       ? styles.headerLink
                       : styles.headerLinkNohover
                   }
                   key={idx}
                   onClick={() => {
-                    if (!disabled || item.title === "快速部署") {
-                      if (item.title === "监控平台") {
+                    if (
+                      !disabled ||
+                      item.title === context.menu.top.deployment
+                    ) {
+                      if (item.title === context.menu.top.grafana) {
                         window.open(
                           "/proxy/v1/grafana/d/XrwAXz_Mz/mian-ban-lie-biao"
                         );
@@ -347,10 +347,36 @@ const OmpLayout = (props) => {
               );
             })}
           </div>
+
+          {/* -- 顶部右侧 -- */}
           <div
             className={styles.userAvatar}
             style={{ display: "flex", position: "relative", top: 2 }}
           >
+            {/* -- 中英文切换 -- */}
+            <div
+              style={{
+                height: "50%",
+                position: "absolute",
+                top: "50%",
+                transform: "translateY(-50%)",
+                display: "flex",
+                alignItems: "center",
+                right: 160,
+                fontWeight: 500,
+                fontSize: 14,
+                cursor: "pointer",
+                padding: "0px 10px 0px 10px",
+                border: "1px solid white",
+              }}
+              onClick={() => {
+                props.setLocale(props.locale === "en-US" ? "zh-CN" : "en-US");
+              }}
+            >
+              {props.locale === "en-US" ? "Chinese" : "English"}{" "}
+            </div>
+
+            {/* -- 当前用户 -- */}
             <Dropdown overlay={menu} trigger={["click"]}>
               <div
                 style={{
@@ -367,29 +393,23 @@ const OmpLayout = (props) => {
                 />
               </div>
             </Dropdown>
-            <Dropdown
-              trigger={["click"]}
-              placement="bottomCenter"
-              overlay={
-                <Menu className="menu">
-                  <Menu.Item>版本信息：V1.1</Menu.Item>
-                </Menu>
-              }
+
+            {/* -- 版本号 -- */}
+            <div
+              style={{
+                margin: "0 25px 0 22px",
+                display: "flex",
+                alignItems: "center",
+                fontSize: 14,
+              }}
             >
-              <div
-                style={{
-                  margin: "0 25px 0 22px",
-                  display: "flex",
-                  alignItems: "center",
-                  fontSize: 14,
-                }}
-              >
-                <QuestionCircleOutlined />
-              </div>
-            </Dropdown>
+              V2.0.0
+            </div>
           </div>
         </Header>
-        <CustomBreadcrumb collapsed={collapsed} />
+
+        {/* -- 头部面包屑 -- */}
+        <CustomBreadcrumb collapsed={collapsed} locale={props.locale} />
         <Content style={{ margin: "0 16px", color: "rgba(0,0,0,0.65)" }}>
           <div
             style={{
@@ -415,39 +435,41 @@ const OmpLayout = (props) => {
             {props.children}
           </div>
         </Content>
-        <Footer
+
+        {/* -- 底部 -- */}
+        {/* <Footer
           style={{
             backgroundColor: "rgba(0,0,0,0)",
             textAlign: "center",
-            height: 30,
+            // height: 20,
             padding: 0,
             paddingTop: 0,
             paddingLeft: 195,
           }}
         >
-          Copyright © 2020-2023 Cloudwise.All Rights Reserved{" "}
-        </Footer>
+          Copyright © 2020-2025 Cloudwise.All Rights Reserved{" "}
+        </Footer> */}
       </Layout>
+
+      {/* -- 修改密码 modal -- */}
       <OmpModal
+        title={comContext.change + comContext.ln + comContext.password}
         loading={isLoading}
         onFinish={onPassWordChange}
         visibleHandle={[showModal, setShowModal]}
-        title="修改密码"
-        beForeOk={() => {
-          flag.current = true;
-        }}
-        afterClose={() => {
-          flag.current = null;
-        }}
+        beForeOk={() => (flag.current = true)}
+        afterClose={() => (flag.current = null)}
+        context={comContext}
       >
         <Form.Item
-          label="当前密码"
+          label={comContext.currentPassword}
           name="old_password"
           key="old_password"
           rules={[
             {
               required: true,
-              message: "请输入当前用户密码",
+              message:
+                comContext.input + comContext.ln + comContext.currentPassword,
             },
             {
               validator: (rule, value, callback) => {
@@ -469,17 +491,23 @@ const OmpLayout = (props) => {
             },
           ]}
         >
-          <Input.Password placeholder="请输入当前密码" />
+          <Input.Password
+            placeholder={
+              comContext.input + comContext.ln + comContext.currentPassword
+            }
+          />
         </Form.Item>
+
         <Form.Item
-          label="新密码"
+          label={comContext.newPassword}
           name="new_password1"
           key="new_password1"
           useforminstanceinvalidator="true"
           rules={[
             {
               required: true,
-              message: "请输入新密码",
+              message:
+                comContext.input + comContext.ln + comContext.newPassword,
             },
             {
               validator: (rule, value, callback, passwordModalForm) => {
@@ -504,17 +532,22 @@ const OmpLayout = (props) => {
             },
           ]}
         >
-          <Input.Password placeholder="请设置新密码" />
+          <Input.Password
+            placeholder={
+              comContext.input + comContext.ln + comContext.newPassword
+            }
+          />
         </Form.Item>
+
         <Form.Item
-          label="确认密码"
+          label={comContext.confirmPassword}
           name="new_password2"
           key="new_password2"
           useforminstanceinvalidator="true"
           rules={[
             {
               required: true,
-              message: "请再次输入新密码",
+              message: comContext.confirmPassword,
             },
             {
               validator: (rule, value, callback, passwordModalForm) => {
@@ -544,7 +577,7 @@ const OmpLayout = (props) => {
             },
           ]}
         >
-          <Input.Password placeholder="请再次输入新密码" />
+          <Input.Password placeholder={comContext.confirmPassword} />
         </Form.Item>
       </OmpModal>
     </Layout>

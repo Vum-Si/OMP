@@ -91,7 +91,7 @@ def service_splitting(doim_ids):
         try:
             Service.objects.filter(
                 service_instance_name=f"{name}{sub_name}"
-            ).update(service_instance_name=f"{base_name}{sub_name}")
+            ).update(service_instance_name=f"{base_name}{sub_name}").update(service_split=1)
             Host.objects.filter(ip=ip).update(
                 service_num=F("service_num") + len(split_service_ids)
             )

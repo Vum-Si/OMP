@@ -16,15 +16,20 @@ class SelfHealingSettingSerializer(BulkSerializerMixin, ModelSerializer):
         list_serializer_class = BulkListSerializer
 
     def validate(self, attrs):
-        repair_ls = SelfHealingSetting.objects.all().values_list("repair_instance", flat=True)
+        repair_instance = attrs.get("repair_instance", [])
+        request = self.context.get('request')
+        repair_objs = SelfHealingSetting.objects.all()
+        if request.method in ['PUT', 'PATCH']:
+            ignore_id = request.path.split("/")[-2]
+            repair_ls = repair_objs.exclude(id=ignore_id).values_list("repair_instance", flat=True)
+        else:
+            repair_ls = repair_objs.values_list("repair_instance", flat=True)
         repairs = []
         for _ in repair_ls:
             repairs.extend(_)
-        repeat = set(repairs) & set(attrs["repair_instance"])
+        repeat = set(repairs) & set(repair_instance)
         if repeat:
             raise ValidationError(f"服务不可重复{repeat}")
-        if "all" in repairs:
-            raise ValidationError(f"all服务不可再次添加其他服务")
         return attrs
 
 

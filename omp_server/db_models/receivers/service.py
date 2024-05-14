@@ -1,10 +1,11 @@
-from django.db.models.signals import pre_delete, post_save
+from django.db.models.signals import pre_delete, post_delete, post_save
 from django.dispatch import receiver
 
 from db_models.mixins import UpgradeStateChoices, RollbackStateChoices
 from db_models.models import Service, MainInstallHistory, \
     ExecutionRecord, UpgradeHistory, RollbackHistory, UpgradeDetail, \
-    RollbackDetail, DetailInstallHistory, SelfHealingSetting
+    RollbackDetail, DetailInstallHistory, ServiceHistory, Host, \
+    ClusterInfo, Product, SelfHealingSetting, SelfHealingHistory
 from utils.plugin.crontab_utils import change_task
 
 
@@ -64,6 +65,36 @@ def update_execution_record(sender, instance, *args, **kwargs):
             update_upgrade_history(history, union_server)
     # 删除安装记录, 修复卸载产品再重试安装
     DetailInstallHistory.objects.filter(service=instance).delete()
+    service_history_obj = ServiceHistory.objects.filter(
+        service=instance)
+    if len(service_history_obj) != 0:
+        service_history_obj.delete()
+
+
+@receiver(post_delete, sender=Service)
+def update_service_cluster(sender, instance, *args, **kwargs):
+    count = Service.objects.filter(ip=instance.ip).count()
+    Host.objects.filter(ip=instance.ip).update(
+        service_num=count)
+    # 当服务被删除时，应该将其所在的集群都连带删除
+    # ToDo 并发删除时报错
+    try:
+        if instance.cluster and Service.objects.filter(
+                cluster=instance.cluster
+        ).count() == 0:
+            ClusterInfo.objects.filter(
+                id=instance.cluster.id
+            ).delete()
+        # 当服务被删除时，如果他所属的产品下已没有其他服务，那么应该删除产品实例
+        if Service.objects.filter(
+                service__product=instance.service.product
+        ).count() == 0:
+            Product.objects.filter(
+                product=instance.service.product
+            ).delete()
+    except Exception as e:
+        return
+
 
 @receiver(post_save, sender=SelfHealingSetting)
 def update_self_health(sender, instance, *args, **kwargs):
@@ -85,3 +116,12 @@ def delete_self_health(sender, instance, *args, **kwargs):
     }
     change_task(instance.id, data=data)
 
+
+@receiver(post_save, sender=SelfHealingHistory)
+def update_service_status(sender, instance, *args, **kwargs):
+    ser_obj = Service.objects.filter(service_instance_name=instance.instance_name).first()
+    if not ser_obj:
+        return
+    ser_obj.service_status = Service.SERVICE_STATUS_NORMAL if \
+        instance.state == SelfHealingHistory.HEALING_SUCCESS else Service.SERVICE_STATUS_STOP
+    ser_obj.save()

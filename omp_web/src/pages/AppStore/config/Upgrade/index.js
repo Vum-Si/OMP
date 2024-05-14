@@ -1,17 +1,14 @@
 // 服务的升级和回滚
 import { useHistory, useLocation } from "react-router-dom";
-// import { getTabKeyChangeAction } from "../../store/actionsCreators";
-import { useDispatch } from "react-redux";
-import { Steps } from "antd";
-import { useState } from "react";
 import styles from "./index.module.less";
 
 import { LeftOutlined } from "@ant-design/icons";
-import Content from "./content/index.js"
-// 安装页面
-const Upgrade = () => {
-  // const dispatch = useDispatch();
+import Content from "./content/index.js";
+import { locales } from "@/config/locales";
+
+const Upgrade = ({ locale }) => {
   const history = useHistory();
+  const context = locales[locale].common;
 
   return (
     <div>
@@ -39,11 +36,11 @@ const Upgrade = () => {
               });
             }}
           />
-          服务升级
+          {context.upgrade}
         </div>
         <div />
       </div>
-      <Content />
+      <Content context={context} locale={locale} />
     </div>
   );
 };

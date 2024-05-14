@@ -7,17 +7,22 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer, ListSerializer, \
     Serializer
 
-from db_models.models import Host, MonitorUrl, Alert, Maintain, Service, Rule, AlertRule, WaitSelfHealing
+from db_models.models import Host, MonitorUrl, Alert, \
+    Maintain, Service, Rule, AlertRule, WaitSelfHealing, AlertSettings
 from promemonitor.alert_util import AlertAnalysis
 from promemonitor.alertmanager import Alertmanager
 from promemonitor.tasks import monitor_agent_restart
+from promemonitor.alert_doem import RequestAlert
 from utils.common.exceptions import OperateError
 from utils.common.serializers import HostIdsSerializer
+from utils.parse_config import ALERT_LOG
 from utils.common.validators import (
     NoEmojiValidator, NoChineseValidator
 )
+from rest_framework_bulk import BulkSerializerMixin, BulkListSerializer
 
 logger = logging.getLogger('server')
+a_logger = logging.getLogger('alert')
 
 
 class MonitorUrlListSerializer(ListSerializer):
@@ -211,6 +216,8 @@ class ReceiveAlertSerializer(Serializer):
 
     def create(self, validated_data):
         alerts = validated_data.get('alerts')
+        # alert_obj_list = []
+        doem_alert = []
         for ele in alerts:
             alert_analysis = AlertAnalysis(ele)
             alert_info = alert_analysis()
@@ -218,17 +225,18 @@ class ReceiveAlertSerializer(Serializer):
                 continue
             if alert_info.get('status') != 'firing':
                 continue
+            doem_alert.append(alert_info)
             alert = Alert(
-                is_read=0,
+                # is_read=0,
                 alert_type=alert_info.get('alert_type'),
                 alert_host_ip=alert_info.get('alert_host_ip'),
                 alert_service_name=alert_info.get('alert_service_name'),
                 alert_instance_name=alert_info.get('alert_instance_name'),
-                alert_service_type='',  # TODO 暂时拿不到值
+                alert_service_type=alert_info.get('alert_service_type'),
                 alert_level=alert_info.get('alert_level'),
                 alert_describe=alert_info.get('alert_describe'),
                 alert_receiver=alert_info.get('alert_receiver'),
-                alert_resolve='',  # TODO 待后续
+                # alert_resolve='',  # TODO 待后续
                 alert_time=alert_info.get('alert_time'),
                 create_time=datetime.datetime.now().strftime(
                     "%Y-%m-%d %H:%M:%S"),
@@ -238,9 +246,16 @@ class ReceiveAlertSerializer(Serializer):
                 # env='default'  # TODO 此版本默认不赋值
             )
             alert.save()
-            # TODO service_name暂时为告警类型
-            service_name = alert_info.get('alert_type')
+            service_name = alert_info.get('alert_service_name') if \
+                alert_info.get('alert_service_name') else alert_info.get('alert_host_ip')
             WaitSelfHealing.objects.create(repair_ser=alert_info, service_name=service_name)
+            # alert_obj_list.append(alert.id)
+            if ALERT_LOG:
+                a_logger.info(
+                    f"[{alert_info.get('alertname')}]"
+                    f"[{alert_info.get('alert_level')}]"
+                    f"[{alert_info.get('alert_describe')}]"
+                )
             if alert_info.get('alert_type') == 'host':
                 Host.objects.filter(ip=alert_info.get('alert_host_ip')).update(
                     alert_num=F("alert_num") + 1)
@@ -248,8 +263,14 @@ class ReceiveAlertSerializer(Serializer):
                 Service.objects.filter(service_instance_name=alert_info.get(
                     'alert_instance_name')).filter(
                     ip=alert_info.get('alert_host_ip')).update(
-                    service_status=Service.SERVICE_STATUS_STOP,
+                    # service_status=Service.SERVICE_STATUS_STOP,
                     alert_count=F("alert_count") + 1)  # TODO 后续在模型中增加异常字段
+
+        RequestAlert.requests_alert(doem_alert)
+        logger.info("监控接收文件的长度开始{}".format(len(doem_alert)))
+        # WaitSelfHealing.objects.create(repair_ser=doem_alert)
+        # self_healing.delay(alert_obj_list)
+        logger.info("监控接收文件的信息{}".format(doem_alert))
         return validated_data
 
 
@@ -305,3 +326,11 @@ class QuotaSerializer(ModelSerializer):
         """
         model = AlertRule
         fields = '__all__'
+
+
+class AlertSettingSerializer(BulkSerializerMixin, ModelSerializer):
+    class Meta:
+        model = AlertSettings
+        fields = "__all__"
+        read_only_fields = ("alert_type",)
+        list_serializer_class = BulkListSerializer

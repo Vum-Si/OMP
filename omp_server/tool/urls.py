@@ -5,13 +5,17 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 from tool.views import ToolListView, ToolDetailView, GetToolDetailView, \
     ToolFormDetailAPIView, ToolTargetObjectAPIView, ToolFormAnswerAPIView, \
-    ToolExecuteHistoryListApiView
+    ToolExecuteHistoryListApiView, TestTaskView, TestTaskHostView, TestResultView, \
+    GetTaskUrlView
 
 router = DefaultRouter()
 router.register("toolList", ToolListView, basename="toolList")
 router.register("toolList", ToolDetailView, basename="toolList")
 router.register(r'result', GetToolDetailView, basename="result")
 router.register(r'form', ToolFormDetailAPIView, basename="form")
+router.register(r'test-result', TestResultView, basename="test-result")
+router.register(r'test-task-host', TestTaskHostView, basename="test-task-host")
+router.register(r'test-url', GetTaskUrlView, basename="test-url")
 
 urlpatterns = [
     path(
@@ -29,8 +33,11 @@ urlpatterns = [
         ToolExecuteHistoryListApiView.as_view(),
         name="execute-history"
     ),
+    path(
+        'test-task',
+        TestTaskView.as_view(),
+        name="test-task"
+    ),
 ]
 
 urlpatterns += router.urls
-
-

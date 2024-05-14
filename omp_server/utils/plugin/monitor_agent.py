@@ -107,8 +107,8 @@ class MonitorAgentManager(object):
         metrics_auth = json.dumps(
             {"username": "mokey", "password": "w7SiYs$oE"})  # TODO  后续从配置文件读取
         services_info = json.dumps({"node": {"quotes": [], "exporter_port": 19017, "exporter_metric": "metrics",
-                                             "auth_user": "mokey",
-                                             "auth_password_encryption": "$2y$12$GThv30aK.STxvx6A32CXVubbveBkEq3vatYTPpuIVTT6uRE24L91O"}})
+                                            "auth_user": "mokey",
+                                            "auth_password_encryption": "$2y$12$GThv30aK.STxvx6A32CXVubbveBkEq3vatYTPpuIVTT6uRE24L91O"}})
         cmd_flag, cmd_res = salt_obj.cmd(
             target=obj.ip,
             command=f"cd {obj.agent_dir} && "

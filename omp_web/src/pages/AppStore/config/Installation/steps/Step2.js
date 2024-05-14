@@ -6,31 +6,25 @@ import {
   getDataSourceChangeAction,
   getStep2ErrorLstChangeAction,
   getIpListChangeAction,
+  getClusterDataChangeAction,
 } from "../store/actionsCreators";
 import { fetchPost, fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import { handleResponse } from "@/utils/utils";
 
-const Step2 = ({ setStepNum }) => {
+const Step2 = ({ setStepNum, context }) => {
   const reduxDispatch = useDispatch();
-
   const uniqueKey = useSelector((state) => state.appStore.uniqueKey);
-
   // 基本信息的form实例
   const [form] = Form.useForm();
-
   const [loading, setLoading] = useState(false);
-
   const [installService, setInstallService] = useState({});
-
   const allDataPool = useSelector((state) => state.installation.dataSource);
   const ipList = useSelector((state) => state.installation.ipList);
-
   const [data, setData] = useState({
     host: [],
     product: [],
   });
-
   // 未分配服务个数
   const unassignedServices = Object.keys(allDataPool).reduce((prev, cur) => {
     return prev + allDataPool[cur].num;
@@ -79,7 +73,6 @@ const Step2 = ({ setStepNum }) => {
   // 提交前对数据进行处理
   const dataProcessing = () => {
     let data = form.getFieldValue();
-    console.log(data);
     let result = {};
     for (const key in data) {
       if (data[key].length > 0) {
@@ -88,8 +81,6 @@ const Step2 = ({ setStepNum }) => {
         });
       }
     }
-
-    console.log(result);
     return result;
   };
 
@@ -109,9 +100,10 @@ const Step2 = ({ setStepNum }) => {
           if (res.data && res.data.data) {
             if (res.data.is_continue) {
               // 校验通过，跳转，请求服务分布数据并跳转
-              setStepNum(2);
+              // setStepNum(2);
+              getGlobalConfig();
             } else {
-              message.warn("校验未通过");
+              message.warn(context.verify + context.ln + context.failed);
               reduxDispatch(getStep2ErrorLstChangeAction(res.data.error_lst));
             }
           }
@@ -121,6 +113,27 @@ const Step2 = ({ setStepNum }) => {
       .finally(() => {
         setLoading(false);
       });
+  };
+
+  // 获取全局配置参数
+  const getGlobalConfig = () => {
+    fetchGet(apiRequest.appStore.installCluster, {
+      params: {
+        unique_key: uniqueKey,
+      },
+    })
+      .then((res) => {
+        handleResponse(res, (res) => {
+          if (res.data.data.length > 0) {
+            reduxDispatch(getClusterDataChangeAction(res.data.data));
+            setStepNum(2);
+          } else {
+            setStepNum(3);
+          }
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {});
   };
 
   useEffect(() => {
@@ -145,6 +158,7 @@ const Step2 = ({ setStepNum }) => {
         }}
       >
         <Spin spinning={loading}>
+          {/* -- 主机总数/未分配服务 -- */}
           <div style={{ display: "flex" }}>
             <div
               style={{
@@ -153,7 +167,9 @@ const Step2 = ({ setStepNum }) => {
                 paddingBottom: 30,
               }}
             >
-              主机总数: {data.host.length}台
+              {context.host + context.ln + context.total + " : "}
+              {data.host.length}
+              {context.tai}
             </div>
             <div
               style={{
@@ -162,9 +178,13 @@ const Step2 = ({ setStepNum }) => {
                 paddingBottom: 30,
               }}
             >
-              未分配服务: {unassignedServices}个
+              {context.undistribution + context.ln + context.service + " : "}
+              {unassignedServices}
+              {context.ge}
             </div>
           </div>
+
+          {/* -- 主机服务选择 -- */}
           <div
             style={{
               display: "flex",
@@ -181,6 +201,7 @@ const Step2 = ({ setStepNum }) => {
                   info={item}
                   data={data.product}
                   installService={installService}
+                  context={context}
                 />
               );
             })}
@@ -188,6 +209,7 @@ const Step2 = ({ setStepNum }) => {
         </Spin>
       </div>
 
+      {/* -- 上一步/下一步 -- */}
       <div
         style={{
           position: "fixed",
@@ -204,28 +226,23 @@ const Step2 = ({ setStepNum }) => {
         }}
       >
         <div style={{ paddingLeft: 20 }}>
-          已分配主机数量: {ipList?.length}台
+          {context.distribution + context.ln + context.host}
+          {" : "}
+          {ipList?.length}
+          {context.tai}
         </div>
         <div>
-          <Button
-            type="primary"
-            onClick={() => {
-              setStepNum(0);
-            }}
-          >
-            上一步
+          <Button type="primary" onClick={() => setStepNum(0)}>
+            {context.previous}
           </Button>
           <Button
             style={{ marginLeft: 10 }}
             type="primary"
             disabled={unassignedServices !== 0}
             loading={loading}
-            onClick={() => {
-              //setStepNum(2);
-              checkServiceDistribution(dataProcessing());
-            }}
+            onClick={() => checkServiceDistribution(dataProcessing())}
           >
-            下一步
+            {context.next}
           </Button>
         </div>
       </div>

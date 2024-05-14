@@ -27,29 +27,29 @@ def get_risk_data(handle, hosts, services):
     for i in risks:
         if handle in ['host', 'deep']:
             # 主机
-            if handle == 'host' and\
-                    i.get('labels').get('instance') not in hosts:
+            if handle == 'host' and \
+                    i.get('labels', {}).get('instance', "") not in hosts:
                 continue
-            if i.get('labels').get('job') == 'nodeExporter':
-                _ = _host.filter(ip=i.get('labels').get('instance')).first()
-                tmp = {'host_ip': i.get('labels').get('instance'),
+            if i.get('labels', {}).get('job', "") == 'nodeExporter':
+                _ = _host.filter(ip=i.get('labels', {}).get('instance', "")).first()
+                tmp = {'host_ip': i.get('labels', {}).get('instance', ""),
                        'resolve_info': "-",
-                       'risk_describe': i.get('annotations').get('description'),
-                       'risk_level': i.get('labels').get('severity'),
+                       'risk_describe': i.get('annotations', {}).get('description', ""),
+                       'risk_level': i.get('labels', {}).get('severity', ""),
                        'system': _.operate_system if _ else '-'}
                 host_list.append(tmp)
         if handle in ['service', 'deep']:
             # 组件
             if handle == 'service' and \
-                    i.get('labels').get('job').replace('Exporter', '') \
+                    i.get('labels', {}).get('job', "").replace('Exporter', '') \
                     not in app_name:
                 continue
-            if i.get('labels').get('job') != 'nodeExporter':
-                tmp = {'host_ip': i.get('labels').get('instance'),
+            if i.get('labels', {}).get('job', "") != 'nodeExporter':
+                tmp = {'host_ip': i.get('labels', {}).get('instance', ""),
                        'resolve_info': "-",
-                       'risk_describe': i.get('annotations').get('description'),
-                       'risk_level': i.get('labels').get('severity'),
-                       'service_name': i.get('labels').get('job'),
+                       'risk_describe': i.get('annotations', {}).get('description', ""),
+                       'risk_level': i.get('labels', {}).get('severity', ""),
+                       'service_name': i.get('labels', {}).get('instance_name', ""),
                        'service_port': '-'}
                 service_list.append(tmp)
 

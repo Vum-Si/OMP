@@ -1,25 +1,26 @@
-import { Input, Pagination, Empty, Spin } from "antd";
+import { Input, Button, Pagination, Empty, Spin } from "antd";
 import { useEffect, useState } from "react";
 import styles from "./index.module.less";
 import { SearchOutlined } from "@ant-design/icons";
 import Card from "./config/card.js";
+import AutoTestModal from "./config/modal";
 import { useSelector } from "react-redux";
 import { useHistory } from "react-router-dom";
 import { fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import { handleResponse } from "@/utils/utils";
+import { locales } from "@/config/locales";
 
-const ToolManagement = () => {
+const ToolManagement = ({ locale }) => {
   // 视口高度
   const viewHeight = useSelector((state) => state.layouts.viewSize.height);
   const history = useHistory();
   const [tabKey, setTabKey] = useState();
-
   const [searchName, setSearchName] = useState("");
-
   const [total, setTotal] = useState(0);
-
+  const [modalVisibility, setModalVisibility] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
   const [dataSource, setDataSource] = useState([]);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -27,8 +28,13 @@ const ToolManagement = () => {
     total: 0,
     searchParams: {},
   });
+  const [planType, setPlanType] = useState({});
+  const context = locales[locale].common;
 
-  function fetchData(pageParams = { current: 1, pageSize: 8 }, searchParams) {
+  const fetchData = (
+    pageParams = { current: 1, pageSize: 8 },
+    searchParams
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.utilitie.queryList, {
       params: {
@@ -39,13 +45,7 @@ const ToolManagement = () => {
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          // 获得真正的总数，要查询条件都为空时
-          let obj = { ...searchParams };
-          delete obj.tabKey;
-          let arr = Object.values(obj).filter((i) => i);
-          if (arr.length == 0) {
-            setTotal(res.data.count);
-          }
+          setTotal(res.data.count);
           setDataSource(res.data.results);
           setPagination({
             ...pagination,
@@ -63,7 +63,21 @@ const ToolManagement = () => {
         // fetchSearchlist();
         //fetchIPlist();
       });
-  }
+  };
+
+  const queryHostInfo = () => {
+    setModalLoading(true);
+    fetchGet(apiRequest.utilitie.autoTest)
+      .then((res) => {
+        handleResponse(res, (res) => {
+          setPlanType(res.data);
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        setModalLoading(false);
+      });
+  };
 
   useEffect(() => {
     fetchData(
@@ -77,8 +91,10 @@ const ToolManagement = () => {
 
   return (
     <div>
+      {/* -- 顶部区域 -- */}
       <div className={styles.header}>
         <div className={styles.headerTabRow}>
+          {/* -- tab 标签 -- */}
           <div
             className={styles.headerTab}
             onClick={(e) => {
@@ -88,11 +104,17 @@ const ToolManagement = () => {
                 total: 0,
                 searchParams: {},
               });
-              if (e.target.innerHTML == "全部") {
+              if (e.target.innerHTML === context.all) {
                 setTabKey();
-              } else if (e.target.innerHTML == "管理工具") {
+              } else if (
+                e.target.innerHTML ===
+                context.management + context.ln + context.tool
+              ) {
                 setTabKey(0);
-              } else if (e.target.innerHTML == "安全工具") {
+              } else if (
+                e.target.innerHTML ===
+                context.security + context.ln + context.tool
+              ) {
                 setTabKey(2);
               }
             }}
@@ -100,20 +122,28 @@ const ToolManagement = () => {
             <div
               style={tabKey == undefined ? { color: "rgb(46, 124, 238)" } : {}}
             >
-              全部
+              {context.all}
             </div>
             <div>|</div>
             <div style={tabKey == "0" ? { color: "rgb(46, 124, 238)" } : {}}>
-              管理工具
+              {context.management + context.ln + context.tool}
             </div>
             <div>|</div>
             <div style={tabKey == "2" ? { color: "rgb(46, 124, 238)" } : {}}>
-              安全工具
+              {context.security + context.ln + context.tool}
             </div>
           </div>
+
+          {/* -- 过滤/自动化测试 -- */}
           <div className={styles.headerBtn}>
             <Input
-              placeholder="请输入工具名称"
+              placeholder={
+                context.input +
+                context.ln +
+                context.task +
+                context.ln +
+                context.name
+              }
               suffix={
                 !searchName && <SearchOutlined style={{ color: "#b6b6b6" }} />
               }
@@ -163,32 +193,29 @@ const ToolManagement = () => {
                 );
               }}
             />
+            <Button
+              style={{ marginRight: 10 }}
+              type="primary"
+              onClick={() => {
+                queryHostInfo();
+                setModalVisibility(true);
+              }}
+            >
+              {context.automatedTest}
+            </Button>
           </div>
         </div>
 
         <hr className={styles.headerHr} />
         <div className={styles.headerSearch}>
-          <div className={styles.headerSearchCondition}>
-            {/* <p
-                style={searchKey == "全部" ? { color: "rgb(46, 124, 238)" } : {}}
-              >
-                全部
-              </p> */}
-          </div>
+          <div className={styles.headerSearchCondition}></div>
           <div className={styles.headerSearchInfo} style={{ paddingTop: 8 }}>
-            {/* <Button
-                style={{ marginRight: 15, fontSize: 13 }}
-                icon={<DownloadOutlined />}
-                onClick={() => {
-                  downloadFile(apiRequest.appStore.applicationTemplate);
-                }}
-              >
-                <span style={{ color: "#818181" }}>下载发布说明</span>
-              </Button> */}
-            共收录 {total} 个实用工具
+            {context.total} {total}
           </div>
         </div>
       </div>
+
+      {/* -- 小工具卡片 -- */}
       <Spin spinning={loading}>
         <div style={{ display: "flex", flexWrap: "wrap" }}>
           {dataSource.length == 0 ? (
@@ -201,7 +228,7 @@ const ToolManagement = () => {
                 height: viewHeight > 955 ? 500 : 300,
                 flexDirection: "column",
               }}
-              description={"暂无使用工具"}
+              description={context.noData}
             />
           ) : (
             <>
@@ -212,7 +239,7 @@ const ToolManagement = () => {
                     key={idx}
                     idx={idx + 1}
                     info={item}
-                    tabKey={tabKey}
+                    context={context}
                   />
                 );
               })}
@@ -220,6 +247,8 @@ const ToolManagement = () => {
           )}
         </div>
       </Spin>
+
+      {/* -- 分页 -- */}
       {dataSource.length !== 0 && (
         <div
           style={{
@@ -245,6 +274,17 @@ const ToolManagement = () => {
           />
         </div>
       )}
+
+      {/* -- 自动化测试 -- */}
+      <AutoTestModal
+        modalVisibility={modalVisibility}
+        setModalVisibility={setModalVisibility}
+        modalLoading={modalLoading}
+        setModalLoading={setModalLoading}
+        planType={planType}
+        history={history}
+        context={context}
+      />
     </div>
   );
 };

@@ -31,7 +31,7 @@ from utils.common.validators import (
 )
 from utils.common.exceptions import OperateError
 from utils.common.serializers import HostIdsSerializer
-from utils.parse_config import THREAD_POOL_MAX_WORKERS
+from utils.parse_config import THREAD_POOL_MAX_WORKERS,IS_NO_SSH
 from promemonitor.alertmanager import Alertmanager
 
 logger = logging.getLogger("server")
@@ -74,7 +74,7 @@ class HostSerializer(ModelSerializer):
 
     instance_name = serializers.CharField(
         help_text="实例名",
-        required=True, max_length=16,
+        required=True, max_length=64,
         error_messages={
             "required": "必须包含[instance_name]字段",
             "max_length": "实例名长度需小于{max_length}"},
@@ -112,7 +112,7 @@ class HostSerializer(ModelSerializer):
     password = serializers.CharField(
         help_text="密码",
         required=True,
-        min_length=8, max_length=64,
+        min_length=4, max_length=64,
         error_messages={
             "required": "必须包含[password]字段",
             "min_length": "密码长度需大于{min_length}",
@@ -222,42 +222,50 @@ class HostSerializer(ModelSerializer):
         password = attrs.get("password")
         data_folder = attrs.get("data_folder")
         run_user = attrs.get("run_user")
+        if not run_user and username != "root":
+            run_user = username
         use_ntpd = attrs.get("use_ntpd")
         # 默认主机初始化标记为 False
         attrs["init_host"] = False
 
         # 如果提供 run_user，需确保用户为 root
-        if run_user and username != "root":
-            raise ValidationError({"username": "运行用户仅在用户名为root时可用"})
+        if run_user and username != "root" and run_user != username:
+            raise ValidationError(
+                {"username": "用户名非root时运行用户必须与用户名一致"}
+            )
+        if not IS_NO_SSH:
 
-        # 校验主机 SSH 连通性
-        ssh = SSH(ip, port, username, password)
-        is_connect, _ = ssh.check()
-        if not is_connect:
-            logger.info(f"host ssh connection failed: ip-{ip},port-{port},"
-                        f"username-{username},password-{password}")
-            raise ValidationError({"ip": "SSH登录失败"})
+            # 校验主机 SSH 连通性
+            ssh = SSH(ip, port, username, password)
+            is_connect, _ = ssh.check()
+            if not is_connect:
+                logger.info(f"host ssh connection failed: ip-{ip},port-{port},"
+                            f"username-{username},password-{password}")
+                raise ValidationError({"ip": "SSH登录失败"})
 
-        # 如果数据分区不存在，则创建数据分区
-        success, msg = ssh.cmd(
-            f"test -d {data_folder} || mkdir -p {data_folder}")
-        if not success or msg.strip():
-            logger.info(f"host create data folder failed: ip-{ip},port-{port},"
-                        f"username-{username},password-{password},"
-                        f"data_folder-{data_folder}")
-            raise ValidationError({"data_folder": "创建数据分区操作失败"})
+            # 如果数据分区不存在，则创建数据分区
+            success, msg = ssh.cmd(
+                f"test -d {data_folder} || mkdir -p {data_folder}")
+            if not success:
+                logger.info(f"host create data folder failed: ip-{ip},port-{port},"
+                            f"username-{username},password-{password},"
+                            f"data_folder-{data_folder}")
+                raise ValidationError({"data_folder": "创建数据分区操作失败"})
 
-        # 当用户为 root 或具有 sudo 权限时，自动进行初始化
-        is_sudo, _ = ssh.is_sudo()
-        if is_sudo or username == "root":
-            attrs["init_host"] = True
+            # 当用户为 root 或具有 sudo 权限时，自动进行初始化
+            is_sudo, _ = ssh.is_sudo()
+            if is_sudo or username == "root":
+                attrs["init_host"] = True
+
+            # 释放 ssh 连接
+            ssh.close()
 
         # 如果未传递 env，则指定默认环境
         if not attrs.get("env") and not self.instance:
             attrs["env"] = Env.objects.filter(id=1).first()
         # 主机密码加密处理
         if attrs.get("password"):
-            attrs["password"] = AESCryptor().encode(attrs.get("password"))
+            attrs["password"] = AESCryptor().encode(str(attrs.get("password")))
         # 启用ntpd，验证ntpd服务器是否可用
         if use_ntpd:
             ntpd_server = attrs.get("ntpd_server")
@@ -299,8 +307,13 @@ class HostSerializer(ModelSerializer):
             host=instance)
         # 下发异步任务: 初始化主机、安装 Agent
         logger.info(f"host[{ip}] - ADD celery task")
-        insert_host_celery_task.delay(
-            instance.id, init=init_flag)
+        if IS_NO_SSH:
+            instance.host_agent = Host.AGENT_RUNNING
+            instance.save()
+            reinstall_monitor_celery_task.delay(instance.id, self.context["request"].user.username)
+        else:
+            insert_host_celery_task.delay(
+                instance.id, init=init_flag)
         # deploy_agent.delay(instance.id)
         return instance
 
@@ -510,6 +523,9 @@ class HostBatchValidateSerializer(Serializer):
 
     def host_info_validate(self, host_data):
         """ 单个主机信息验证 """
+        run_user = host_data.get("run_user")
+        if not run_user and host_data.get("username") != "root":
+            host_data["run_user"] = host_data.get("username")
         host_serializer = HostSerializer(data=host_data)
         if host_serializer.is_valid():
             host_data["init_host"] = \

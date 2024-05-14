@@ -137,16 +137,18 @@ class SaltClient(object):
                 f"Execute by salt fun_for_multi with Exception: {traceback.format_exc()}")
             return False, f"执行{str(fun)}过程中出现错误: {str(e)}"
 
-    def cmd(self, target, command, timeout, real_timeout=None):
+    def cmd(self, target, command, timeout, is_sudo=False, real_timeout=1800, ignore_exit_code=[0]):
         """
         执行shell命令接口
         :param target: 目标agent的id，一般为ip
         :param command: 将要执行的shell命令
         :param timeout: salt连接超时时间
         :param real_timeout: cmd命令执行超时时间
+        :param is_sudo: sudo会添加sudo权限
         :return: 命令执行结果
         """
         try:
+            command = "sudo bash -c '{0}'".format(command) if is_sudo else command
             logger.info(
                 f"Execute by salt cmd: {target}|{command}|{timeout}")
             cmd_res = self.client.cmd(
@@ -166,7 +168,8 @@ class SaltClient(object):
                 return False, AGENT_OFFLINE_MSG
             if 'retcode' not in cmd_res[target]:
                 return False, f"当前执行未出现预期结果，详情如下: {cmd_res[target]}"
-            if cmd_res[target]["retcode"] != 0:
+            retcode = cmd_res[target]["retcode"]
+            if retcode != 0 and retcode not in ignore_exit_code:
                 return False, cmd_res[target]["ret"]
             if "Timed out after" in cmd_res[target]["ret"]:
                 return False, cmd_res[target]["ret"]
@@ -174,6 +177,18 @@ class SaltClient(object):
         except Exception as e:
             logger.error(f"Execute by salt cmd with Exception: {str(e)}")
             return False, f"执行命令的过程中出现错误: {str(e)}"
+
+    def is_sudo(self, target):
+        """
+        检查用户是否具有sudo权限
+        :return: is_sudo, message
+        """
+        _, stdout = self.cmd(target,
+                             "sudo -n echo 'success'", 10)
+        res = stdout.strip()
+        if res == "success":
+            return True
+        return False
 
     def cp_file(self, target, source_path, target_path, makedirs=True):
         """

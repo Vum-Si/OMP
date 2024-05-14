@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import RenderArr from "./RenderArr";
 import RenderNum from "./RenderNum";
 
-const DeployInstanceRow = ({ data, form }) => {
+const DeployInstanceRow = ({ data, form, context }) => {
   const [check, setCheck] = useState(true);
 
   useEffect(() => {
@@ -26,7 +26,7 @@ const DeployInstanceRow = ({ data, form }) => {
         <>
           <div style={{ flex: 3 }}>
             <Form.Item
-              label="选择实例"
+              label={context.select + context.ln + context.instance}
               name={`${data.name}`}
               style={{ marginBottom: 0, width: 180 }}
             >
@@ -55,9 +55,9 @@ const DeployInstanceRow = ({ data, form }) => {
           ></div>
         </>
       ) : Array.isArray(data.deploy_mode) ? (
-        <RenderArr data={data} form={form} />
+        <RenderArr data={data} form={form} context={context} />
       ) : (
-        <RenderNum data={data} form={form} />
+        <RenderNum data={data} form={form} context={context} />
       )}
 
       <div
@@ -75,11 +75,10 @@ const DeployInstanceRow = ({ data, form }) => {
         >
           <Checkbox
             checked={check}
-            onChange={(e) => {
-              setCheck(e.target.checked);
-            }}
+            onChange={(e) => setCheck(e.target.checked)}
+            disabled={data.error_msg?.includes("安装包不存在") || false}
           >
-            复用依赖
+            {context.reuse}
           </Checkbox>
         </div>
       </div>

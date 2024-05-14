@@ -2,12 +2,15 @@ import styles from "./index.module.less";
 import { useState } from "react";
 import initLogo from "../initLogo/tools.svg";
 
-const kindMap = ["管理工具", "检查工具", "安全工具", "其他工具"];
-
-const Card = ({ idx, history, info, tabKey }) => {
+const Card = ({ idx, history, info, context }) => {
   const [isHover, setIsHover] = useState(false);
-  // let href = window.location.href.split("#")[0];
-  // console.log(href)
+  const kindMap = [
+    context.management,
+    context.check,
+    context.security,
+    context.other,
+  ];
+
   return (
     <div
       className={styles.cardContainer}
@@ -17,7 +20,6 @@ const Card = ({ idx, history, info, tabKey }) => {
         marginLeft: (idx - 1) % 4 !== 0 && "0.75%",
         height: 145,
         boxSizing: "border-box",
-        //border: "1px solid #000",
         marginTop: 10,
         position: "relative",
         top: 0,
@@ -25,12 +27,8 @@ const Card = ({ idx, history, info, tabKey }) => {
         paddingLeft: 10,
         paddingRight: 10,
       }}
-      onMouseEnter={() => {
-        setIsHover(true);
-      }}
-      onMouseLeave={() => {
-        setIsHover(false);
-      }}
+      onMouseEnter={() => setIsHover(true)}
+      onMouseLeave={() => setIsHover(false)}
       onClick={() => {
         history?.push({
           pathname: `/utilitie/tool-management/tool-management-detail/${info.id}`,
@@ -38,6 +36,7 @@ const Card = ({ idx, history, info, tabKey }) => {
       }}
     >
       <div className={styles.cardContent}>
+        {/* -- logo -- */}
         <div style={{ width: "100%", paddingTop: 5, display: "flex" }}>
           {!info.logo ? (
             <div
@@ -53,7 +52,6 @@ const Card = ({ idx, history, info, tabKey }) => {
                 marginRight: 10,
                 overflow: "hidden",
                 fontSize: 22,
-                // backgroundImage: "linear-gradient(to right, #4f85f6, #669aee)",
                 backgroundColor: "#f5f5f5",
                 color: "#fff",
               }}
@@ -66,7 +64,6 @@ const Card = ({ idx, history, info, tabKey }) => {
                   alignItems: "center",
                 }}
               >
-                {/* {info.name && info.name[0].toLocaleUpperCase()} */}
                 <img
                   style={{
                     width: "35px",
@@ -92,7 +89,6 @@ const Card = ({ idx, history, info, tabKey }) => {
                 marginRight: 10,
                 overflow: "hidden",
                 fontSize: 22,
-                // backgroundImage: "linear-gradient(to right, #4f85f6, #669aee)",
                 backgroundColor: "#f5f5f5",
                 color: "#fff",
               }}
@@ -105,7 +101,6 @@ const Card = ({ idx, history, info, tabKey }) => {
                   alignItems: "center",
                 }}
               >
-                {/* {info.name && info.name[0].toLocaleUpperCase()} */}
                 <img
                   style={{
                     width: "35px",
@@ -131,6 +126,8 @@ const Card = ({ idx, history, info, tabKey }) => {
             {info.name}
           </div>
         </div>
+
+        {/* -- 类型/使用次数/描述 -- */}
         <div
           style={{
             //flex: 1,
@@ -152,49 +149,11 @@ const Card = ({ idx, history, info, tabKey }) => {
           >
             <span style={{ color: "#777373" }}>[ {kindMap[info.kind]} ]</span>
             <span style={{ color: "#383838" }}>
-              使用次数：{info.used_number}
+              {context.usageFrequency} : {info.used_number}
             </span>
           </div>
-          <p className={styles.text}>
-            {/* <Tooltip placement="top" title={info[nameObj[tabKey].description]}> */}
-            {info.description}
-            {/* </Tooltip> */}
-          </p>
+          <p className={styles.text}>{info.description}</p>
         </div>
-      </div>
-    </div>
-  );
-};
-
-const InitLogo = ({ name }) => {
-  return (
-    <div
-      style={{
-        width: 50,
-        height: 50,
-        borderRadius: "50%",
-        border: "1px solid #a8d0f8",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        marginLeft: 10,
-        marginRight: 10,
-        overflow: "hidden",
-        fontSize: 22,
-        backgroundImage: "linear-gradient(to right, #4f85f6, #669aee)",
-        backgroundColor: "#f5f5f5",
-        color: "#fff",
-      }}
-    >
-      <div
-        style={{
-          textAlign: "center",
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-        }}
-      >
-        {name && name[0].toLocaleUpperCase()}
       </div>
     </div>
   );

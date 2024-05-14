@@ -1,7 +1,8 @@
 import { Breadcrumb, message } from "antd";
-import React, { useState, useEffect, useContext, useLayoutEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { withRouter } from "react-router-dom";
 import styles from "./index.module.less";
+//import { context } from "@/layouts";
 import { fetchPost } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import { handleResponse, refreshTime } from "@/utils/utils";
@@ -12,56 +13,113 @@ import { ExclamationCircleOutlined } from "@ant-design/icons";
 import { getMaintenanceChangeAction } from "@/pages/SystemManagement/store/actionsCreators";
 /*eslint-disable*/
 //跟路由路径保持一致
-const breadcrumbNameMap = {
-  404: "404",
-  //"/":"仪表盘",
-  homepage: "仪表盘",
-  "resource-management": "资源管理",
-  "machine-management": "主机管理",
-  "system-settings": "系统管理",
-  "user-management": "用户管理",
-  "monitoring-settings": "监控设置",
-  "system-management": "系统管理",
-  "alarm-log": "告警记录",
-  "exception-list": "异常清单",
-  "application-monitoring": "应用监控",
-  application_management: "应用管理",
-  app_store: "应用商店",
-  "app-service-detail": "服务详情",
-  "app-component-detail": "组件详情",
-  "status-patrol": "状态巡检",
-  "patrol-inspection-record": "巡检记录",
-  "patrol-strategy": "巡检策略",
-  "status-patrol-detail": "分析报告",
-  service_management: "服务管理",
-  application_installation: "应用安装",
-  component_installation: "组件安装",
-  installation: "安装",
-  "email-settings": "邮件管理",
-  "rule-center": "指标中心",
-  "default-rule": "默认指标",
-  "install-record": "执行记录",
-  service_upgrade: "服务升级",
-  "deployment-plan": "部署模板",
-  "data-backup": "数据备份",
-  "backup-record": "备份记录",
-  "operation-record": "操作记录",
-  "login-log": "登录日志",
-  "system-log": "系统记录",
-  "fault-selfHealing":"故障自愈",
-  "selfHealing-record":"自愈记录",
-  "selfHealing-strategy":"自愈策略",
-  "utilitie":"实用工具",
-  "tool-management":"工具管理",
-  "tool-management-detail": "工具详情",
-  "task-record":"任务记录",
-  "tool-execution-results":"执行结果",
-  "indicator-rule": "指标规则",
-  "extend-rule": "扩展指标"
+const breadcrumbNameLocaleMap = {
+  "en-US": {
+    404: "404",
+    homepage: "Dashboard",
+    "resource-management": "Resource",
+    "machine-management": "Host",
+    "system-settings": "Setting",
+    "user-management": "User",
+    "system-management": "System",
+    "alarm-log": "Alarm Log",
+    "exception-list": "Exceptions",
+    "application-monitoring": "Monitoring",
+    application_management: "Application",
+    app_store: "AppStore",
+    "app-service-detail": "Service Detail",
+    "app-component-detail": "Component Detail",
+    "status-patrol": "Inspection",
+    "patrol-inspection-record": "Record",
+    "patrol-strategy": "Strategy",
+    "status-patrol-detail": "Report",
+    service_management: "Service",
+    application_installation: "Application Install",
+    component_installation: "Component Install",
+    installation: "Install",
+    "rule-center": "Monitor Rules",
+    "default-rule": "Deafult Rules",
+    "install-record": "Record",
+    service_upgrade: "Upgrade",
+    "deployment-plan": "Deployment",
+    "data-backup": "Backup",
+    "backup-record": "Record",
+    "backup-strategy": "Strategy",
+    "operation-record": "Operation Log",
+    "login-log": "Login Log",
+    "system-log": "System Log",
+    "fault-selfHealing": "Self Healing",
+    "selfHealing-record": "Record",
+    "selfHealing-strategy": "Strategy",
+    utilitie: "Tool Box",
+    "tool-management": "Tools List",
+    "tool-management-detail": "Tool detail",
+    "task-record": "Record",
+    "tool-execution-results": "Execution Results",
+    "indicator-rule": "Indicator",
+    "extend-rule": "Extend",
+    "log-management": "Log",
+    "log-level": "Log Level",
+    "log-clear": "Clear Strategy",
+    service_config: "Config",
+    "alarm-push": "Alarm Push",
+    "container-service": "Container Service",
+  },
+  "zh-CN": {
+    404: "404",
+    homepage: "仪表盘",
+    "resource-management": "资源管理",
+    "machine-management": "主机管理",
+    "system-settings": "系统管理",
+    "user-management": "用户管理",
+    "system-management": "系统管理",
+    "alarm-log": "告警记录",
+    "exception-list": "异常清单",
+    "application-monitoring": "应用监控",
+    application_management: "应用管理",
+    app_store: "应用商店",
+    "app-service-detail": "服务详情",
+    "app-component-detail": "组件详情",
+    "status-patrol": "状态巡检",
+    "patrol-inspection-record": "巡检记录",
+    "patrol-strategy": "巡检策略",
+    "status-patrol-detail": "分析报告",
+    service_management: "服务管理",
+    application_installation: "应用安装",
+    component_installation: "组件安装",
+    installation: "安装",
+    "rule-center": "指标中心",
+    "default-rule": "默认指标",
+    "install-record": "执行记录",
+    service_upgrade: "服务升级",
+    "deployment-plan": "部署模板",
+    "data-backup": "数据备份",
+    "backup-record": "备份记录",
+    "backup-strategy": "备份策略",
+    "operation-record": "操作记录",
+    "login-log": "登录日志",
+    "system-log": "系统记录",
+    "fault-selfHealing": "故障自愈",
+    "selfHealing-record": "自愈记录",
+    "selfHealing-strategy": "自愈策略",
+    utilitie: "实用工具",
+    "tool-management": "工具管理",
+    "tool-management-detail": "工具详情",
+    "task-record": "任务记录",
+    "tool-execution-results": "执行结果",
+    "indicator-rule": "指标规则",
+    "extend-rule": "扩展指标",
+    "log-management": "日志管理",
+    "log-level": "日志等级",
+    "log-clear": "日志清理",
+    service_config: "配置管理",
+    "alarm-push": "告警推送",
+    "container-service": "容器服务",
+  },
 };
 
 // 基于面包屑组件的一层封装，用于匹配当前路由地址，动态展示页面路径
-const CustomBreadcrumb = withRouter(({ location, collapsed }) => {
+const CustomBreadcrumb = withRouter(({ location, collapsed, locale }) => {
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(false);
   //是否展示维护模式提示词
@@ -80,6 +138,8 @@ const CustomBreadcrumb = withRouter(({ location, collapsed }) => {
 
   const pathSnippets = location.pathname;
 
+  const breadcrumbNameMap = breadcrumbNameLocaleMap[locale];
+
   const extraBreadcrumbItems = (_, index) => {
     //console.log(pathSnippets);
     const url = pathSnippets.split("/"); //`/${pathSnippets.slice(0, index + 1).join("/")}`
@@ -88,7 +148,7 @@ const CustomBreadcrumb = withRouter(({ location, collapsed }) => {
       <>
         {url.map((i, idx) => {
           if (idx == url.length - 3) {
-            if (!breadcrumbNameMap[url[url.length - 2]]) {
+            if (![breadcrumbNameMap][url[url.length - 2]]) {
               return (
                 <Breadcrumb.Item
                   style={{

@@ -17,6 +17,7 @@ import shutil
 import logging
 import requests
 import hashlib
+from copy import deepcopy
 
 # import requests
 import yaml
@@ -25,8 +26,6 @@ from ruamel.yaml import YAML
 from db_models.models import HostThreshold, ServiceCustomThreshold, AlertRule
 from omp_server.settings import PROJECT_DIR
 from utils.parse_config import MONITOR_PORT, PROMETHEUS_AUTH, LOKI_CONFIG
-
-# from utils.parse_config import MONITOR_PORT
 
 logger = logging.getLogger("server")
 
@@ -48,11 +47,19 @@ EXPORTERS = [
     "tengine",
     "zookeeper",
     "rocketmq",
+    "redisgraph",
+    "zookeeperCH",
+    "CloudPanguDB",
 ]
+
+EXPORTER_SHARE = {
+    "zookeeperCH": "zookeeper",
+}
 
 METRICS = {
     "arangodb": "_admin/metrics",
     "nacos": "nacos/actuator/prometheus",
+    "minio": "minio/v2/metrics/cluster",
 }
 
 
@@ -109,14 +116,26 @@ class PrometheusUtils(object):
             f.write(data)
 
     @staticmethod
-    def json_distinct(iterable_lst):
+    def json_distinct(iterable_lst, cluster_instance_name_list=None, is_service=False):
         """
         json元素去重
         :param iterable_lst: 去重对象
+        :param cluster_instance_name_list: 去重字典标志
+        :param is_service: 是否是服务
         :return: 去重后的对象
         """
         res = []
+        target_list = []
         for instance in iterable_lst:
+            if cluster_instance_name_list and instance["labels"][
+                "instance_name"] in cluster_instance_name_list and "cluster" not in instance["labels"].keys():
+                continue
+            # 服务添加label:app
+            if is_service:
+                if instance["targets"] in target_list:
+                    continue
+                else:
+                    target_list.append(instance["targets"])
             res.append(pickle.dumps(instance))
         res = set(res)
         return [pickle.loads(i) for i in res]
@@ -360,6 +379,7 @@ class PrometheusUtils(object):
         if not nodes_data:
             return False, "nodes_data can not be null"
         node_target_list = list()
+        old_node_target_list = list()
         # 遍历主机数据，添加主机层的告警规则
         for item in nodes_data:
             node_target_ele = {
@@ -392,6 +412,15 @@ class PrometheusUtils(object):
         node_target_list = self.json_distinct(node_target_list)
         with open(self.node_exporter_targets_file, "w") as f2:
             json.dump(node_target_list, f2, ensure_ascii=False, indent=4)
+        # 格式校验
+        try:
+            with open(self.node_exporter_targets_file, "r") as f:
+                json.loads(f.read())
+        except json.decoder.JSONDecodeError:
+            with open(self.node_exporter_targets_file, "w") as f2:
+                json.dump(old_node_target_list, f2, ensure_ascii=False, indent=4)
+            logger.error(f"本次写入的文件{self.node_exporter_targets_file}出现格式错误，已复原配置")
+            return False, "error in json format"
         self.reload_prometheus()
         return True, "success"
 
@@ -440,28 +469,29 @@ class PrometheusUtils(object):
             dest_url = 'http://{}:{}/update/service/add'.format(dest_ip, self.monitor_port)  # NOQA
             for sd in services_data:
                 service_temp_data = dict()
+                _service_name = ""
+                _service_name = sd.get('service_name')
                 service_temp_data['service_port'] = sd.get('listen_port')
                 service_temp_data['run_port'] = sd.get('run_port')
-                if sd.get('service_name') in EXPORTERS:
+                if _service_name in EXPORTERS:
                     service_temp_data['exporter_port'] = self.get_service_port(
-                        '{}Exporter'.format(sd.get('service_name')))
+                        '{}Exporter'.format(EXPORTER_SHARE.get(_service_name, _service_name)))
                 else:
                     service_temp_data['exporter_port'] = sd.get(
                         'metric_port', 0)
-                if sd.get('service_name') in METRICS.keys():
-                    service_temp_data['exporter_metric'] = METRICS.get(
-                        sd.get('service_name'), 0)
-                else:
-                    service_temp_data['exporter_metric'] = 'metrics'
+                service_temp_data['exporter_metric'] = METRICS.get(
+                    _service_name, 'metrics')
                 service_temp_data['username'] = sd.get('username', '')
                 service_temp_data['password'] = sd.get('password', '')
-                service_temp_data['name'] = sd.get('service_name')
+                service_temp_data['name'] = _service_name
                 service_temp_data['only_process'] = sd.get('only_process')
                 service_temp_data['process_key_word'] = sd.get(
                     'process_key_word')
-                service_temp_data['instance'] = dest_ip
+                service_temp_data['instance'] = sd.get('instance_name')
                 service_temp_data['env'] = sd.get('env')
                 service_temp_data['log_path'] = sd.get('log_path')
+                service_temp_data['health'] = sd.get('health')
+                service_temp_data['app_path'] = sd.get('app_path')
                 service_temp_data["scrape_log_level"] = LOKI_CONFIG.get(
                     "scrape_log_level")
                 json_content.append(service_temp_data)
@@ -472,7 +502,7 @@ class PrometheusUtils(object):
 
         json_dict['services'] = json_content
         try:
-            logger.info(f'向agent发送数据{json_dict}')
+            logger.info(f'向agent发送服务监控数据{json_dict}')
             result = requests.post(
                 dest_url, headers=headers, data=json.dumps(json_dict)).json()
             if result.get('return_code') == 0:
@@ -487,34 +517,175 @@ class PrometheusUtils(object):
                 dest_ip, services_data[0].get('service_name')))
             logger.error(e)
             # return False, e
-        try:
-            from utils.parse_config import MONITOR_PORT, LOCAL_IP
-            from db_models.models import Host
-            update_agent_promtail_url = f'http://{dest_ip}:{self.monitor_port}/update/promtail/add'  # NOQA
-            host_agent_dir = Host.objects.filter(
-                ip=dest_ip).values_list('agent_dir', flat=True)[0]
-            json_dict['promtail_config'] = {
-                'http_listen_port': MONITOR_PORT.get('promtail'),
-                'loki_url': f'http://{LOCAL_IP}:{MONITOR_PORT.get("loki")}/loki/api/v1/push'  # NOQA
+        if action == "add":
+            try:
+                from utils.parse_config import MONITOR_PORT, LOCAL_IP
+                from db_models.models import Host
+                update_agent_promtail_url = f'http://{dest_ip}:{self.monitor_port}/update/promtail/add'  # NOQA
+                host_agent_dir = Host.objects.filter(
+                    ip=dest_ip).values_list('agent_dir', flat=True)[0]
+                json_dict['promtail_config'] = {
+                    'http_listen_port': MONITOR_PORT.get('promtail'),
+                    'loki_url': f'http://{LOCAL_IP}:{MONITOR_PORT.get("loki")}/loki/api/v1/push'  # NOQA
+                }
+                json_dict['agent_dir'] = host_agent_dir
+                logger.info(f'向agent发送日志监控数据{json_dict}')
+                promtail_result = requests.post(
+                    update_agent_promtail_url, headers=headers, data=json.dumps(json_dict)).json()
+                if promtail_result.get('return_code') == 0:
+                    logger.info('向{}更新服务{}日志监控配置成功！'.format(
+                        dest_ip, services_data[0].get('service_name')))
+                else:
+                    logger.error('向{}更新服务{}日志监控配置失败！'.format(
+                        dest_ip, services_data[0].get('service_name')))
+                    # return False, promtail_result.get('return_message')
+            except Exception as e:
+                logger.error(e)
+                logger.error('向{}更新服务{}日志监控失败！'.format(
+                    dest_ip, services_data[0].get('service_name')))
+        return True, 'success'
+
+    def check_dict_format(self, item_dict):
+        """检查prometheus yaml dict格式"""
+        if not item_dict.get("job_name", "").endswith("Exporter"):
+            # 非omp程序写入，不校验
+            return True
+        if item_dict["metrics_path"] and isinstance(item_dict["metrics_path"], str) and item_dict[
+            "metrics_path"].lower() == "/federate":
+            # 联邦配置暂时不做校验
+            return True
+        if len(item_dict) != 3:
+            return False
+        if "job_name" not in item_dict or "metrics_path" not in item_dict or "file_sd_configs" not in item_dict:
+            return False
+        if not isinstance(item_dict["job_name"], str) or not isinstance(item_dict["metrics_path"], str) or \
+                not isinstance(item_dict["file_sd_configs"], list):
+            return False
+        return True
+
+    def write_prometheus_yml(self, queryset):
+        """写入prometheus.yml"""
+        if not queryset:
+            return False, f"{queryset} is None"
+        ser_name = ""
+        prom_job_list = list()
+        for detail_obj in queryset:
+            instance_name = detail_obj.service.service_instance_name
+            ser_name = detail_obj.service.service.app_name
+            if ser_name == "hadoop":
+                ser_name = instance_name.split("_", 1)[0]
+            elif ser_name == 'doim':
+                ser_name = instance_name.split("-", 1)[0]
+            job_name_str = "{}Exporter".format(ser_name)
+            prom_job_dict = {
+                "job_name": job_name_str,
+                "metrics_path": f"/metrics/monitor/{ser_name}",
+                "file_sd_configs": [
+                    {
+                        "refresh_interval": "30s",
+                        "files": [
+                            f"targets/{ser_name}Exporter_all.json"
+                        ]
+                    }
+                ]
             }
-            json_dict['agent_dir'] = host_agent_dir
-            logger.info(f'向agent发送数据{json_dict}')
-            promtail_result = requests.post(
-                update_agent_promtail_url, headers=headers, data=json.dumps(json_dict)).json()
-            if promtail_result.get('return_code') == 0:
-                logger.info('向{}更新服务{}日志监控配置成功！'.format(
-                    dest_ip, services_data[0].get('service_name')))
-            else:
-                logger.error('向{}更新服务{}日志监控配置失败！'.format(
-                    dest_ip, services_data[0].get('service_name')))
-                # return False, promtail_result.get('return_message')
+            prom_job_list.append(prom_job_dict)
+        # 原数据格式检查并清理
+        with open(self.prometheus_conf_path, "r") as fr:
+            raw_content = yaml.load(fr.read(), yaml.Loader)
+        try:
+            raw_content_list = raw_content.get("scrape_configs")
         except Exception as e:
             logger.error(e)
-            logger.error('向{}更新服务{}日志监控失败！'.format(
-                dest_ip, services_data[0].get('service_name')))
-            # return False, e
+            logger.error(f"获取{self.prometheus_conf_path}配置内容失败，具体为：{raw_content}")
+            return False, "get content from prometheus.yml failed!"
+        raw_content_list = [item_dict for item_dict in raw_content_list if self.check_dict_format(item_dict)]
+        raw_content["scrape_configs"] = raw_content_list
+        content = deepcopy(raw_content)
 
-        return True, 'success'
+        content_list = content.get("scrape_configs")
+        content_list.extend(prom_job_list)
+        content_list = self.json_distinct(content_list)
+        content["scrape_configs"] = content_list
+        with open(self.prometheus_conf_path, "w", encoding="utf8") as fw:
+            yaml.dump(data=content, stream=fw,
+                      allow_unicode=True, sort_keys=False)
+        # 格式检查
+        res_flag = self.reload_prometheus()
+        if not res_flag:
+            # yaml文件有问题，复原文件
+            with open(self.prometheus_conf_path, "w", encoding="utf8") as fw:
+                yaml.dump(data=raw_content, stream=fw,
+                          allow_unicode=True, sort_keys=False)
+            logger.error(f"本次写入的yaml文件出现错误，已复原配置")
+            return False, "本次写入的yaml文件出现错误，已复原配置"
+        logger.info(f"本次写入prometheus.yml，pro_dict数量: {len(content_list)}, 具体为：{content_list}")
+        return True, "success writed prometheus yaml"
+
+    def write_target_json(self, queryset):
+        """写入targets/xxExporter_all.json"""
+        new_self_target_list = list()
+        cluster_instance_name_list = list()
+        self_target_ele = dict()
+        service_target_json_dict = dict()
+        service_name_set = set()
+        ser_name = ""
+        for detail_obj in queryset:
+            instance_name = detail_obj.service.service_instance_name
+            ser_name = detail_obj.service.service.app_name
+            if ser_name == "hadoop":
+                ser_name = instance_name.split("_", 1)[0]
+            elif ser_name == 'doim':
+                ser_name = instance_name.split("-", 1)[0]
+            service_name_set.add(ser_name)
+            ip = detail_obj.service.ip
+            self_target_ele = {
+                "labels": {
+                    "instance": "{}".format(ip),
+                    "instance_name": "{}".format(instance_name),
+                    "app": "{}".format(ser_name),
+                    "service_type": "service",
+                    "env": "default"
+                },
+                "targets": [
+                    "{}:{}".format(ip, self.monitor_port)
+                ]
+            }
+            # TODO elasticsearch 集群监控先跳过
+            if detail_obj.service.cluster and ser_name.lower() != "elasticsearch":
+                self_target_ele["labels"]["cluster"] = detail_obj.service.cluster.cluster_name
+                cluster_name = detail_obj.service.cluster.cluster_name
+                cluster_instance_name_list.append(instance_name)
+            if ser_name not in service_target_json_dict.keys():
+                service_target_json_dict[ser_name] = [self_target_ele]
+            else:
+                service_target_json_dict[ser_name].append(self_target_ele)
+        logger.info(f"本次写入target_json，获取服务名的集合为: {service_name_set}")
+        logger.info(f"cluster_instance_name_dict 为: {cluster_instance_name_list}")
+        logger.info(f"本次获取的service_target_json_dict，获取服务名的集合为: {service_target_json_dict}")
+        for service_name in service_name_set:
+            self_exporter_target_file = os.path.join(self.prometheus_targets_path,
+                                                     "{}Exporter_all.json".format(service_name))
+            new_self_target_list = service_target_json_dict[service_name]
+            if os.path.exists(self_exporter_target_file):
+                with open(self_exporter_target_file, 'r') as f:
+                    content = f.read()
+                    if content:
+                        old_self_target_list = json.loads(content)
+                    new_self_target_list.extend(old_self_target_list)
+            new_self_target_list = self.json_distinct(new_self_target_list,
+                                                      cluster_instance_name_list=cluster_instance_name_list,
+                                                      is_service=True)
+            # # 添加cluster标签
+            # for target_item in new_self_target_list:
+            #     instance_name = target_item["labels"]["instance_name"]
+            #     if instance_name in cluster_instance_name_dict.keys():
+            #         target_item["labels"]["cluster"] = cluster_instance_name_dict.pop(instance_name)
+
+            with open(self_exporter_target_file, 'w') as f2:
+                json.dump(new_self_target_list, f2, ensure_ascii=False, indent=4)
+            logger.info(f"写入: {self_exporter_target_file}, 内容为：{new_self_target_list}")
+        logger.info(f"本次写入target_json文件数量为：{len(service_name_set)}, 全部写入成功")
 
     def add_service(self, service_data):
         """
@@ -534,71 +705,11 @@ class PrometheusUtils(object):
         """
         if not service_data:
             return False, "args cant be null"
-
-        logger.info(f'收到信息：{service_data}')
-        job_name_str = "{}Exporter".format(service_data.get('service_name'))
-        prom_job_dict = {
-            "job_name": job_name_str,
-            "metrics_path": f"/metrics/monitor/{service_data.get('service_name')}",
-            "file_sd_configs": [
-                {
-                    "refresh_interval": "30s",
-                    "files": [
-                        f"targets/{service_data.get('service_name')}Exporter_all.json"
-                    ]
-                }
-            ]
-        }
-        with open(self.prometheus_conf_path, "r") as fr:
-            content = yaml.load(fr.read(), yaml.Loader)
-        content.get("scrape_configs").append(prom_job_dict)
-        content["scrape_configs"] = self.json_distinct(
-            content.get("scrape_configs"))
-        with open(self.prometheus_conf_path, "w", encoding="utf8") as fw:
-            yaml.dump(data=content, stream=fw,
-                      allow_unicode=True, sort_keys=False)
-        self_exporter_target_file = os.path.join(self.prometheus_targets_path,
-                                                 "{}Exporter_all.json".format(service_data["service_name"]))
-        self_target_list = list()
-        self_target_ele = ""
-        try:
-            self_target_ele = {
-                "labels": {
-                    "instance": "{}".format(service_data["ip"]),
-                    "instance_name": "{}".format(service_data.get("instance_name")),
-                    "service_type": "service",
-                    "env": "{}".format(service_data["env"])
-                },
-                "targets": [
-                    "{}:{}".format(service_data["ip"], self.monitor_port)
-                ]
-            }
-        except KeyError as func_e:
-            logger.error(func_e)
-        self_target_list.append(self_target_ele)
-
-        if os.path.exists(self_exporter_target_file):
-            with open(self_exporter_target_file, 'r') as f:
-                content = f.read()
-                if content:
-                    old_self_target_list = json.loads(content)
-                    self_target_list.extend(old_self_target_list)
-        self_target_list = self.json_distinct(self_target_list)
-
-        with open(self_exporter_target_file, 'w') as f2:
-            json.dump(self_target_list, f2, ensure_ascii=False, indent=4)
         flag, msg = self.update_agent_service(
             service_data.get('ip'), 'add', [service_data])
         if not flag:
             return False, msg
         # self.add_rules('service', service_data.get('env'))
-        reload_prometheus_url = 'http://localhost:19011/-/reload'
-        # TODO 确认重载prometheus动作在哪执行
-        try:
-            requests.post(reload_prometheus_url, auth=self.basic_auth)
-        except Exception as e:
-            logger.error(e)
-            logger.error("重载prometheus配置失败！")
         return True, "success"
 
     def delete_service(self, service_data):
@@ -637,13 +748,7 @@ class PrometheusUtils(object):
             service_data.get('ip'), 'delete', [service_data])
         if not flag:
             return False, msg
-        reload_prometheus_url = 'http://localhost:19011/-/reload'
-        # TODO 确认重载prometheus动作在哪执行
-        try:
-            requests.post(reload_prometheus_url, auth=self.basic_auth)
-        except Exception as e:
-            logger.error(e)
-            logger.error("重载prometheus配置失败！")
+        self.reload_prometheus()
         return True, "success"
 
     def update_host_threshold(self, env="default", env_id=1):
@@ -736,7 +841,7 @@ class PrometheusUtils(object):
         """
         """
         # threshold = "80" if level == "warning" else 90
-        logger.error("开始添加数据分区规则")
+        logger.info("开始添加数据分区规则")
         threshold_list = [("warning", "80"), ("critical", "90")]
         for i in range(2):
             info = threshold_list[i]
@@ -832,9 +937,11 @@ class PrometheusUtils(object):
         try:
             response = requests.post(
                 reload_prometheus_url, auth=self.basic_auth)
-            logger.error(f"重载成功 {response.text}")
-            return True
         except Exception as e:
-            logger.error(e)
-            logger.error("重载prometheus配置失败！")
+            logger.error(f"重载prometheus配置失败！错误信息为{str(e)}")
             return False
+        if response.status_code != 200:
+            logger.error(f"重载prometheus失败，状态码为:{response.status_code}, 错误信息为：{str(response.text)}")
+            return False,
+        logger.info(f"重载prometheus成功")
+        return True

@@ -41,8 +41,7 @@ def synch_grafana_info():
         monitor_ip) else "127.0.0.1:19014"
 
     url = "http://{0}/proxy/v1/grafana/api/search?" \
-          "query=&starred=false&skipRecent=false&skipStarred=false&" \
-          "folderIds=0&layout=folders".format(monitor_url)
+          "sort=name_sort&type=dash-db".format(monitor_url)
     payload = {}
     headers = {'Content-Type': 'application/json'}
     try_times = 0
@@ -62,14 +61,23 @@ def synch_grafana_info():
             return
     else:
         return
-    url_type = {"service": "fu", "node": "zhu", "log": "applogs"}
+    url_type = {"log": "applogs"}
     url_dict = {}
     for url in r:
         url_name = url.get("uri").rsplit("/", 1)[1].split("-", 1)[0]
         url_dict[url_name.lower()] = url.get("url")
 
     for key, value in url_type.items():
-        url_dict.update({key: url_dict.pop(value)})
+        try:
+            url_dict.update({key: url_dict.pop(value)})
+        except KeyError:
+            pass
+
+    # omp v2.2 redis、redisgraph；zookeeper、zookeeperCH共用一个面板
+    # omp v2.3 postgresql、cloudpangudb共用一个面板
+    add_service_dict = {"redisgraph": "redis", "zookeeperch": "zookeeper", "cloudpangudb": "postgresql"}
+    for k, v in add_service_dict.items():
+        url_dict.update({k: url_dict.get(v)})
 
     if GrafanaMainPage.objects.all().count() != len(url_dict):
         dbname = [i.instance_name for i in GrafanaMainPage.objects.all()]

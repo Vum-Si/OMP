@@ -1,27 +1,23 @@
 import { Drawer } from "antd";
-import {
-    DesktopOutlined
-  } from "@ant-design/icons";
-  import {
-    OmpIframe
-  } from "@/components";
+import { DesktopOutlined } from "@ant-design/icons";
+import { OmpIframe } from "@/components";
 
-const OmpDrawer = ({ showIframe, setShowIframe }) => {
+const OmpDrawer = ({ showIframe, setShowIframe, context }) => {
   return (
     <Drawer
       title={
         <div style={{ display: "flex" }}>
-          <DesktopOutlined
-            style={{ position: "relative", top: 3, left: -5 }}
-          />
-          信息面板
-          <span style={{ paddingLeft: 30, fontWeight: 400, fontSize: 15 }}>
-            IP: {showIframe.record?.ip}
-          </span>
+          <DesktopOutlined style={{ position: "relative", top: 3, left: -5 }} />
+          {context.monitor + context.ln + context.info}
+          {showIframe.record?.ip && (
+            <span style={{ paddingLeft: 30, fontWeight: 400, fontSize: 15 }}>
+              IP: {showIframe.record?.ip}
+            </span>
+          )}
         </div>
       }
       headerStyle={{
-        padding:"19px 24px"
+        padding: "19px 24px",
       }}
       placement="right"
       closable={true}
@@ -44,11 +40,9 @@ const OmpDrawer = ({ showIframe, setShowIframe }) => {
         height: "calc(100%)",
       }}
       destroyOnClose={true}
+      zIndex={9999}
     >
-      <OmpIframe
-        showIframe={showIframe}
-        setShowIframe={setShowIframe}
-      />
+      <OmpIframe showIframe={showIframe} setShowIframe={setShowIframe} />
     </Drawer>
   );
 };

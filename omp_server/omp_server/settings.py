@@ -15,7 +15,9 @@ import datetime
 from pathlib import Path
 from utils.parse_config import OMP_MYSQL_HOST, OMP_MYSQL_PORT, \
     OMP_MYSQL_USERNAME, OMP_MYSQL_PASSWORD, TOKEN_EXPIRATION, \
-    SSH_CMD_TIMEOUT, PRIVATE_KEY
+    SSH_CMD_TIMEOUT, PRIVATE_KEY, OMP_DM_PASSWORD, OMP_DM_HOST, OMP_DM_PORT, \
+    OMP_DM_USERNAME, OMP_DM_DB_NAME, USE_DB, OMP_CLOUD_USERNAME, OMP_CLOUD_HOST, \
+    OMP_CLOUD_PORT, OMP_CLOUD_PASSWORD
 
 SSH_CMD_TIMEOUT = SSH_CMD_TIMEOUT
 PRIVATE_KEY = PRIVATE_KEY
@@ -64,7 +66,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'utils.middleware_handler.RoleAuthenticationMiddleware',
-    'utils.middleware_handler.OperationLogMiddleware'
+    'utils.middleware_handler.OperationLogMiddleware',
 ]
 
 ROOT_URLCONF = 'omp_server.urls'
@@ -89,8 +91,7 @@ WSGI_APPLICATION = 'omp_server.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/3.1/ref/settings/#databases
-
-DATABASES = {
+MYSQL_DB = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'omp',
@@ -108,7 +109,50 @@ DATABASES = {
         }
     }
 }
+# create schema OMP;
+DM_DB = {
+    'default': {
+        'ENGINE': 'django_dmPython',
+        'USER': OMP_DM_USERNAME,
+        'PASSWORD': OMP_DM_PASSWORD,
+        'HOST': OMP_DM_HOST,
+        'PORT': OMP_DM_PORT,
+        'OPTIONS': {'local_code': 1, 'connection_timeout': 5, 'schema': OMP_DM_DB_NAME}
+    }
+}
 
+CLOUD_DB = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'cloudwises',
+        'USER': OMP_CLOUD_USERNAME,
+        'PASSWORD': OMP_CLOUD_PASSWORD,
+        'HOST': OMP_CLOUD_HOST,
+        'PORT': int(OMP_CLOUD_PORT),
+    }
+}
+
+PG_DB = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',
+        'USER': OMP_CLOUD_USERNAME,
+        'PASSWORD': OMP_CLOUD_PASSWORD,
+        'HOST': OMP_CLOUD_HOST,
+        'PORT': int(OMP_CLOUD_PORT),
+    }
+}
+
+db_mapping = {
+    "dm": DM_DB,
+    "mysql": MYSQL_DB,
+    "oceanbase": MYSQL_DB,
+    "CloudPanguDB": CLOUD_DB,
+    "postgreSql": PG_DB,
+
+}
+
+DATABASES = db_mapping.get(USE_DB, CLOUD_DB)
 # Password validation
 # https://docs.djangoproject.com/en/3.1/ref/settings/#auth-password-validators
 
@@ -159,6 +203,12 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ),
     "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.coreapi.AutoSchema",
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.ScopedRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "alert_receive": "20/s"
+    }
 }
 
 # JWT相关设置
@@ -185,7 +235,10 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'standard': {
-            'format': '[%(asctime)s][%(levelname)s] %(pathname)s %(lineno)d -> %(message)s'}
+            'format': '[%(asctime)s][%(levelname)s] %(pathname)s %(lineno)d -> %(message)s'},
+        'f_alert': {
+            'format': '[%(asctime)s] %(message)s'
+        }
     },
     'filters': {
     },
@@ -224,6 +277,14 @@ LOGGING = {
             'backupCount': 5,
             'formatter': 'standard',
         },
+        'alert_handler': {
+            'level': 'INFO',
+            'class': LOGGER_CLASS,
+            'filename': os.path.join(PROJECT_DIR, "logs/alert.log"),
+            'maxBytes': LOG_BACKUP_SIZE,
+            'backupCount': 5,
+            'formatter': 'f_alert',
+        },
     },
     'loggers': {
         'django': {
@@ -233,6 +294,11 @@ LOGGING = {
         },
         'server': {
             'handlers': ['default', 'error'],
+            'level': "INFO",
+            'propagate': True
+        },
+        'alert': {
+            'handlers': ['alert_handler'],
             'level': "INFO",
             'propagate': True
         }

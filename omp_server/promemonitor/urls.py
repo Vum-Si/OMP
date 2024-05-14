@@ -2,6 +2,7 @@
 监控相关的路由
 """
 from rest_framework.routers import DefaultRouter
+from django.urls import path
 
 from promemonitor.custom_script_views import CustomScriptViewSet, CustomScriptJobInfoView
 from promemonitor.views import (
@@ -10,7 +11,8 @@ from promemonitor.views import (
     MonitorAgentRestartView, GrafanaUrlViewSet, InstanceNameListView,
     InstrumentPanelView, GetSendEmailConfig, UpdateSendEmailConfig,
     GetSendAlertSettingView, UpdateSendAlertSettingView, HostThresholdView,
-    ServiceThresholdView, CustomThresholdView, BuiltinsRuleView, QuotaView, PromSqlTestView, BatchUpdateRuleView
+    ServiceThresholdView, CustomThresholdView, BuiltinsRuleView, QuotaView, PromSqlTestView, BatchUpdateRuleView,
+    ListContainerInstanceView, SelfServiceLogView,alertSettingView
 )
 
 router = DefaultRouter()
@@ -48,4 +50,9 @@ router.register(r'quota', QuotaView, basename="quota")
 router.register(r'testPromSql', PromSqlTestView, basename="testPromSql")
 router.register(r'batchUpdateRule', BatchUpdateRuleView,
                 basename="batchUpdateRule")
-urlpatterns = router.urls
+router.register(r"logLevel", SelfServiceLogView, basename='logLevel')
+router.register(r"alertSetting", alertSettingView, basename='alertSetting')
+urlpatterns = [
+    path('ListContainerInstance', ListContainerInstanceView.as_view(), name="ListContainerInstance"),
+]
+urlpatterns += router.urls

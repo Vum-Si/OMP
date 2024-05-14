@@ -45,6 +45,12 @@ START_COMMAND="${PYTHON3} ${SALT_MINION_PATH} \
     --log-file-level=${SALT_AGENT_LOG_LEVEL} \
     -d"
 
+function getConf() {
+  MASTER_IP=`cat ${SALT_CONFIG_DIR}/minion |grep master:|awk '{print $2}'`
+  $PYTHON3 ${OMP_DIR}/scripts/get_conf.py $MASTER_IP
+}
+
+
 function check_key_file() {
   MINION_KEY_FILE="${OMP_DIR}/data/etc/salt/pki/minion/minion_master.pub"
   if [ -f $MINION_KEY_FILE ]; then
@@ -154,7 +160,7 @@ function agent_status() {
 }
 
 function agent_stop() {
-  ps -ef | grep "${OMP_DIR}/env/bin/salt-minion" | grep -v grep | awk '{print $2}' | xargs kill -9
+  ps -ef | grep "${OMP_DIR}/env/bin/salt-minion" | grep -v grep | awk '{print $2}' | xargs -r kill -9
   sleep 1
   agent_status
 }
@@ -211,6 +217,9 @@ function main() {
     ;;
   init)
     agent_init
+    ;;
+  getconf)
+    getConf
     ;;
   *)
     help

@@ -41,16 +41,17 @@ export const apiRequest = {
     hostInit: "/api/hosts/hostInit/",
     // 主机agent状态查询
     hostsAgentStatus: "/api/hosts/hostsAgentStatus/",
-
     // 主机批量导入模版下载地址
     downTemplate: "/api/hosts/batchValidate/",
     // 主机批量导入文件解析后的校验接口(post)
     batchValidate: "/api/hosts/batchValidate/",
     // 主机批量导入创建主机
     batchImport: "/api/hosts/batchImport/",
-
     // 主机删除
     deleteHost: "/api/hosts/hostUninstall/",
+
+    // 获取无 ssh 导入主机 url
+    getNoSshUrl: "/api/hosts/host_create_url/",
   },
   MonitoringSettings: {
     // 配置初始查询监控
@@ -69,6 +70,8 @@ export const apiRequest = {
     updateAlert: "/api/promemonitor/updateAlert/",
     // 告警记录筛选实例名称
     instanceNameList: "/api/promemonitor/instanceNameList/",
+    // 日志管理列表
+    logManagementList: "api/promemonitor/logLevel/",
   },
   ExceptionList: {
     // 异常清单列表查询
@@ -171,6 +174,29 @@ export const apiRequest = {
     queryAppList: "/api/services/appList/",
     // 校验服务纳管配置信息
     appConfCheck: "/api/services/appConfCheck/",
+
+    // 容器日志
+    queryContanerData: "/api/promemonitor/ListContainerInstance",
+
+    // 获取服务配置项
+    queryServiceConfig: "/api/service_conf/get_conf/",
+    // 修改服务配置项
+    editServiceConfig: "api/service_conf/post_conf/",
+    // 修改服务以来
+    editServiceDep: "/api/service_conf/get_dependence/",
+    // 同步配置
+    pullConfig: "/api/service_conf/change_conf/",
+    // 获取平台访问 url
+    getUrl: "/api/services/getSerUrl/",
+
+    // 中断安装升级回滚任务流程
+    stopProcess: "/api/appStore/StopProcess/",
+
+    // 加密解密接口
+    postRsa: "/api/service_conf/post_rsa/",
+
+    // 安装获取集群配置接口
+    installCluster: "/api/appStore/InstallClusterArgs/",
   },
   installHistoryPage: {
     queryInstallHistoryList: "/api/appStore/mainInstallHistory",
@@ -202,10 +228,12 @@ export const apiRequest = {
     pushEmail: "/api/inspection/inspectionSendEmail/",
   },
   emailSetting: {
-    // 查询邮件全局设置
+    // 查询邮件设置
     querySetting: "/api/promemonitor/getSendEmailConfig/",
-    // 更新邮件全局设置
+    // 更新邮件设置
     updateSetting: "/api/promemonitor/updateSendEmailConfig/",
+    // 查询推送设置
+    alertSetting: "/api/promemonitor/alertSetting/",
   },
   // 指标中心
   ruleCenter: {
@@ -251,6 +279,12 @@ export const apiRequest = {
     deploymentOperable: "/api/appStore/deploymentOperable",
     // 下载部署计划模板
     deploymentTemplate: "/api/appStore/deploymentTemplate/",
+    // 快速生成模板 step 1
+    installTempFirst: "/api/appStore/installTempFirst/",
+    // 快速生成模板 step 2
+    isntallTempSecond: "api/appStore/InstallTempSecond/",
+    // 下载生成模板
+    downLoadTemp: "api/appStore/InstallTempLast/",
   },
   // 数据备份
   dataBackup: {
@@ -280,6 +314,15 @@ export const apiRequest = {
     // 自愈策略
     selfHealingStrategy: "/api/services/SelfHealingSetting/",
   },
+  // 日志管理
+  logManagement: {
+    // 日志清理规则
+    logClearRule: "api/services/logClearRule/",
+    // 扫描
+    logRuleCollect: "api/services/logRuleCollect/",
+    // 主机探查周期
+    hostCron: "api/services/hostCron/",
+  },
   // 实用工具
   utilitie: {
     queryList: "/api/tool/toolList/",
@@ -288,5 +331,8 @@ export const apiRequest = {
     queryResult: "/api/tool/result/",
     queryHistory: "/api/tool/execute-history",
     queryBuiltinsQuota: "/api/promemonitor/builtinRule/",
+    autoTest: "/api/tool/test-task",
+    autoTestHost: "/api/tool/test-task-host/",
+    autoUtl: "api/tool/test-url/",
   },
 };

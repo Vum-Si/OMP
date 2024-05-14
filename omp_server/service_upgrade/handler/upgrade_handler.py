@@ -11,6 +11,9 @@ from db_models.mixins import UpgradeStateChoices
 from db_models.models import UpgradeDetail, Service, ServiceHistory
 from service_upgrade.handler.base import BaseHandler, StartOperationMixin, \
     StopServiceMixin, StartServiceMixin
+from promemonitor.prometheus_utils import PrometheusUtils
+from app_store.tasks import add_prometheus
+from utils.parse_config import python_cmd_env
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +67,8 @@ class StartUpgradeHandler(StartOperationMixin, UpgradeBaseHandler):
         self.detail.upgrade_state = UpgradeStateChoices.UPGRADE_ING
         self.detail.save()
         self.detail.refresh_from_db()
-        self.service.service_status = Service.SERVICE_STATUS_UPGRADE
-        self.service.save()
+        # self.service.service_status = Service.SERVICE_STATUS_UPGRADE
+        # self.service.save()
         self.service.refresh_from_db()
         for detail in self.relation_details:
             detail.upgrade_state = UpgradeStateChoices.UPGRADE_ING
@@ -103,7 +106,7 @@ class BackupServiceHandler(UpgradeBaseHandler):
         # 备份服务文件
         backup_file = os.path.join(backup_package, backup_name)
         backup_str = f"mkdir -p {backup_package} && " \
-            f"mv {self.service.install_folder} {backup_file}"
+                     f"mv {self.service.install_folder} {backup_file}"
         state, result = self.salt_client.cmd(
             self.service.ip, backup_str, settings.SSH_CMD_TIMEOUT)
         if not state:
@@ -185,7 +188,7 @@ class UpgradeServiceHandler(UpgradeBaseHandler):
         )
         # 适配流水线加的统一版本后缀commit_id
         version = self.detail.current_app.app_version.split("-")[0]
-        cmd_str = f"python {upgrade_path} " \
+        cmd_str = f"{python_cmd_env(data_json_path)} {upgrade_path} " \
                   f"--local_ip {self.service.ip} " \
                   f"--data_json {data_json_path} " \
                   f"--version {version} " \
@@ -214,11 +217,69 @@ class StartServiceHandler(StartServiceMixin, UpgradeBaseHandler):
             )
             relation_detail.refresh_from_db()
 
+    def sync_port(self, role_key=None, service_obj=None):
+        """
+        同步要监控的port
+        """
+        port_dc = {}
+        service_port = service_obj if service_obj else self.service.service_port
+        ports = json.loads(service_port)
+        role_key = role_key if role_key else {
+            "namenode_rpc_port": "namenode",
+            "journalnode_rpc_port": "journalnode",
+            "resourcemanager_webapp_port": "resourcemanager",
+            "nodemanager_port": "nodemanager",
+            "datanode_rpc_port": "datanode",
+            "zkfc_rpc_port": "zkfc",
+            "secondarynamenode_rpc_port": "secondarynamenode"
+        }
+        for port in ports:
+            port_key = role_key.get(port.get("key", ""))
+            if port_key:
+                port_dc[port_key] = port.get("default", "")
+        return port_dc
+
+    def update_port_monitor(self, service_obj, new_port):
+        ports = json.loads(service_obj.service_port)
+        old_port = None
+        for _ in ports:
+            if _.get("key") == "service_port":
+                old_port = _["service_port"]
+                _["service_port"] = new_port
+        service_obj.service_port = json.dumps(ports)
+        service_obj.save()
+        service_obj.refresh_from_db()
+        service_data = {
+            "service_name": "hadoop",
+            "instance_name": service_obj.service_instance_name,
+            "data_path": None,
+            "log_path": None,
+            "env": service_obj.env.name,
+            "ip": service_obj.ip,
+            "listen_port": old_port
+        }
+        PrometheusUtils().delete_service(service_data)
+        return service_obj.detailinstallhistory_set
+
+    def change_regis_monitor(self):
+        hadoop_objs = Service.objects.filter(ip=self.service.ip, service__app_name="hadoop")
+        main_service_port = self.sync_port()
+        detail_obj_ls = []
+        for obj in hadoop_objs:
+            service_name = obj.service_instance_name.split("_")[0]
+            service_port = self.sync_port("service_port", obj.service_port)
+            if main_service_port.get(service_name) != service_port.get("service_port"):
+                detail_obj = self.update_port_monitor(obj, main_service_port.get(service_name))
+                detail_obj_ls.append(detail_obj)
+        add_prometheus(9999, detail_obj_ls)
+
     def write_db(self, result=False):
         """写库"""
         state = f"{self.operation_type}_SUCCESS"
         self.detail.upgrade_state = getattr(UpgradeStateChoices, state)
         self.detail.save()
+        # 创建服务操作记录
+        ServiceHistory.create_history(self.service, self.detail)
         self.service.update_application(
             self.detail.target_app,
             True,
@@ -226,6 +287,8 @@ class StartServiceHandler(StartServiceMixin, UpgradeBaseHandler):
         )
         # 升级结束更新服务表
         self.sync_relation_details()
+        if result and self.service.service.app_name == "hadoop":
+            self.change_regis_monitor()
 
     def fail_handler(self):
         """失败处理"""

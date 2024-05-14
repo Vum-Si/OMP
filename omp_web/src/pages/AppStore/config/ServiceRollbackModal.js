@@ -10,30 +10,23 @@ import { useHistory } from "react-router-dom";
 const ServiceRollbackModal = ({
   sRModalVisibility,
   setSRModalVisibility,
-  // dataSource,
-  installTitle,
   initLoading,
   fixedParams,
+  context,
 }) => {
   const [loading, setLoading] = useState(false);
-
   const [selectValue, setSelectValue] = useState();
-
   const [rows, setRows] = useState([]);
-
   const history = useHistory();
-
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-  // console.log(checkedList)
-  //应用服务选择的版本号
-  const versionInfo = useRef({});
-
   const lock = useRef(false);
+  const [dataSource, setDataSource] = useState([]);
+  const [allLength, setAllLength] = useState(0);
 
   const columns = [
     {
-      title: "名称",
+      title: context.service + context.ln + context.name,
       key: "instance_name",
       dataIndex: "instance_name",
       // align: "center",
@@ -48,7 +41,7 @@ const ServiceRollbackModal = ({
       },
     },
     {
-      title: "当前版本",
+      title: context.current + context.ln + context.version,
       key: "before_rollback_v",
       dataIndex: "before_rollback_v",
       align: "center",
@@ -64,7 +57,7 @@ const ServiceRollbackModal = ({
       },
     },
     {
-      title: "回滚版本",
+      title: context.target + context.ln + context.version,
       key: "after_rollback_v",
       dataIndex: "after_rollback_v",
       align: "center",
@@ -80,9 +73,6 @@ const ServiceRollbackModal = ({
       },
     },
   ];
-
-  const [dataSource, setDataSource] = useState([]);
-  const [allLength, setAllLength] = useState(0);
 
   const queryDataList = (search) => {
     // setRows([]);
@@ -190,20 +180,18 @@ const ServiceRollbackModal = ({
           <span style={{ position: "relative", left: "-10px" }}>
             <SyncOutlined />
           </span>
-          <span>服务回滚-选择应用服务</span>
+          <span>{context.service + context.ln + context.rollback}</span>
         </span>
       }
       width={600}
       afterClose={() => {
         setRows([]);
         setCheckedList([]);
+        setSelectValue("");
       }}
-      onCancel={() => {
-        setSRModalVisibility(false);
-      }}
+      onCancel={() => setSRModalVisibility(false)}
       visible={sRModalVisibility}
       footer={null}
-      //width={1000}
       loading={loading}
       bodyStyle={{
         paddingLeft: 30,
@@ -212,22 +200,18 @@ const ServiceRollbackModal = ({
       destroyOnClose
     >
       <div>
-        <div style={{ display: "flex", marginLeft: "290px", marginBottom: 15 }}>
-          <span
-            style={{
-              width: 70,
-              display: "flex",
-              alignItems: "center",
-              fontSize: 14,
-            }}
-          >
-            服务名称:
-          </span>
+        {/* -- 搜索框 -- */}
+        <div style={{ marginBottom: 10 }}>
           <Input
-            placeholder="请输入服务名称"
-            style={{ width: 180 }}
+            placeholder={
+              context.input +
+              context.ln +
+              context.service +
+              context.ln +
+              context.name
+            }
+            style={{ width: 250 }}
             allowClear
-            // size="small"
             value={selectValue}
             onChange={(e) => {
               setSelectValue(e.target.value);
@@ -235,12 +219,8 @@ const ServiceRollbackModal = ({
                 queryDataList();
               }
             }}
-            onBlur={() => {
-              queryDataList(selectValue);
-            }}
-            onPressEnter={() => {
-              queryDataList(selectValue);
-            }}
+            onBlur={() => queryDataList(selectValue)}
+            onPressEnter={() => queryDataList(selectValue)}
             suffix={
               !selectValue && (
                 <SearchOutlined style={{ fontSize: 12, color: "#b6b6b6" }} />
@@ -248,12 +228,13 @@ const ServiceRollbackModal = ({
             }
           />
         </div>
+
+        {/* -- 回滚服务表格 -- */}
         <div style={{ border: "1px solid rgb(235, 238, 242)" }}>
           <Table
             size="small"
             scroll={{ y: 295 }}
             loading={loading || initLoading}
-            //scroll={{ x: 1900 }}
             columns={columns}
             dataSource={dataSource}
             pagination={false}
@@ -332,11 +313,15 @@ const ServiceRollbackModal = ({
           <div style={{ display: "flex", alignItems: "center" }}></div>
           <div style={{ display: "flex" }}>
             <div style={{ marginRight: 15 }}>
-              已选择 {checkedList.length} 个
+              {context.selected} {checkedList.length} {context.ge}
             </div>
-            <div>共 {allLength} 个</div>
+            <div>
+              {context.total} {allLength} {context.ge}
+            </div>
           </div>
         </div>
+
+        {/* -- 取消/确认 -- */}
         <div
           style={{ display: "flex", justifyContent: "center", marginTop: 30 }}
         >
@@ -347,17 +332,17 @@ const ServiceRollbackModal = ({
               justifyContent: "space-between",
             }}
           >
-            <Button onClick={() => setSRModalVisibility(false)}>取消</Button>
+            <Button onClick={() => setSRModalVisibility(false)}>
+              {context.cancel}
+            </Button>
             <Button
               type="primary"
               style={{ marginLeft: 16 }}
               loading={loading || initLoading}
               disabled={checkedList.length == 0}
-              onClick={() => {
-                doRollback(checkedList);
-              }}
+              onClick={() => doRollback(checkedList)}
             >
-              确认选择
+              {context.ok}
             </Button>
           </div>
         </div>

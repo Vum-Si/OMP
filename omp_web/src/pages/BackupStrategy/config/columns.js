@@ -9,14 +9,18 @@ const getColumnsConfig = (
   setStrategyModalVisibility,
   setExecuteVisible,
   strategyForm,
-  queryCustom,
   setKeyArr,
   weekData,
-  setFrequency
+  setFrequency,
+  canBackupIns,
+  setAppName,
+  setNoteText,
+  setCustomValue,
+  context
 ) => {
   return [
     {
-      title: "序号",
+      title: context.row,
       key: "_idx",
       dataIndex: "_idx",
       align: "center",
@@ -24,7 +28,7 @@ const getColumnsConfig = (
       fixed: "left",
     },
     {
-      title: "备份实例",
+      title: context.backup + context.ln + context.instance,
       key: "backup_instances",
       dataIndex: "backup_instances",
       align: "center",
@@ -39,7 +43,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "是否生效",
+      title: context.open,
       key: "is_on",
       dataIndex: "is_on",
       align: "center",
@@ -47,47 +51,59 @@ const getColumnsConfig = (
       ellipsis: true,
       render: (text) => {
         if (text) {
-          return <span>{renderDisc("normal", 7, -1)}是</span>;
+          return (
+            <span>
+              {renderDisc("normal", 7, -1)}
+              {context.yes}
+            </span>
+          );
         } else {
-          return <span>{renderDisc("critical", 7, -1)}否</span>;
+          return (
+            <span>
+              {renderDisc("critical", 7, -1)}
+              {context.no}
+            </span>
+          );
         }
       },
     },
     {
-      title: "定时策略",
+      title: context.regular + context.ln + context.rule,
       key: "crontab_detail",
       dataIndex: "crontab_detail",
       align: "center",
-      width: 150,
+      width: 140,
       ellipsis: true,
       render: (text) => {
         if (text.day_of_month !== "*") {
           return (
             <span>
-              每月 {text.day_of_month} 日 {text.hour}:{text.minute}
+              {context.monthly} {text.day_of_month} {context.day} {text.hour}:
+              {text.minute}
             </span>
           );
         } else if (text.day_of_week !== "*") {
           return (
             <span>
-              每周 {weekData[text.day_of_week]} {text.hour}:{text.minute}
+              {context.weekly} {weekData[text.day_of_week].name} {text.hour}:
+              {text.minute}
             </span>
           );
         } else {
           return (
             <span>
-              每天 {text.hour}:{text.minute}
+              {context.daily} {text.hour}:{text.minute}
             </span>
           );
         }
       },
     },
     {
-      title: "保留路径",
+      title: context.save + context.ln + context.path,
       key: "retain_path",
       dataIndex: "retain_path",
       align: "center",
-      width: 150,
+      width: 140,
       ellipsis: true,
       render: (text) => {
         return (
@@ -98,21 +114,24 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "保留时间",
+      title: context.save + context.ln + context.time,
       key: "retain_day",
       dataIndex: "retain_day",
       align: "center",
       width: 100,
       ellipsis: true,
       render: (text) => {
-        if (text === -1) return <span>永久保留</span>;
-        return <span>{text} 天</span>;
+        if (text === -1) return <span>{context.forever}</span>;
+        return (
+          <span>
+            {text} {context.days}
+          </span>
+        );
       },
     },
-
     {
-      title: "操作",
-      width: 100,
+      title: context.action,
+      width: 120,
       key: "",
       dataIndex: "",
       align: "center",
@@ -123,13 +142,22 @@ const getColumnsConfig = (
             style={{ margin: "auto" }}
             onClick={() => setStrategyRow(record)}
           >
-            <a onClick={() => setExecuteVisible(true)}>执行</a>
+            <a onClick={() => setExecuteVisible(true)}>{context.execute}</a>
             <a
               style={{ marginLeft: 10 }}
               onClick={() => {
-                queryCustom();
                 setStrategyModalType("update");
                 setStrategyModalVisibility(true);
+                const targetAppName = record.backup_instances[0].split("-")[0];
+                setAppName(targetAppName);
+                for (let i = 0; i < canBackupIns.length; i++) {
+                  const element = canBackupIns[i];
+                  if (element.app_name === targetAppName) {
+                    setNoteText(element.note);
+                    setCustomValue(element.backup_custom);
+                    break;
+                  }
+                }
                 const customInfo = record.backup_custom.map((i) => {
                   return {
                     key: i.id,
@@ -181,14 +209,14 @@ const getColumnsConfig = (
                 });
               }}
             >
-              编辑
+              {context.edit}
             </a>
 
             <a
               style={{ marginLeft: 10 }}
               onClick={() => setDeleteStrategyModal(true)}
             >
-              删除
+              {context.delete}
             </a>
           </div>
         );

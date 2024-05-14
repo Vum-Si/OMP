@@ -162,8 +162,13 @@ class ConfCheck:
             f_dir, c_dir = base_dir.rsplit("/", 1)
             cmd = f"ls -l {f_dir} | grep {c_dir} | head -1 | awk '{{print $3}}'"
             is_success, message = salt_client.cmd(target=ip, command=cmd, timeout=10)
-            if not is_success and message != install_args.get("run_user"):
-                return False, f"{ip}:{app}:{install_args.get('run_user')}与当前用户{message}不匹配"
+            if is_success:
+                run_user = install_args.get("run_user")
+                if message != run_user:
+                    install_args["run_user"] = message
+                    logger.info(f"{ip}:{app}:{run_user}与当前用户{message}不匹配,已修改")
+            else:
+                return False, f"{ip}:{app}:检测用户异常，详情{message}"
         if is_success and install_args.get("service_port"):
             cmd = f"</dev/tcp/{ip}/{install_args.get('service_port')}"
             is_success, message = salt_client.cmd(target=ip, command=cmd, timeout=10)

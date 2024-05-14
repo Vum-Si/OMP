@@ -25,7 +25,8 @@ from utils.common.exceptions import ValidationError
 from utils.common.paginations import PageNumberPager
 # from app_store.install_utils import ServiceArgsSerializer
 from app_store.new_install_utils import ServiceArgsPortUtils
-from app_store.new_install_utils import BaseRedisData
+from app_store.new_install_utils import BaseRedisData, CheckAttr
+from utils.plugin.public_utils import check_env_cmd
 
 from app_store.new_install_serializers import (
     CreateInstallInfoSerializer,
@@ -44,7 +45,6 @@ UNIQUE_KEY_ERROR = "后台无法追踪此流程,请重新进行安装操作!"
 
 class BatchInstallEntranceView(GenericViewSet, ListModelMixin):
     """
-    批量安装入口
         List:
         获取批量安装参数范围
     """
@@ -65,26 +65,50 @@ class BatchInstallEntranceView(GenericViewSet, ListModelMixin):
         if queryset.exists():
             # 判断产品下是否还有服务，如果没有服务，那么
             if Service.objects.filter(
-                service__product_id__in=queryset.values_list(
-                    "product_id", flat=True
-                )
+                    service__product_id__in=queryset.values_list(
+                        "product_id", flat=True
+                    )
             ).exists():
                 return True
             queryset.delete()
         return False
 
+    @staticmethod
+    def get_deploy_list(pro_name, pro_version_lst):
+        """
+        获取产品各个版本的部署类型
+        """
+        pro_queryset = ProductHub.objects.filter(
+            pro_name=pro_name,
+            pro_version__in=pro_version_lst
+        ).prefetch_related("applicationhub_set")
+        res = {}
+        try:
+            for version in pro_version_lst:
+                all_deploy_set = set()
+                app_queryset = pro_queryset.filter(
+                    pro_version=version).first().applicationhub_set.all()
+                for app in app_queryset:
+                    if app.deploy_mode:
+                        deploy_set = set(
+                            app.deploy_mode.get("deploy_mode_ls", []))
+                        all_deploy_set = all_deploy_set | deploy_set
+                res[version] = list(all_deploy_set)
+        except Exception as err:
+            res = {}
+            logger.error(err)
+        return res
+
     def list(self, request, *args, **kwargs):
         """
         获取批量安装参数范围
-        :param request:
-        :type request: Request
-        :param args:
-        :param kwargs:
-        :return:
         """
         if Host.objects.all().count() == 0:
             raise ValidationError(
                 "当前系统内无可用主机，请先纳管主机后再执行安装操作！")
+        res = check_env_cmd()
+        if isinstance(res, tuple):
+            raise ValidationError(res[1])
         product_name = request.query_params.get("product_name")
         if not product_name:
             product_queryset = ProductHub.objects.filter(
@@ -105,7 +129,8 @@ class BatchInstallEntranceView(GenericViewSet, ListModelMixin):
             {
                 "name": key,
                 "version": value,
-                "is_continue": not self.check_product_instance(key, value)
+                "is_continue": not self.check_product_instance(key, value),
+                "deploy_list": self.get_deploy_list(key, value)
             }
             for key, value in tmp_dic.items()
         ]
@@ -121,21 +146,37 @@ class BatchInstallEntranceView(GenericViewSet, ListModelMixin):
 
 
 class CreateInstallInfoView(GenericViewSet, CreateModelMixin):
+    """
+        create:
+        创建基础安装数据
+    """
     serializer_class = CreateInstallInfoSerializer
     post_description = "创建基础安装数据"
 
 
 class CheckInstallInfoView(GenericViewSet, CreateModelMixin):
+    """
+        create:
+        校验基础安装数据
+    """
     serializer_class = CheckInstallInfoSerializer
     post_description = "校验基础安装数据"
 
 
 class CreateServiceDistributionView(GenericViewSet, CreateModelMixin):
+    """
+        create:
+        生成部署服务分布源数据
+    """
     serializer_class = CreateServiceDistributionSerializer
     post_description = "生成部署服务分布源数据"
 
 
 class CheckServiceDistributionView(GenericViewSet, CreateModelMixin):
+    """
+        create:
+        校验服务分布
+    """
     serializer_class = CheckServiceDistributionSerializer
     post_description = "校验服务分布"
 
@@ -146,11 +187,6 @@ class GetInstallHostRangeView(GenericViewSet, ListModelMixin):
     def list(self, request, *args, **kwargs):
         """
         获取某次安装涉及到的主机范围接口
-        :param request: 请求
-        :type request: Request
-        :param args:
-        :param kwargs:
-        :return:
         """
         unique_key = request.query_params.get("unique_key")
         if not unique_key:
@@ -164,16 +200,15 @@ class GetInstallHostRangeView(GenericViewSet, ListModelMixin):
 
 
 class GetInstallArgsByIpView(GenericViewSet, ListModelMixin):
+    """
+        list:
+        获取某主机上的服务的安装参数
+    """
     get_description = "获取某主机上的服务的安装参数"
 
     def list(self, request, *args, **kwargs):
         """
         获取某次安装涉及到的主机范围接口
-        :param request: 请求
-        :type request: Request
-        :param args:
-        :param kwargs:
-        :return:
         """
         unique_key = request.query_params.get("unique_key")
         ip = request.query_params.get("ip")
@@ -225,7 +260,62 @@ class GetInstallArgsByIpView(GenericViewSet, ListModelMixin):
         })
 
 
+class InstallClusterArgsView(GenericViewSet, ListModelMixin, CreateModelMixin):
+    """
+        create:
+        获取服务的集群属性的安装参数
+        list:
+        校验服务的集群属性的安装参数
+    """
+    get_description = "获取服务的集群属性的安装参数"
+    post_description = "校验服务的集群属性的安装参数"
+
+    def list(self, request, *args, **kwargs):
+        unique_key = request.query_params.get("unique_key")
+        if not unique_key:
+            return Response(
+                data={"error_msg": "请求参数必须包含[unique_key]"})
+        check_data = BaseRedisData(unique_key).get_step_2_origin_data()
+        app_version_dc = check_data.get("install")
+        app_objs = ApplicationHub.objects.filter(app_name__in=list(app_version_dc))
+        _ret_data = []
+        for obj in app_objs:
+            if app_version_dc[obj.app_name].get("version") != obj.app_version:
+                continue
+            install_args = ServiceArgsPortUtils().get_app_install_args(obj, cluster=True)
+            if install_args:
+                _ret_data.append(
+                    {"app_name": obj.app_name,
+                     "install_args": install_args}
+                )
+        return Response(data={
+            "unique_key": unique_key,
+            "data": _ret_data
+        })
+
+    def create(self, request, *args, **kwargs):
+        unique_key = request.data.get("unique_key")
+        data = request.data.get("data")
+        if not unique_key:
+            raise ValidationError("请求参数必须包含[unique_key]")
+        check_data = BaseRedisData(unique_key).get_step_4_service_distribution()
+        for app in data:
+            num = check_data.get(app.get('app_name'), {}).get("num", 0)
+            for args in app.get("install_args"):
+                res, msg = CheckAttr(args, num).run()
+                if not res:
+                    raise ValidationError(
+                        f"服务{app.get('app_name')}:{args.get('name')}值配置异常:详情{msg}"
+                    )
+        BaseRedisData(unique_key).step_4_set_service_cluster_args(data)
+        return Response(data=request.data)
+
+
 class CreateInstallPlanView(GenericViewSet, CreateModelMixin):
+    """
+        create:
+        校验并生成部署计划
+    """
     serializer_class = CreateInstallPlanSerializer
     post_description = "校验并生成部署计划"
 
@@ -234,12 +324,11 @@ class ListServiceByIpView(GenericViewSet, ListModelMixin):
     def list(self, request, *args, **kwargs):
         """
         根据ip显示主机上安装的服务
-        :param request:
-        :param args:
-        :param kwargs:
-        :return:
         """
         # ip = request.query_params.get("ip")
+        res = check_env_cmd()
+        if isinstance(res, tuple):
+            raise ValidationError(res[1])
         _data = Service.objects.filter().exclude(
             service__is_base_env=True
         ).values(
@@ -257,10 +346,6 @@ class ShowInstallProcessView(GenericViewSet, ListModelMixin):
     def list(self, request, *args, **kwargs):
         """
         显示安装的进度信息
-        :param request:
-        :param args:
-        :param kwargs:
-        :return:
         """
         unique_key = request.query_params.get("unique_key")
         main_obj = MainInstallHistory.objects.filter(
@@ -400,16 +485,28 @@ class ShowSingleServiceInstallLogView(GenericViewSet, ListModelMixin):
 
 
 class MainInstallHistoryView(GenericViewSet, ListModelMixin):
+    """
+        list:
+        查看历史安装记录
+    """
     queryset = MainInstallHistory.objects.all().order_by("-id")
     serializer_class = MainInstallHistorySerializer
     pagination_class = PageNumberPager
 
 
 class CreateComponentInstallInfoView(GenericViewSet, CreateModelMixin):
+    """
+        create:
+        创建基础组件安装数据
+    """
     serializer_class = CreateComponentInstallInfoSerializer
     post_description = "创建基础组件安装数据"
 
 
 class RetryInstallView(GenericViewSet, CreateModelMixin):
+    """
+        create:
+        重试安装
+    """
     serializer_class = RetryInstallSerializer
     post_description = "重试安装"

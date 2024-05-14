@@ -9,6 +9,7 @@ import {
   Tooltip,
   TimePicker,
   message,
+  InputNumber,
 } from "antd";
 import { useState, useEffect } from "react";
 import { handleResponse } from "@/utils/utils";
@@ -21,29 +22,63 @@ import {
   MailOutlined,
 } from "@ant-design/icons";
 import moment from "moment";
+import { locales } from "@/config/locales";
 
-const PatrolStrategy = () => {
+const msgMap = {
+  "en-US": {
+    typeMsg: "Current version only supports deep inspection",
+    nameMsg:
+      "The task name is displayed in the 'Report List' and 'Report Content', and automatically supplement date info",
+    openMsg:
+      "After opening, the inspection task will be automatically executed at the set time",
+  },
+  "zh-CN": {
+    typeMsg: "当前版本只支持深度分析类型",
+    nameMsg: "任务名称显示在'报告列表'及'报告内容'中，系统自动补充日期信息",
+    openMsg: "开启定时巡检后，将在设定的时间，自动执行巡检任务",
+  },
+};
+
+const PatrolStrategy = ({ locale }) => {
   const [loading, setLoading] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
-
   const [form] = Form.useForm();
   const [pushForm] = Form.useForm();
-
   const [dataSource, setDataSource] = useState({});
-  const [pushDataSource, setPushDataSource] = useState({});
-
   const [isOpen, setIsOpen] = useState(false);
   const [pushIsOpen, setPushIsOpen] = useState(false);
   const [frequency, setFrequency] = useState("day");
+  const context = locales[locale].common;
 
   let weekData = [
-    "星期一",
-    "星期二",
-    "星期三",
-    "星期四",
-    "星期五",
-    "星期六",
-    "星期日",
+    {
+      name: context.monday,
+      value: "星期一",
+    },
+    {
+      name: context.tuesday,
+      value: "星期二",
+    },
+    {
+      name: context.wednesday,
+      value: "星期三",
+    },
+    {
+      name: context.thursday,
+      value: "星期四",
+    },
+    {
+      name: context.friday,
+      value: "星期五",
+    },
+    {
+      name: context.saturday,
+      value: "星期六",
+    },
+    {
+      name: context.sunday,
+      value: "星期日",
+    },
   ];
 
   const queryPatrolStrategyData = () => {
@@ -97,7 +132,18 @@ const PatrolStrategy = () => {
             });
           }
 
-          if (crontab_detail.day == "*" && crontab_detail.day_of_week == "*") {
+          if (crontab_detail.hour.includes("/")) {
+            setFrequency("hour");
+            form.setFieldsValue({
+              strategy: {
+                frequency: "hour",
+                hour: crontab_detail.hour.split("/")[1],
+              },
+            });
+          } else if (
+            crontab_detail.day === "*" &&
+            crontab_detail.day_of_week === "*"
+          ) {
             setFrequency("day");
             form.setFieldsValue({
               strategy: {
@@ -123,8 +169,14 @@ const PatrolStrategy = () => {
   const changeStrategy = (data) => {
     let queryData = form.getFieldsValue();
     let timeInfo = form.getFieldValue("strategy");
-    setLoading(true);
     if (queryData.strategy) timeInfo = queryData.strategy;
+    if (timeInfo.frequency === "hour") {
+      if (!timeInfo.hour) {
+        message.warning("请填写小时间隔");
+        return;
+      }
+    }
+    setLoading(true);
     if (dataSource.job_name) {
       // 本来有任务，使用更新put
       fetchPut(apiRequest.inspection.updatePatrolStrategy, {
@@ -133,8 +185,14 @@ const PatrolStrategy = () => {
           job_name: queryData.name.value,
           is_start_crontab: queryData.isOpen.value ? 0 : 1,
           crontab_detail: {
-            hour: timeInfo.time.format("HH:mm").split(":")[0] || "*",
-            minute: timeInfo.time.format("HH:mm").split(":")[1] || "*",
+            hour:
+              timeInfo.frequency === "hour"
+                ? `*/${timeInfo.hour}`
+                : timeInfo.time.format("HH:mm").split(":")[0] || "*",
+            minute:
+              timeInfo.frequency === "hour"
+                ? "1"
+                : timeInfo.time.format("HH:mm").split(":")[1] || "*",
             month: "*",
             day_of_week: timeInfo.week || "*",
             day: timeInfo.month || "*",
@@ -148,7 +206,7 @@ const PatrolStrategy = () => {
               message.warning(res.data.message);
             }
             if (res.data.code == 0) {
-              message.success("更新巡检策略成功");
+              message.success(context.edit + context.ln + context.succeeded);
             }
           }
         })
@@ -161,12 +219,18 @@ const PatrolStrategy = () => {
       // 无任务使用post
       fetchPost(apiRequest.inspection.createPatrolStrategy, {
         body: {
-          job_type: "0",
+          job_type: 0,
           job_name: queryData.name.value,
           is_start_crontab: queryData.isOpen.value ? 0 : 1,
           crontab_detail: {
-            hour: timeInfo.time.format("HH:mm").split(":")[0] || "*",
-            minute: timeInfo.time.format("HH:mm").split(":")[1] || "*",
+            hour:
+              timeInfo.frequency === "hour"
+                ? `*/${timeInfo.hour}`
+                : timeInfo.time.format("HH:mm").split(":")[0] || "*",
+            minute:
+              timeInfo.frequency === "hour"
+                ? "1"
+                : timeInfo.time.format("HH:mm").split(":")[1] || "*",
             month: "*",
             day_of_week: timeInfo.week || "*",
             day: timeInfo.month || "*",
@@ -180,7 +244,7 @@ const PatrolStrategy = () => {
               message.warning(res.data.message);
             }
             if (res.data.code == 0) {
-              message.success("新增巡检策略成功");
+              message.success(context.add + context.ln + context.succeeded);
             }
           }
         })
@@ -230,7 +294,7 @@ const PatrolStrategy = () => {
             message.warning(res.data.message);
           }
           if (res.data.code == 0) {
-            message.success("更新巡检报告推送设置成功");
+            message.success(context.edit + context.ln + context.succeeded);
           }
         }
       })
@@ -248,9 +312,10 @@ const PatrolStrategy = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 定时执行巡检 -- */}
       <div className={styles.header}>
         <SettingOutlined style={{ paddingRight: 5 }} />
-        巡检设置
+        {context.regularly + context.ln + context.inspection}
       </div>
       <Spin spinning={loading}>
         <Form
@@ -261,15 +326,11 @@ const PatrolStrategy = () => {
           onFinish={changeStrategy}
           form={form}
           initialValues={{
-            type: {
-              value: "0",
-            },
+            type: { value: "0" },
             name: {
-              value: "深度分析",
+              value: context.deep + context.ln + context.inspection,
             },
-            isOpen: {
-              value: false,
-            },
+            isOpen: { value: false },
             strategy: {
               frequency: "day",
               time: moment("00:00", "HH:mm"),
@@ -278,35 +339,29 @@ const PatrolStrategy = () => {
             },
           }}
         >
-          <Form.Item label="任务类型">
+          <Form.Item label={context.task + context.ln + context.type}>
             <Input.Group compact>
               <Form.Item
                 name={["type", "value"]}
                 noStyle
-                rules={[{ required: true, message: "请选择任务类型" }]}
+                rules={[
+                  {
+                    required: true,
+                    message: context.select + context.ln + context.type,
+                  },
+                ]}
               >
                 <Select
-                  style={{
-                    width: 200,
-                  }}
-                  placeholder="请选择巡检任务类型"
+                  style={{ width: 200 }}
+                  placeholder={context.select + context.ln + context.type}
                 >
                   <Select.Option value="0" key="0">
-                    深度分析
+                    {context.deep + context.ln + context.inspection}
                   </Select.Option>
-                  {/* <Select.Option value="1" key="1">
-                    主机巡检
-                  </Select.Option>
-                  <Select.Option value="2" key="2">
-                    组件巡检
-                  </Select.Option> */}
                 </Select>
               </Form.Item>
               <Form.Item name={["type", "icon"]} noStyle>
-                <Tooltip
-                  placement="top"
-                  title={"当前版本只支持“深度分析”类型的巡检任务设置"}
-                >
+                <Tooltip placement="top" title={msgMap[locale].typeMsg}>
                   <InfoCircleOutlined
                     name="icon"
                     style={{
@@ -322,13 +377,16 @@ const PatrolStrategy = () => {
             </Input.Group>
           </Form.Item>
 
-          <Form.Item label="任务名称">
+          <Form.Item label={context.task + context.ln + context.name}>
             <Input.Group compact>
               <Form.Item
                 name={["name", "value"]}
                 noStyle
                 rules={[
-                  { required: true, message: "请输入巡检任务名称" },
+                  {
+                    required: true,
+                    message: context.input + context.ln + context.name,
+                  },
                   {
                     validator: (rule, value, callback) => {
                       if (value) {
@@ -344,20 +402,13 @@ const PatrolStrategy = () => {
                 ]}
               >
                 <Input
-                  placeholder="例如：深度分析"
-                  style={{
-                    width: 200,
-                  }}
+                  placeholder={context.input + context.ln + context.name}
+                  style={{ width: 200 }}
                   maxLength={16}
                 />
               </Form.Item>
               <Form.Item name={["name", "icon"]} noStyle>
-                <Tooltip
-                  placement="top"
-                  title={
-                    "任务名称显示在“报告列表”及“报告内容”中，系统自动补充日期信息"
-                  }
-                >
+                <Tooltip placement="top" title={msgMap[locale].nameMsg}>
                   <InfoCircleOutlined
                     name="icon"
                     style={{
@@ -373,7 +424,7 @@ const PatrolStrategy = () => {
             </Input.Group>
           </Form.Item>
 
-          <Form.Item label="定时巡检">
+          <Form.Item label={context.open}>
             <Input.Group compact>
               <Form.Item
                 name={["isOpen", "value"]}
@@ -386,10 +437,7 @@ const PatrolStrategy = () => {
                 />
               </Form.Item>
               <Form.Item name={["name", "icon"]} noStyle>
-                <Tooltip
-                  placement="top"
-                  title={"开启定时巡检后，将在设定的时间，自动执行巡检任务"}
-                >
+                <Tooltip placement="top" title={msgMap[locale].openMsg}>
                   <InfoCircleOutlined
                     name="icon"
                     style={{
@@ -405,43 +453,38 @@ const PatrolStrategy = () => {
             </Input.Group>
           </Form.Item>
           {isOpen && (
-            <Form.Item label="定时策略">
+            <Form.Item label={context.rule}>
               <Input.Group compact>
                 <Form.Item name={["strategy", "frequency"]} noStyle>
                   <Select
-                    style={{
-                      width: 80,
-                    }}
-                    onChange={(e) => {
-                      setFrequency(e);
-                    }}
+                    style={{ width: 100 }}
+                    onChange={(e) => setFrequency(e)}
                   >
                     <Select.Option value="day" key="day">
-                      每天
+                      {context.daily}
                     </Select.Option>
                     <Select.Option value="week" key="week">
-                      每周
+                      {context.weekly}
                     </Select.Option>
                     <Select.Option value="month" key="month">
-                      每月
+                      {context.monthly}
+                    </Select.Option>
+                    <Select.Option value="hour" key="hour">
+                      {context.hourly}
                     </Select.Option>
                   </Select>
                 </Form.Item>
 
-                {frequency == "week" && (
+                {frequency === "week" && (
                   <Form.Item
                     name={["strategy", "week"]}
                     style={{ display: "inline-block", marginLeft: "10px" }}
                   >
-                    <Select
-                      style={{
-                        width: 120,
-                      }}
-                    >
+                    <Select style={{ width: 120 }}>
                       {weekData.map((item, idx) => {
                         return (
-                          <Select.Option value={`${idx}`} key={item}>
-                            {item}
+                          <Select.Option value={`${idx}`} key={item.value}>
+                            {item.name}
                           </Select.Option>
                         );
                       })}
@@ -449,23 +492,20 @@ const PatrolStrategy = () => {
                   </Form.Item>
                 )}
 
-                {frequency == "month" && (
+                {frequency === "month" && (
                   <Form.Item
                     name={["strategy", "month"]}
                     style={{ display: "inline-block", marginLeft: "10px" }}
                   >
-                    <Select
-                      style={{
-                        width: 120,
-                      }}
-                    >
+                    <Select style={{ width: 120 }}>
                       {new Array(28).fill(0).map((item, idx) => {
                         return (
                           <Select.Option
                             key={`${idx + 1}`}
                             value={`${idx + 1}`}
                           >
-                            {idx + 1}日
+                            {idx + 1}
+                            {context.ri}
                           </Select.Option>
                         );
                       })}
@@ -473,16 +513,28 @@ const PatrolStrategy = () => {
                   </Form.Item>
                 )}
 
-                <Form.Item
-                  name={["strategy", "time"]}
-                  style={{ display: "inline-block", marginLeft: "10px" }}
-                >
-                  <TimePicker
-                    //defaultValue={moment("00:00", "HH:mm")}
-                    format={"HH:mm"}
-                    allowClear={false}
-                  />
-                </Form.Item>
+                {frequency === "hour" && (
+                  <Form.Item
+                    name={["strategy", "hour"]}
+                    style={{ display: "inline-block", marginLeft: "10px" }}
+                  >
+                    <InputNumber
+                      placeholder="1 ~ 23"
+                      style={{ width: 120 }}
+                      min={1}
+                      max={23}
+                    />
+                  </Form.Item>
+                )}
+
+                {frequency !== "hour" && (
+                  <Form.Item
+                    name={["strategy", "time"]}
+                    style={{ display: "inline-block", marginLeft: "10px" }}
+                  >
+                    <TimePicker format={"HH:mm"} allowClear={false} />
+                  </Form.Item>
+                )}
               </Input.Group>
             </Form.Item>
           )}
@@ -492,16 +544,20 @@ const PatrolStrategy = () => {
               htmlType="submit"
               className={styles.saveButton}
             >
-              保存
+              {context.save}
             </Button>
           </Form.Item>
         </Form>
       </Spin>
 
-      {/* 巡检报告推送设置 */}
+      {/* -- 巡检报告推送 -- */}
       <div className={styles.header}>
         <MailOutlined style={{ paddingRight: 5 }} />
-        巡检报告推送设置
+        {context.inspection +
+          context.ln +
+          context.report +
+          context.ln +
+          context.push}
       </div>
       <Spin spinning={pushLoading}>
         <Form
@@ -511,11 +567,13 @@ const PatrolStrategy = () => {
           style={{ paddingTop: 40 }}
           onFinish={changePush}
           form={pushForm}
-          initialValues={{
-            pushIsOpen: false,
-          }}
+          initialValues={{ pushIsOpen: false }}
         >
-          <Form.Item label="启用" name="pushIsOpen" valuePropName="checked">
+          <Form.Item
+            label={context.open}
+            name="pushIsOpen"
+            valuePropName="checked"
+          >
             <Switch
               onChange={(e) => setPushIsOpen(e)}
               style={{ borderRadius: "10px" }}
@@ -523,24 +581,22 @@ const PatrolStrategy = () => {
           </Form.Item>
           {pushIsOpen && (
             <Form.Item
-              label="巡检报告接收人"
+              label={context.receiver}
               name="email"
               rules={[
                 {
                   type: "email",
-                  message: "请输入正确格式的邮箱",
+                  message: context.input + context.ln + context.email,
                 },
                 {
                   required: true,
-                  message: "请输入接收人邮箱",
+                  message: context.input + context.ln + context.email,
                 },
               ]}
             >
               <Input
-                placeholder="例如: emailname@163.com"
-                style={{
-                  width: 360,
-                }}
+                placeholder={context.example + " : emailname@163.com"}
+                style={{ width: 360 }}
               />
             </Form.Item>
           )}
@@ -550,7 +606,7 @@ const PatrolStrategy = () => {
               htmlType="submit"
               className={styles.saveButton}
             >
-              保存
+              {context.save}
             </Button>
           </Form.Item>
         </Form>

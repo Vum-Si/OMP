@@ -18,11 +18,10 @@ import subprocess
 import requests
 import json
 
-from django.conf import settings
 from celery import shared_task
 from celery.utils.log import get_task_logger
 from promemonitor.alertmanager import Alertmanager
-from promemonitor.prometheus_utils import PrometheusUtils
+from promemonitor.prometheus_utils import PrometheusUtils, CW_TOKEN
 
 from db_models.models import (
     Host, Service,
@@ -32,16 +31,22 @@ from db_models.models import (
 from utils.plugin.ssh import SSH
 from utils.plugin.monitor_agent import MonitorAgentManager
 from utils.plugin.crypto import AESCryptor
-from utils.plugin.agent_util import Agent
+from utils.plugin.agent_util import Agent, real_init_host
 from app_store.tasks import add_prometheus
-from utils.parse_config import HOSTNAME_PREFIX
 from utils.plugin.install_ntpdate import InstallNtpdate
 from omp_server.settings import PROJECT_DIR
 from concurrent.futures import ThreadPoolExecutor
+from utils.plugin.salt_client import SaltClient
+from utils.parse_config import MONITOR_PORT, UPDATE_MONITOR_AGENT_STATUS_INTERVAL
+from utils.plugin.crontab_utils import CrontabUtils
+from django_celery_beat.models import PeriodicTask
+from django.core.exceptions import ObjectDoesNotExist
 
 # 屏蔽celery任务日志中的paramiko日志
 logging.getLogger("paramiko").setLevel(logging.WARNING)
 logger = get_task_logger("celery_log")
+
+pre_task_name = "monitor_health_update"
 
 
 def deploy_monitor_agent(host_obj, salt_flag=True):
@@ -51,7 +56,8 @@ def deploy_monitor_agent(host_obj, salt_flag=True):
     :param salt_flag: 部署主机Agent成功或失败标志
     :return:
     """
-    logger.info(f"Deploy monitor agent for {host_obj.ip}")
+    _ip = host_obj.ip
+    logger.info(f"Deploy monitor agent for {_ip}")
     if not salt_flag:
         Host.objects.filter(ip=host_obj.ip).update(
             monitor_agent=4,
@@ -74,8 +80,19 @@ def deploy_monitor_agent(host_obj, salt_flag=True):
     else:
         Host.objects.filter(ip=host_obj.ip).update(monitor_agent=0)
 
+    # 增加监控agent周期性健康检测任务
+    _task_name = f"{pre_task_name}_{_ip}"
+    cron_obj = CrontabUtils(
+        task_name=_task_name,
+        task_func="hosts.tasks.update_monitor_agent_health",
+        task_args=[_ip]
+    )
+    if cron_obj.check_task_exist():
+        cron_obj.delete_job()
+    cron_obj.create_internal_job(num=UPDATE_MONITOR_AGENT_STATUS_INTERVAL, unit_type="minutes")
 
-def real_deploy_agent(host_obj, need_monitor=True):
+
+def real_deploy_agent(host_obj, need_monitor=True, init=False):
     """
     部署主机Agent
     :param host_obj: 主机对象
@@ -96,7 +113,9 @@ def real_deploy_agent(host_obj, need_monitor=True):
         password=AESCryptor().decode(host_obj.password),
         install_dir=host_obj.agent_dir
     )
-    flag, message = _obj.agent_deploy()
+    flag, message = _obj.agent_deploy(init=init)
+    # 释放 ssh 连接
+    _obj.ssh.close()
     logger.info(
         f"Deploy Agent for {host_obj.ip}, "
         f"Res Flag: {flag}; Res Message: {message}")
@@ -163,6 +182,8 @@ def real_host_agent_restart(host_obj):
     _script_path = os.path.join(
         host_obj.agent_dir, "omp_salt_agent/bin/omp_salt_agent")
     flag, message = _obj.cmd(f"bash {_script_path} restart")
+    # 释放 ssh 连接
+    _obj.close()
     logger.info(
         f"Restart host agent for {host_obj.ip}: "
         f"get flag: {flag}; get res: {message}")
@@ -200,54 +221,6 @@ def host_agent_restart(host_id):
             host_agent=2, host_agent_error=str(e))
 
 
-def real_init_host(host_obj):
-    """
-    初始化主机
-    :param host_obj: 主机对象
-    :type host_obj Host
-    :return:
-    """
-    logger.info(f"init host Begin [{host_obj.id}]")
-    _ssh = SSH(
-        hostname=host_obj.ip,
-        port=host_obj.port,
-        username=host_obj.username,
-        password=AESCryptor().decode(host_obj.password),
-    )
-    # 验证用户权限
-    is_sudo, _ = _ssh.is_sudo()
-    if not is_sudo:
-        logger.error(f"init host [{host_obj.id}] failed: permission failed")
-        raise Exception("permission failed")
-
-    # 发送脚本
-    init_script_name = "init_host.py"
-    init_script_path = os.path.join(
-        settings.BASE_DIR.parent,
-        "package_hub", "_modules", init_script_name)
-    script_push_state, script_push_msg = _ssh.file_push(
-        file=init_script_path,
-        remote_path="/tmp",
-    )
-    if not script_push_state:
-        logger.error(f"init host [{host_obj.id}] failed: send script failed, "
-                     f"detail: {script_push_msg}")
-        raise Exception("send script failed")
-    modified_host_name = str(HOSTNAME_PREFIX) + "".join(
-        item.zfill(3) for item in host_obj.ip.split("."))
-    # 执行初始化
-    is_success, script_msg = _ssh.cmd(
-        f"python /tmp/{init_script_name} init_valid {modified_host_name} {host_obj.ip}")
-    if not (is_success and "init success" in script_msg and "valid success" in script_msg):
-        logger.error(f"init host [{host_obj.id}] failed: execute init failed, "
-                     f"detail: {script_push_msg}")
-        raise Exception("execute failed")
-    Host.objects.filter(
-        id=host_obj.id
-    ).update(init_status=Host.INIT_SUCCESS)
-    logger.info("init host Success")
-
-
 @shared_task
 def init_host(host_id):
     """ 初始化主机 """
@@ -256,7 +229,8 @@ def init_host(host_id):
         # obj.save 在异步任务并发读写下存在数值覆盖问题
         host_query = Host.objects.filter(id=host_id)
         host_query.update(init_status=Host.INIT_EXECUTING)
-        real_init_host(host_obj=host_query.first())
+        host_obj = host_query.first()
+        real_init_host(host_obj, host_obj.data_folder)
     except Exception as e:
         print(e)
         logger.error(
@@ -271,6 +245,7 @@ def init_host(host_id):
 def insert_host_celery_task(host_id, init=False):
     """ 添加主机 celery 任务 """
     # 执行主机初始化
+    """
     if init:
         try:
             num = 0
@@ -294,6 +269,7 @@ def insert_host_celery_task(host_id, init=False):
             )
             Host.objects.filter(id=host_id).update(
                 init_status=Host.INIT_FAILED)
+    """
     # 部署 agent
     try:
         num = 0
@@ -306,7 +282,7 @@ def insert_host_celery_task(host_id, init=False):
             raise Exception("Host Object not found")
         host_query = Host.objects.filter(id=host_id)
         host_query.update(host_agent=Host.AGENT_DEPLOY_ING)
-        real_deploy_agent(host_obj=host_query.first())
+        real_deploy_agent(host_obj=host_query.first(), init=init)
     except Exception as e:
         logger.error(
             f"Deploy Host Agent For {host_id} Failed with error: {str(e)};\n"
@@ -372,25 +348,21 @@ def reinstall_monitor_celery_task(host_id, username):
     host_obj = Host.objects.filter(id=host_id).first()
     maintenance(host_obj, True, username)
     logger.info(
-        f"Restart Agent for {host_obj.ip}, Params: "
+        f"Reinstall Agent for {host_obj.ip}, Params: "
         f"username: {host_obj.username}; "
         f"port: {host_obj.port}; "
-        f"install_dir: {host_obj.agent_dir}!")
-    _obj = SSH(
-        hostname=host_obj.ip,
-        port=host_obj.port,
-        username=host_obj.username,
-        password=AESCryptor().decode(host_obj.password),
-    )
-    flag, message = _obj.cmd(
-        "ps -ef | grep omp_monitor_agent | grep -v grep | awk -F ' ' '{print $2}' | xargs kill -9")
+        f"install_dir: {host_obj.agent_dir}")
+    cmd_str = "ps -ef | grep omp_monitor_agent | grep -v grep | awk -F ' ' '{print $2}' | xargs -r kill -9"
+    salt_obj = SaltClient()
+    flag, message = salt_obj.cmd(target=host_obj.ip, command=cmd_str, timeout=60)
     logger.info(
         f"Stop monitor agent for {host_obj.ip}: "
         f"get flag: {flag}; get res: {message}")
     # 删除目录，防止agent_dir异常保护系统
     if host_obj.agent_dir:
         monitor_dir = os.path.join(host_obj.agent_dir, "omp_monitor_agent")
-        flag, message = _obj.cmd(f"/bin/rm -rf {monitor_dir}")
+        cmd_str = f"/bin/rm -rf {monitor_dir}"
+        flag, message = salt_obj.cmd(target=host_obj.ip, command=cmd_str, timeout=60)
     logger.info(
         f"Stop monitor agent for {host_obj.ip}: "
         f"get flag: {flag}; get res: {message}")
@@ -501,6 +473,15 @@ class UninstallHosts(object):
                                  " | sudo crontab -;".format(data_dir)
         ntpd_res, ntpd_msg = _ssh_obj.cmd(
             cmd_ntpd_uninstall, timeout=120)
+
+        # 关闭监控agent health周期性探测
+        task_name = f"{pre_task_name}_{ip}"
+        try:
+            PeriodicTask.objects.get(name=task_name).delete()
+        except ObjectDoesNotExist:
+            pass
+        # 释放 ssh 连接
+        _ssh_obj.close()
         logger.info(
             f"卸载{ip}上的ntpd的结果为: {ntpd_res} {ntpd_msg}")
         logger.info(
@@ -537,6 +518,7 @@ class UninstallHosts(object):
         return True, "success"
 
     def delete_all_omp_agent(self):
+        # ToDo 问题查看
         """清理所有omp agent(salt and monitor)"""
         _uninstall_flag, _uninstall_msg = self.execute_uninstall(host_obj_list=self.all_host,
                                                                  thread_name_prefix="uninstall_agent_",
@@ -546,17 +528,17 @@ class UninstallHosts(object):
         write_str = []
         node_path = os.path.join(
             pro_obj.prometheus_targets_path, "nodeExporter_all.json")
-        for node in pro_obj.get_dic_from_yaml(node_path):
-            if node.get("targets", [""])[0].split(":")[0] in ips:
-                continue
-            write_str.append(node)
+        try:
+            for node in pro_obj.get_dic_from_yaml(node_path):
+                if node.get("targets", [""])[0].split(":")[0] in ips:
+                    continue
+                write_str.append(node)
+        except FileNotFoundError as e:
+            print(f"文件：{node_path}不存在;不影响卸载流程")
         with open(node_path, "w") as f2:
             json.dump(write_str, f2, ensure_ascii=False, indent=4)
         time.sleep(2)
-        reload_prometheus_url = "http://localhost:19011/-/reload"
-        requests.post(reload_prometheus_url,
-                      auth=pro_obj.basic_auth)
-
+        pro_obj.reload_prometheus()
         if not _uninstall_flag:
             print(_uninstall_msg)
             self.is_success = False
@@ -575,3 +557,20 @@ def delete_hosts(host_ids):
     host_objs.delete()
     Service.objects.filter(ip__in=host_ids).delete()
     Alert.objects.filter(alert_host_ip__in=host_ids).delete()
+
+
+@shared_task
+def update_monitor_agent_health(ip):
+    """更新监控agent健康状态"""
+    _port = MONITOR_PORT.get('monitorAgent', 19031)
+    url = f"http://{ip}:{_port}/health"
+    res_json = {}
+    monitor_agent_status = Host.AGENT_RUNNING
+    headers = CW_TOKEN
+    try:
+        res_json = requests.get(url=url, headers=headers, timeout=30).json()
+    except Exception as e:
+        monitor_agent_status = Host.AGENT_START_ERROR
+    if res_json.get("return_code", 1) != Host.AGENT_RUNNING:
+        monitor_agent_status = Host.AGENT_START_ERROR
+    Host.objects.filter(ip=ip).update(monitor_agent=str(monitor_agent_status))

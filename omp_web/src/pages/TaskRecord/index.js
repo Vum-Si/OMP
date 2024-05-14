@@ -12,18 +12,14 @@ import { apiRequest } from "@/config/requestApi";
 import moment from "moment";
 import { SearchOutlined } from "@ant-design/icons";
 import { useHistory } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const kindMap = ["管理工具", "检查工具", "安全工具", "其他工具"];
-
-const TaskRecord = () => {
+const TaskRecord = ({ locale }) => {
   const [loading, setLoading] = useState(false);
-
   const history = useHistory();
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [selectValue, setSelectValue] = useState();
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -31,15 +27,20 @@ const TaskRecord = () => {
     ordering: "",
     searchParams: {},
   });
+  const context = locales[locale].common;
+  const kindMap = [
+    context.management + context.ln + context.tool,
+    context.check + context.ln + context.tool,
+    context.security + context.ln + context.tool,
+    context.other + context.ln + context.tool,
+  ];
 
   const columns = [
     {
-      title: "任务标题",
+      title: context.task + context.ln + context.name,
       width: 100,
       key: "task_name",
       dataIndex: "task_name",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       fixed: "left",
       render: (text, record) => {
@@ -60,7 +61,7 @@ const TaskRecord = () => {
       },
     },
     {
-      title: "分类",
+      title: context.type,
       key: "kind",
       width: 100,
       dataIndex: "kind",
@@ -76,19 +77,19 @@ const TaskRecord = () => {
       filterMenuList: [
         {
           value: 0,
-          text: "管理工具",
+          text: context.management + context.ln + context.tool,
         },
         {
           value: 1,
-          text: "检查工具",
+          text: context.check + context.ln + context.tool,
         },
         {
           value: 2,
-          text: "安全工具",
+          text: context.security + context.ln + context.tool,
         },
         {
           value: 3,
-          text: "其他工具",
+          text: context.other + context.ln + context.tool,
         },
       ],
       render: (text) => {
@@ -96,7 +97,7 @@ const TaskRecord = () => {
       },
     },
     {
-      title: "执行时间",
+      title: context.created,
       key: "start_time",
       dataIndex: "start_time",
       width: 100,
@@ -108,7 +109,7 @@ const TaskRecord = () => {
       },
     },
     {
-      title: "状态",
+      title: context.status,
       key: "status",
       dataIndex: "status",
       width: 100,
@@ -117,20 +118,40 @@ const TaskRecord = () => {
         if (!text && text !== 0) {
           return "-";
         } else if (text === 0) {
-          return <div>{renderDisc("warning", 7, -1)}待执行</div>;
+          return (
+            <div>
+              {renderDisc("warning", 7, -1)}
+              {context.waiting}
+            </div>
+          );
         } else if (text === 1) {
-          return <div>{renderDisc("warning", 7, -1)}执行中</div>;
+          return (
+            <div>
+              {renderDisc("warning", 7, -1)}
+              {context.executing}
+            </div>
+          );
         } else if (text === 2) {
-          return <div>{renderDisc("normal", 7, -1)}执行成功</div>;
+          return (
+            <div>
+              {renderDisc("normal", 7, -1)}
+              {context.succeeded}
+            </div>
+          );
         } else if (text === 3) {
-          return <div>{renderDisc("critical", 7, -1)}执行失败</div>;
+          return (
+            <div>
+              {renderDisc("critical", 7, -1)}
+              {context.failed}
+            </div>
+          );
         } else {
           return text;
         }
       },
     },
     {
-      title: "执行用时",
+      title: context.duration,
       key: "duration",
       dataIndex: "duration",
       align: "center",
@@ -138,7 +159,7 @@ const TaskRecord = () => {
       render: nonEmptyProcessing,
     },
     {
-      title: "操作",
+      title: context.action,
       width: 60,
       key: "",
       dataIndex: "",
@@ -155,7 +176,7 @@ const TaskRecord = () => {
                   );
                 }}
               >
-                查看
+                {context.view}
               </a>
             </div>
           </div>
@@ -164,11 +185,11 @@ const TaskRecord = () => {
     },
   ];
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.utilitie.queryHistory, {
       params: {
@@ -202,7 +223,7 @@ const TaskRecord = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   useEffect(() => {
     fetchData(pagination);
@@ -210,13 +231,16 @@ const TaskRecord = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部过滤 -- */}
       <div style={{ display: "flex" }}>
         <div style={{ display: "flex", marginLeft: "auto" }}>
-          <span style={{ width: 50, display: "flex", alignItems: "center" }}>
-            名称:
+          <span
+            style={{ marginRight: 5, display: "flex", alignItems: "center" }}
+          >
+            {context.task + context.ln + context.name + " : "}
           </span>
           <Input
-            placeholder="搜索名称"
+            placeholder={context.input + context.ln + context.name}
             style={{ width: 200 }}
             allowClear
             value={selectValue}
@@ -276,10 +300,12 @@ const TaskRecord = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -313,11 +339,11 @@ const TaskRecord = () => {
                 }}
               >
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),

@@ -25,30 +25,42 @@ import DeleteServerModal from "./config/DeleteServerModal";
 import BatchInstallationModal from "./config/BatchInstallationModal";
 import ServiceUpgradeModal from "./config/ServiceUpgradeModal";
 import ServiceRollbackModal from "./config/ServiceRollbackModal";
+import GetServiceModal from "./config/GetServiceModal";
 import {
   getTabKeyChangeAction,
   getUniqueKeyChangeAction,
 } from "./store/actionsCreators";
-import GetServiceModal from "./config/GetServiceModal";
+import { locales } from "@/config/locales";
 
-const AppStore = () => {
-  // appStoreTabKey
+const englishMap = {
+  中间件: "middleware",
+  环境组件: "env",
+  数据库: "database",
+  消息队列: "queue",
+  分布式存储: "distributed storage",
+  时间序列数据库: "time-series DB",
+  配置中心: "configuration",
+  服务监控: "monitor",
+  任务调度: "task scheduling",
+  自研服务: "self developed",
+  缓存中间件: "cache",
+  反向代理: "reverse proxy",
+  注册与配置中心: "configuration",
+  监控客户端: "monitor client",
+  链路监控: "link monitor",
+};
+
+const AppStore = ({ locale }) => {
   const appStoreTabKey = useSelector((state) => state.appStore.appStoreTabKey);
-
   const dispatch = useDispatch();
   // 视口高度
   const viewHeight = useSelector((state) => state.layouts.viewSize.height);
   const history = useHistory();
   const [tabKey, setTabKey] = useState(appStoreTabKey);
-  const [searchKey, setSearchKey] = useState("全部");
   const [searchData, setSearchData] = useState([]);
-
   const [searchName, setSearchName] = useState("");
-
   const [total, setTotal] = useState(0);
-
   const [timeUnix, setTimeUnix] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState([]);
   const [pagination, setPagination] = useState({
@@ -57,40 +69,38 @@ const AppStore = () => {
     total: 0,
     searchParams: {},
   });
-
   // 发布操作
   const [releaseModalVisibility, setReleaseModalVisibility] = useState(false);
-
   // 扫描服务端
   const [scanServerModalVisibility, setScanServerModalVisibility] =
     useState(false);
-
   // 服务升级操作弹框
   const [sUModalVisibility, setSUModalVisibility] = useState(false);
-
   // 服务回退操作弹框
   const [sRModalVisibility, setSRModalVisibility] = useState(false);
-
   // 批量安装弹框
   const [bIModalVisibility, setBIModalVisibility] = useState(false);
-
   // 删除应用商店
   const [deleteServerVisibility, setDeleteServerVisibility] = useState(false);
-
-  // 批量安装的应用服务列表
-  const [bIserviceList, setBIserviceList] = useState([]);
-
   // 服务纳管弹框
   const [serviceGetModalVisibility, setServiceGetModalVisibility] =
     useState(false);
-
   const [serviceGetData, setServiceGetData] = useState([]);
   const [initData, setInitData] = useState([]);
+  // 批量安装的应用服务列表
+  const [bIserviceList, setBIserviceList] = useState([]);
+  // 部署类型字段
+  const [deployTypeList, setDeployTypeList] = useState({});
+  const context = locales[locale].common;
 
+  const [searchKey, setSearchKey] = useState(context.all);
   // 批量安装标题文案
-  const installTitle = useRef("批量");
+  const installTitle = useRef(context.batch);
 
-  function fetchData(pageParams = { current: 1, pageSize: 8 }, searchParams) {
+  const fetchData = (
+    pageParams = { current: 1, pageSize: 8 },
+    searchParams
+  ) => {
     setLoading(true);
     fetchGet(
       searchParams.tabKey == "component"
@@ -131,7 +141,7 @@ const AppStore = () => {
         fetchSearchlist();
         //fetchIPlist();
       });
-  }
+  };
 
   // 获取批量安装应用服务列表
   const queryBatchInstallationServiceList = (queryData) => {
@@ -142,9 +152,19 @@ const AppStore = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.data && res.data.data) {
-            setBIserviceList(
-              res.data.data.map((item) => ({ ...item, id: item.name }))
-            );
+            let serviceList = res.data.data.map((item) => ({
+              ...item,
+              id: item.name,
+            }));
+            let typeDict = {};
+            for (const key in serviceList) {
+              if (Object.hasOwnProperty.call(serviceList, key)) {
+                const element = serviceList[key];
+                typeDict[element.name] = "default";
+              }
+            }
+            setDeployTypeList(typeDict);
+            setBIserviceList(serviceList);
             dispatch(getUniqueKeyChangeAction(res.data.unique_key));
           }
         });
@@ -152,50 +172,6 @@ const AppStore = () => {
       .catch((e) => console.log(e))
       .finally(() => {
         setLoading(false);
-      });
-  };
-
-  // 获取安装基础组件列表
-  const queryInstallComponent = (queryData) => {
-    setLoading(true);
-    fetchGet(apiRequest.appStore.ProductDetail, {
-      params: queryData,
-    })
-      .then((res) => {
-        handleResponse(res, (res) => {
-          console.log(res);
-          if (res.data) {
-            let serverlist = {};
-            serverlist.name = res.data.app_name;
-            serverlist.is_continue = true;
-            serverlist.version = res.data.versions.map((item) => {
-              return item.app_version;
-            });
-            setBIserviceList([serverlist]);
-          }
-        });
-      })
-      .catch((e) => console.log(e))
-      .finally(() => {
-        setLoading(false);
-      });
-  };
-
-  const fetchSearchlist = () => {
-    //setSearchLoading(true);
-    fetchGet(apiRequest.appStore.queryLabels, {
-      params: {
-        label_type: tabKey == "component" ? 0 : 1,
-      },
-    })
-      .then((res) => {
-        handleResponse(res, (res) => {
-          setSearchData(res.data);
-        });
-      })
-      .catch((e) => console.log(e))
-      .finally(() => {
-        //setSearchLoading(false);
       });
   };
 
@@ -222,13 +198,75 @@ const AppStore = () => {
       });
   };
 
+  // 获取安装基础组件列表
+  const queryInstallComponent = (queryData) => {
+    setLoading(true);
+    fetchGet(apiRequest.appStore.ProductDetail, {
+      params: queryData,
+    })
+      .then((res) => {
+        handleResponse(res, (res) => {
+          if (res.data) {
+            let serverlist = {};
+            serverlist.name = res.data.app_name;
+            serverlist.is_continue = true;
+            serverlist.version = res.data.versions.map((item) => {
+              return item.app_version;
+            });
+            let deployList = {};
+            let typeDict = {};
+            for (const key in res.data.versions) {
+              if (Object.hasOwnProperty.call(res.data.versions, key)) {
+                const element = res.data.versions[key];
+                typeDict[element.app_name] = "default";
+                deployList[element.app_version] = element.deploy_list;
+              }
+            }
+            serverlist.deploy_list = deployList;
+            setDeployTypeList(typeDict);
+            setBIserviceList([serverlist]);
+          }
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
+  const fetchSearchlist = () => {
+    fetchGet(apiRequest.appStore.queryLabels, {
+      params: {
+        label_type: tabKey == "component" ? 0 : 1,
+      },
+    })
+      .then((res) => {
+        handleResponse(res, (res) => {
+          setSearchData(res.data);
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        //setSearchLoading(false);
+      });
+  };
+
   useEffect(() => {
+    setPagination({
+      current: 1,
+      pageSize: viewHeight > 955 ? 12 : 8,
+      total: 0,
+      searchParams: {},
+    });
+    setSearchName("");
+    setSearchKey(context.all);
+
     fetchData(
       { current: 1, pageSize: pagination.pageSize },
       {
         ...pagination.searchParams,
         tabKey: tabKey,
-        type: searchKey == "全部" ? null : searchKey,
+        type: searchKey === context.all ? null : searchKey,
       }
     );
 
@@ -243,50 +281,46 @@ const AppStore = () => {
       {
         ...pagination.searchParams,
         tabKey: tabKey,
-        type: searchKey == "全部" ? null : searchKey,
+        type: searchKey === context.all ? null : searchKey,
       }
     );
   };
 
   return (
     <div>
+      {/* -- 顶部区域 -- */}
       <div className={styles.header}>
         <div className={styles.headerTabRow}>
+          {/* -- 基础组件/应用服务 标签 -- */}
           <div
             className={styles.headerTab}
             onClick={(e) => {
-              setPagination({
-                current: 1,
-                pageSize: viewHeight > 955 ? 12 : 8,
-                total: 0,
-                searchParams: {},
-              });
-              setSearchName("");
-              setSearchKey("全部");
-              if (e.target.innerHTML == "应用服务") {
+              if (e.target.innerHTML === context.application) {
                 setTabKey("service");
-              } else if (e.target.innerHTML == "基础组件") {
+              } else if (e.target.innerHTML === context.component) {
                 setTabKey("component");
               }
             }}
           >
             <div
               style={
-                tabKey == "component" ? { color: "rgb(46, 124, 238)" } : {}
+                tabKey === "component" ? { color: "rgb(46, 124, 238)" } : {}
               }
             >
-              基础组件
+              {context.component}
             </div>
             <div>|</div>
             <div
-              style={tabKey == "service" ? { color: "rgb(46, 124, 238)" } : {}}
+              style={tabKey === "service" ? { color: "rgb(46, 124, 238)" } : {}}
             >
-              应用服务
+              {context.application}
             </div>
           </div>
+
+          {/* -- 搜索 批量 更多 -- */}
           <div className={styles.headerBtn}>
             <Input
-              placeholder="请输入应用名称"
+              placeholder={context.input + context.ln + context.appName}
               suffix={
                 !searchName && <SearchOutlined style={{ color: "#b6b6b6" }} />
               }
@@ -335,6 +369,7 @@ const AppStore = () => {
                 );
               }}
             />
+
             <Button
               style={{ marginRight: 10 }}
               type="primary"
@@ -344,14 +379,14 @@ const AppStore = () => {
                 setBIModalVisibility(true);
               }}
             >
-              批量安装
+              {context.batch + context.ln + context.install}
             </Button>
 
             <Dropdown
               overlay={
                 <Menu
                   style={{
-                    width: "calc(100% + 40px)",
+                    width: "calc(100% + 30px)",
                     position: "relative",
                     left: -20,
                   }}
@@ -387,7 +422,9 @@ const AppStore = () => {
                           }}
                         />
                       </div>
-                      <div style={{ paddingLeft: 20 }}>上传发布服务</div>
+                      <div style={{ paddingLeft: 20 }}>
+                        {context.upload + context.ln + context.publish}
+                      </div>
                     </div>
                   </Menu.Item>
                   <Menu.Item
@@ -420,7 +457,9 @@ const AppStore = () => {
                           }}
                         />
                       </div>
-                      <div style={{ paddingLeft: 20 }}>扫描发布服务</div>
+                      <div style={{ paddingLeft: 20 }}>
+                        {context.scan + context.ln + context.publish}
+                      </div>
                     </div>
                   </Menu.Item>
                   <Menu.Item
@@ -451,17 +490,16 @@ const AppStore = () => {
                           }}
                         />
                       </div>
-                      <div style={{ paddingLeft: 20 }}>删除</div>
+                      <div style={{ paddingLeft: 20 }}>{context.delete}</div>
                     </div>
                   </Menu.Item>
-
                   <div
                     style={{
                       height: 1,
                       backgroundColor: "#e3e3e3",
                       margin: "6px 10px",
                     }}
-                  ></div>
+                  />
                   <Menu.Item
                     key="upgrade"
                     style={{ display: "flex" }}
@@ -492,7 +530,9 @@ const AppStore = () => {
                           }}
                         />
                       </div>
-                      <div style={{ paddingLeft: 20 }}>服务升级</div>
+                      <div style={{ paddingLeft: 20 }}>
+                        {context.service + context.ln + context.upgrade}
+                      </div>
                     </div>
                   </Menu.Item>
                   <Menu.Item
@@ -525,7 +565,9 @@ const AppStore = () => {
                           }}
                         />
                       </div>
-                      <div style={{ paddingLeft: 20 }}>服务回滚</div>
+                      <div style={{ paddingLeft: 20 }}>
+                        {context.service + context.ln + context.rollback}
+                      </div>
                     </div>
                   </Menu.Item>
                   <div
@@ -534,7 +576,7 @@ const AppStore = () => {
                       backgroundColor: "#e3e3e3",
                       margin: "6px 6px",
                     }}
-                  ></div>
+                  />
                   <Menu.Item
                     key="getService"
                     style={{ display: "flex" }}
@@ -566,7 +608,9 @@ const AppStore = () => {
                           }}
                         />
                       </div>
-                      <div style={{ paddingLeft: 20 }}>服务纳管</div>
+                      <div style={{ paddingLeft: 20 }}>
+                        {context.incorporate}
+                      </div>
                     </div>
                   </Menu.Item>
                 </Menu>
@@ -576,32 +620,35 @@ const AppStore = () => {
               <Button
                 style={{ marginRight: 10, paddingRight: 10, paddingLeft: 15 }}
               >
-                更多
+                {context.more}
                 <DownOutlined style={{ position: "relative", top: 1 }} />
               </Button>
             </Dropdown>
           </div>
         </div>
 
+        {/* -- 分割线 -- */}
         <hr className={styles.headerHr} />
+
         <div className={styles.headerSearch}>
+          {/* -- 组件/服务分类标签 -- */}
           <div
             className={styles.headerSearchCondition}
             onClick={(e) => {
-              // 在把含有&符号的字符串存进数据库后，再读出来的时候，发现&都变成了&amp;
-              let str = e.target.innerHTML.replace(
-                new RegExp("&amp;", "g"),
-                "&"
-              );
-              if (searchData?.indexOf(str) !== -1 || str == "全部") {
+              let str = e.target.attributes.realname.nodeValue;
+              if (searchData?.indexOf(str) !== -1 || str === context.all) {
                 setSearchKey(str);
               }
             }}
           >
             <p
-              style={searchKey == "全部" ? { color: "rgb(46, 124, 238)" } : {}}
+              style={
+                searchKey === context.all ? { color: "rgb(46, 124, 238)" } : {}
+              }
+              key={context.all}
+              realname={context.all}
             >
-              全部
+              {context.all}
             </p>
             {searchData.map((item) => {
               return (
@@ -610,26 +657,33 @@ const AppStore = () => {
                     searchKey == item ? { color: "rgb(46, 124, 238)" } : {}
                   }
                   key={item}
+                  realname={item}
                 >
-                  {item}
+                  {locale === "en-US" ? englishMap[item] : item}
                 </p>
               );
             })}
           </div>
+
+          {/* -- 下载 总计 -- */}
           <div className={styles.headerSearchInfo}>
             <Button
-              style={{ marginRight: 15, fontSize: 13 }}
+              style={{ marginRight: 10, fontSize: 13 }}
               icon={<DownloadOutlined />}
               onClick={() => {
                 downloadFile(apiRequest.appStore.applicationTemplate);
               }}
             >
-              <span style={{ color: "#818181" }}>下载发布说明</span>
+              <span style={{ color: "#818181" }}>
+                {context.download + context.ln + context.instruction}
+              </span>
             </Button>
-            共收录 {total} 个{tabKey == "component" ? "基础组件" : "应用服务"}
+            {context.total + " " + pagination.total}
           </div>
         </div>
       </div>
+
+      {/* -- 中部区域 -- */}
       <Spin spinning={loading}>
         <div style={{ display: "flex", flexWrap: "wrap" }}>
           {dataSource.length == 0 ? (
@@ -642,30 +696,26 @@ const AppStore = () => {
                 height: viewHeight > 955 ? 500 : 300,
                 flexDirection: "column",
               }}
-              description={
-                tabKey == "component" ? "商店暂无基础组件" : "商店暂无应用服务"
-              }
+              description={context.noData}
             />
           ) : (
             <>
               {dataSource.map((item, idx) => {
                 return (
                   <Card
+                    context={context}
                     history={history}
                     key={idx}
                     idx={idx + 1}
                     info={item}
                     tabKey={tabKey}
                     installOperation={(queryData, type) => {
-                      if (type == "服务") {
-                        installTitle.current = type;
+                      installTitle.current = type;
+                      if (type === "服务") {
                         queryBatchInstallationServiceList(queryData);
                       } else {
-                        installTitle.current = type;
-                        // 组件安装组件列表
                         queryInstallComponent(queryData);
                       }
-
                       setBIModalVisibility(true);
                     }}
                   />
@@ -675,13 +725,15 @@ const AppStore = () => {
           )}
         </div>
       </Spin>
+
+      {/* -- 底部分页 -- */}
       {dataSource.length !== 0 && (
         <div
           style={{
             display: "flex",
             justifyContent: "center",
             position: "relative",
-            top: 25,
+            top: 10,
           }}
         >
           <Pagination
@@ -699,42 +751,58 @@ const AppStore = () => {
           />
         </div>
       )}
+
+      {/* -- 上传发布 -- */}
       <ReleaseModal
         timeUnix={timeUnix}
         releaseModalVisibility={releaseModalVisibility}
         setReleaseModalVisibility={setReleaseModalVisibility}
         refresh={refresh}
+        context={context}
+        locale={locale}
       />
+      {/* -- 扫描发布 -- */}
       <ScanServerModal
         scanServerModalVisibility={scanServerModalVisibility}
         setScanServerModalVisibility={setScanServerModalVisibility}
         refresh={refresh}
+        context={context}
+        locale={locale}
       />
+      {/* -- 批量安装 -- */}
       <BatchInstallationModal
         bIModalVisibility={bIModalVisibility}
         setBIModalVisibility={setBIModalVisibility}
         dataSource={bIserviceList}
+        deployListInfo={[deployTypeList, setDeployTypeList]}
         installTitle={installTitle.current}
         initLoading={loading}
+        context={context}
       />
+      {/* -- 服务升级 -- */}
       <ServiceUpgradeModal
         sUModalVisibility={sUModalVisibility}
         setSUModalVisibility={setSUModalVisibility}
-        dataSource={bIserviceList}
         initLoading={loading}
+        context={context}
       />
+      {/* -- 服务回滚 -- */}
       <ServiceRollbackModal
         sRModalVisibility={sRModalVisibility}
         setSRModalVisibility={setSRModalVisibility}
-        dataSource={bIserviceList}
         initLoading={loading}
+        context={context}
       />
+      {/* -- 删除 -- */}
       <DeleteServerModal
         deleteServerVisibility={deleteServerVisibility}
         setDeleteServerVisibility={setDeleteServerVisibility}
         tabKey={tabKey}
         refresh={refresh}
+        context={context}
+        locale={locale}
       />
+      {/* -- 服务纳管 -- */}
       <GetServiceModal
         modalVisibility={serviceGetModalVisibility}
         setModalVisibility={setServiceGetModalVisibility}
@@ -742,6 +810,8 @@ const AppStore = () => {
         dataSource={serviceGetData}
         setDataSource={setServiceGetData}
         initLoading={loading}
+        context={context}
+        locale={locale}
       />
     </div>
   );

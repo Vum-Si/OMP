@@ -1,20 +1,24 @@
 import { Collapse, Form, Input, Tooltip, Spin } from "antd";
 import { CaretRightOutlined, InfoCircleOutlined } from "@ant-design/icons";
 import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useSelector } from "react-redux";
 
 const { Panel } = Collapse;
 
-const ServiceConfigItem = ({ form, loading, ip, idx }) => {
+const msgMap = {
+  "en-US": {
+    dataFolderMsg: "Data Folder: data folder when adding hosts",
+  },
+  "zh-CN": {
+    dataFolderMsg: "数据分区：添加主机时设置的数据分区",
+  },
+};
+
+const ServiceConfigItem = ({ form, loading, ip, idx, context, locale }) => {
   let data = useSelector((state) => state.installation.step3Data)[ip][idx];
-
-  // console.log(data)
-
   let portData = data.ports || [];
   let installArgsData = data.install_args || [];
   const renderData = [...installArgsData, ...portData];
-  // let instanceName = data.instance_name;
-
   const errInfo = useSelector((state) => state.installation.step3ErrorData);
 
   useEffect(() => {
@@ -67,39 +71,29 @@ const ServiceConfigItem = ({ form, loading, ip, idx }) => {
               return (
                 <Form.Item
                   key={item.key}
-                  label={item?.name}
+                  label={locale === "zh-CN" ? item?.name : item?.key}
                   name={`${data.name}=${item?.key}`}
                   style={{ marginTop: 10, width: 600 }}
                   rules={[
                     {
                       required: item.key !== "vip",
-                      message: `请输入${item.name}`,
+                      message: context.input + context.ln + item.name,
                     },
                   ]}
                 >
                   <Input
                     disabled={!item.editable}
-                    // onChange={(e) => {
-                    //   //console.log(e.target.value);
-                    //   dispatch(
-                    //     getStep3ServiceChangeAction(
-                    //       ip,
-                    //       data.name,
-                    //       item.key,
-                    //       e.target.value
-                    //     )
-                    //   );
-                    // }}
                     addonBefore={
                       item.dir_key ? (
-                        <span style={{ color: "#b1b1b1" }}>/ 数据分区</span>
+                        <span style={{ color: "#b1b1b1" }}>
+                          / {context.dataFolder}
+                        </span>
                       ) : null
                     }
-                    //style={{ width: 420 }}
-                    placeholder={`请输入${item.name}`}
+                    placeholder={context.input + context.ln + context.directory}
                     suffix={
                       item.dir_key ? (
-                        <Tooltip title="数据分区：主机所设置的数据分区">
+                        <Tooltip title={msgMap[locale].dataFolderMsg}>
                           <InfoCircleOutlined
                             style={{ color: "rgba(0,0,0,.45)" }}
                           />

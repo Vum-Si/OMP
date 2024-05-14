@@ -1773,7 +1773,7 @@ export function getCookie(name) {
 
 export const logout = (login) => {
   delCookie("jwtToken");
-  localStorage.clear();
+  localStorage.removeItem("username");
   !login && window.__history__.replace("/login");
   return;
 };
@@ -1813,7 +1813,8 @@ export const colorConfig = {
   normal: "#76ca68",
   warning: "#ffbf00",
   critical: "#f04134",
-  notMonitored: "rgb(170, 170, 170)",
+  notMonitored: "#AAAAAA",
+  info: "#4E82FD",
 };
 
 export const renderDisc = (level = "normal", size = 5, top = 0, left = 0) => {
@@ -2026,4 +2027,42 @@ export const RenderStatusForResult = ({ result }) => {
       />
     );
   }
+};
+
+// 将 Cascader 子集选择数据和后端数据转换
+export const createDataByCascader = (CascaderData, InitData, noS = false) => {
+  const allList = [];
+  const someList = {};
+  const resData = [];
+  for (let i = 0; i < CascaderData.length; i++) {
+    const e = CascaderData[i];
+    if (e.length === 1) {
+      allList.push(e[0]);
+    } else {
+      if (someList.hasOwnProperty(e[0])) {
+        someList[e[0]].push(e[1]);
+      } else {
+        someList[e[0]] = [e[1]];
+      }
+    }
+  }
+  for (let i = 0; i < InitData.length; i++) {
+    const e = InitData[i];
+    if (allList.includes(e.name)) {
+      resData.push(e);
+    } else if (someList.hasOwnProperty(e.name)) {
+      const ver = someList[e.name][0];
+      const i = {
+        name: e.name,
+      };
+      if (e.hasOwnProperty("child")) {
+        i["child"] = {
+          [ver]: e.child[ver],
+        };
+      }
+      i[noS ? "version" : "versions"] = someList[e.name];
+      resData.push(i);
+    }
+  }
+  return resData;
 };

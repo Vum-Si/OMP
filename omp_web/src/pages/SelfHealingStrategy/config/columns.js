@@ -7,11 +7,12 @@ const getColumnsConfig = (
   setStrategyModalType,
   setStrategyModalVisibility,
   strategyForm,
-  queryCanHealing
+  queryCanHealing,
+  context
 ) => {
   return [
     {
-      title: "序号",
+      title: context.row,
       key: "_idx",
       dataIndex: "_idx",
       align: "center",
@@ -19,7 +20,7 @@ const getColumnsConfig = (
       fixed: "left",
     },
     {
-      title: "自愈实例",
+      title: context.repair + context.ln + context.mode,
       key: "repair_instance",
       dataIndex: "repair_instance",
       align: "center",
@@ -28,9 +29,9 @@ const getColumnsConfig = (
       render: (text) => {
         // if (text.length > 0 && text[0] === "all") return "所有服务";
         const textMap = {
-          host: "主机监控Agent",
-          component: "基础组件",
-          service: "自研服务",
+          host: context.monitorAgent,
+          component: context.component,
+          service: context.selfService,
         };
         const resText = text.map((e) => textMap[e]);
         return (
@@ -41,7 +42,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "自愈类型",
+      title: context.repair + context.ln + context.type,
       key: "instance_tp",
       dataIndex: "instance_tp",
       align: "center",
@@ -49,14 +50,14 @@ const getColumnsConfig = (
       ellipsis: true,
       render: (text) => {
         if (text === 0) {
-          return "启动 [start]";
+          return context.start;
         } else {
-          return "重启 [restart]";
+          return context.restart;
         }
       },
     },
     {
-      title: "探测周期",
+      title: context.scan + context.ln + context.period,
       key: "fresh_rate",
       dataIndex: "fresh_rate",
       align: "center",
@@ -67,7 +68,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "重试次数",
+      title: context.retry + context.ln + context.count,
       key: "max_healing_count",
       dataIndex: "max_healing_count",
       align: "center",
@@ -75,7 +76,7 @@ const getColumnsConfig = (
       ellipsis: true,
     },
     {
-      title: "是否生效",
+      title: context.open,
       key: "used",
       dataIndex: "used",
       align: "center",
@@ -83,15 +84,25 @@ const getColumnsConfig = (
       ellipsis: true,
       render: (text) => {
         if (text) {
-          return <span>{renderDisc("normal", 7, -1)}是</span>;
+          return (
+            <span>
+              {renderDisc("normal", 7, -1)}
+              {context.yes}
+            </span>
+          );
         } else {
-          return <span>{renderDisc("critical", 7, -1)}否</span>;
+          return (
+            <span>
+              {renderDisc("critical", 7, -1)}
+              {context.no}
+            </span>
+          );
         }
       },
     },
 
     {
-      title: "操作",
+      title: context.action,
       width: 100,
       key: "",
       dataIndex: "",
@@ -118,14 +129,14 @@ const getColumnsConfig = (
                 });
               }}
             >
-              编辑
+              {context.edit}
             </a>
 
             <a
               style={{ marginLeft: 10 }}
               onClick={() => setDeleteStrategyModal(true)}
             >
-              删除
+              {context.delete}
             </a>
           </div>
         );

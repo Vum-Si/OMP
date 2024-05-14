@@ -74,11 +74,20 @@ export const getStep3ServiceChangeAction = (ip, name, key, value) => {
 };
 
 export const getStep3ErrorInfoChangeAction = (value) => {
-  console.log(value)
   return {
     type: actionTypes.CHANGE_STEP3ERRORDATA,
     payload: {
       err: value,
+    },
+  };
+};
+
+export const getClusterDataChangeAction = (value) => {
+  const data = R.clone(value);
+  return {
+    type: actionTypes.CHANGE_CLUSTERDATA,
+    payload: {
+      clusterData: data,
     },
   };
 };

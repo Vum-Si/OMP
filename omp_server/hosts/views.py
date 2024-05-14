@@ -34,6 +34,9 @@ from promemonitor.grafana_url import explain_url
 from utils.common.exceptions import OperateError
 from utils.common.views import BaseDownLoadTemplateView
 
+from services.permission import GetDataJsonAuthenticated
+from utils.permission_handler import HostPermission
+
 logger = logging.getLogger("server")
 
 
@@ -59,6 +62,7 @@ class HostListView(GenericViewSet, ListModelMixin, CreateModelMixin):
     # 操作描述信息
     get_description = "查询主机"
     post_description = "创建主机"
+    permission_classes = (HostPermission,)
 
     def list(self, request, *args, **kwargs):
         # 获取序列化数据列表
@@ -247,14 +251,19 @@ class HostBatchValidateView(BaseDownLoadTemplateView, CreateModelMixin):
             *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
-        ips = Host.objects.all().values_list("ip", flat=True)
+        ips = dict(
+            zip(Host.objects.all().values_list("ip", flat=True),
+                Host.objects.all().values_list("username", flat=True)))
         request_data = {"host_list": []}
         repeat_data = []
         for host in request.data.get("host_list"):
-            if not host.get("ip") in ips:
+            if not host.get("ip") in ips.keys():
                 request_data["host_list"].append(host)
             else:
                 host["init_host"] = True
+                if host.get("username") != ips.get(host.get("ip")) and ips.get(host.get("ip")) != 'root':
+                    raise ValidationError(f"当前已存在agent{host.get('ip')}用户{ips.get(host.get('ip'))}与"
+                                          f"模版上传用户{host.get('username')}不一致")
                 repeat_data.append(host)
         if len(request_data["host_list"]) == 0:
             return Response({"correct": repeat_data, "error": []})
@@ -334,6 +343,9 @@ class HostBatchImportView(GenericViewSet, CreateModelMixin):
 
 class HostInitView(BaseDownLoadTemplateView, CreateModelMixin):
     """
+        list:
+        应用商店下载组件模板
+
         create:
         主机初始化
     """
@@ -370,3 +382,49 @@ class HostsAgentStatusView(GenericViewSet, CreateModelMixin):
             ip__in=ip_set, host_agent=Host.AGENT_RUNNING
         ).values_list("ip", flat=True))
         return Response(ip_set == agent_online_ip_set)
+
+
+class HostDataJsonView(GenericViewSet, ListModelMixin):
+    """
+        list:
+        获取主机数据(自动化测试接口)
+    """
+    # for automated testing
+    permission_classes = (GetDataJsonAuthenticated,)
+    queryset = Host.objects.filter(is_deleted=False)
+    serializer_class = HostSerializer
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+
+        serializer_data = serializer.data
+
+        # 主机密码解密
+        for host_info in serializer_data:
+            aes_crypto = AESCryptor()
+            password = aes_crypto.decode(host_info.get("password"))
+            host_info["password"] = password
+
+        # 获取监控及日志的url
+        serializer_data = explain_url(serializer_data, is_host=True)
+
+        # 实时获取主机动态
+        prometheus_obj = Prometheus()
+        serializer_data = prometheus_obj.get_host_info(serializer_data)
+
+        return Response(serializer_data)
+
+
+class HostCreateUrlView(GenericViewSet, ListModelMixin):
+    def list(self, request, *args, **kwargs):
+        from utils.parse_config import TENGINE_PORT, LOCAL_IP, OMP_MYSQL_PASSWORD, SALT_RET_PORT, IS_NO_SSH
+        from utils.plugin.crypto import rsa_utils
+        if not IS_NO_SSH:
+            return Response("请先修改config/omp.yaml的is_no_ssh配置，并重启omp后再尝试")
+        plain_text = rsa_utils(OMP_MYSQL_PASSWORD)
+        web_port = TENGINE_PORT.get('access_port', 19001)
+
+        return Response(
+            f"curl -O http://{LOCAL_IP}:{web_port}/download/install_or_update_agent.sh "
+            f"&& bash install_or_update_agent.sh {LOCAL_IP} {SALT_RET_PORT} {web_port} {plain_text}")

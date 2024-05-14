@@ -5,18 +5,14 @@ import { handleResponse, _idxInit, nonEmptyProcessing } from "@/utils/utils";
 import { fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import { SearchOutlined } from "@ant-design/icons";
+import { locales } from "@/config/locales";
 
-const SystemLog = () => {
+const SystemLog = ({ locale }) => {
   const [loading, setLoading] = useState(false);
-
-  const [searchLoading, setSearchLoading] = useState(false);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [userListSource, setUserListSource] = useState([]);
-  const [searchValue, setSearchValue] = useState("");
   const [selectValue, setSelectValue] = useState();
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -24,21 +20,20 @@ const SystemLog = () => {
     ordering: "",
     searchParams: {},
   });
+  const context = locales[locale].common;
 
   const columns = [
     {
-      title: "序号",
+      title: context.row,
       width: 40,
       key: "_idx",
       dataIndex: "_idx",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       render: nonEmptyProcessing,
       fixed: "left",
     },
     {
-      title: "用户名",
+      title: context.username,
       key: "username",
       width: 100,
       dataIndex: "username",
@@ -48,7 +43,7 @@ const SystemLog = () => {
       render: nonEmptyProcessing,
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "request_ip",
       dataIndex: "request_ip",
       sorter: (a, b) => a.request_ip - b.request_ip,
@@ -56,36 +51,40 @@ const SystemLog = () => {
       align: "center",
       width: 100,
       render: nonEmptyProcessing,
-      // render: (text) => {
-      //   if (text) {
-      //     return "正常";
-      //   } else {
-      //     return "停用";
-      //   }
-      // },
     },
     {
-      title: "操作类型",
+      title: context.type,
       key: "request_method",
       width: 100,
       dataIndex: "request_method",
-      // sorter: (a, b) => a.request_method - b.request_method,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
-      render: nonEmptyProcessing,
+      render: (text) => {
+        switch (text) {
+          case "查看":
+          case "查询":
+            return context.query;
+          case "修改":
+            return context.edit;
+          case "新增":
+          case "增加":
+            return context.add;
+          case "删除":
+            return context.delete;
+          default:
+            return text;
+        }
+      },
     },
     {
-      title: "描述",
+      title: context.description,
       key: "description",
       width: 100,
       dataIndex: "description",
-      // sorter: (a, b) => a.description - b.description,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       render: nonEmptyProcessing,
     },
     {
-      title: "创建时间",
+      title: context.created,
       key: "create_time",
       dataIndex: "create_time",
       align: "center",
@@ -93,21 +92,14 @@ const SystemLog = () => {
       sorter: (a, b) => a.create_time - b.create_time,
       sortDirections: ["descend", "ascend"],
       render: nonEmptyProcessing,
-      // render: (text) => {
-      //   if (text) {
-      //     return moment(text).format("YYYY-MM-DD HH:mm:ss");
-      //   } else {
-      //     return "-";
-      //   }
-      // },
     },
   ];
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.operationRecord.querySystemLog, {
       params: {
@@ -144,7 +136,7 @@ const SystemLog = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   useEffect(() => {
     fetchData(pagination);
@@ -152,25 +144,16 @@ const SystemLog = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部过滤 -- */}
       <div style={{ display: "flex" }}>
         <div style={{ display: "flex", marginLeft: "auto" }}>
-          <span style={{ width: 60, display: "flex", alignItems: "center" }}>
-            用户名:
+          <span
+            style={{ marginRight: 5, display: "flex", alignItems: "center" }}
+          >
+            {context.username + " : "}
           </span>
-          {/* <Input.Search placeholder="请输入用户名"
-          allowClear
-          onSearch={(e)=>{
-              setSelectValue(e)
-              console.log(e)
-              fetchData(
-                { current: pagination.current, pageSize: pagination.pageSize },
-                {username:e},
-                pagination.ordering
-              );
-          }}
-          style={{ width: 200 }} /> */}
           <Input
-            placeholder="请输入用户名"
+            placeholder={context.username + context.ln + context.username}
             style={{ width: 200 }}
             allowClear
             value={selectValue}
@@ -230,10 +213,12 @@ const SystemLog = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -267,11 +252,11 @@ const SystemLog = () => {
                 }}
               >
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),

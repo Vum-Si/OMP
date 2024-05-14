@@ -34,10 +34,36 @@ import {
   ExclamationCircleFilled,
   ZoomInOutlined,
 } from "@ant-design/icons";
+import { locales } from "@/config/locales";
 
 const { Panel } = Collapse;
+const msgMap = {
+  "en-US": {
+    basicMsg:
+      "Please select the host range and fill in the service information",
+    dataFolderMsg: "Data Folder: data folder when adding hosts",
+    waitMsg:
+      "Scanning the selected host according to service information, please wait...",
+    ipMsg: "IP with this service exists",
+    clusterMsg: "Join cluster",
+  },
+  "zh-CN": {
+    basicMsg: "请选择本次纳管的主机范围，填写服务相关信息",
+    dataFolderMsg: "数据分区：添加主机时设置的数据分区",
+    waitMsg: "正在按照服务信息，对选择的主机进行扫描，请稍后...",
+    ipMsg: "存在此服务的IP",
+    clusterMsg: "关联集群",
+  },
+};
 
-const ServiceItem = ({ form, itemData, errInfo, productName }) => {
+const ServiceItem = ({
+  form,
+  itemData,
+  errInfo,
+  productName,
+  context,
+  locale,
+}) => {
   const version =
     typeof itemData?.version === "string"
       ? itemData.version
@@ -93,68 +119,74 @@ const ServiceItem = ({ form, itemData, errInfo, productName }) => {
           style={{ backgroundColor: "#f6f6f6" }}
         >
           <Form.Item
-            label="安装目录"
+            label={context.install + context.ln + context.directory}
             key="base_dir"
             name={`${itemData.name}-base_dir`}
             style={{ marginTop: 10, width: 600 }}
           >
             <Input
-              addonBefore={<span style={{ color: "#b1b1b1" }}>/ 数据分区</span>}
-              placeholder="请输入安装目录"
+              addonBefore={
+                <span style={{ color: "#b1b1b1" }}>/ {context.dataFolder}</span>
+              }
+              placeholder={context.input + context.ln + context.directory}
               suffix={
-                <Tooltip title="数据分区：主机所设置的数据分区">
+                <Tooltip title={msgMap[locale].dataFolderMsg}>
                   <InfoCircleOutlined style={{ color: "rgba(0,0,0,.45)" }} />
                 </Tooltip>
               }
             />
           </Form.Item>
           <Form.Item
-            label="数据目录"
+            label={context.data + context.ln + context.directory}
             key="data_dir"
             name={`${itemData.name}-data_dir`}
             style={{ marginTop: 10, width: 600 }}
           >
             <Input
-              addonBefore={<span style={{ color: "#b1b1b1" }}>/ 数据分区</span>}
-              placeholder="请输入数据目录"
+              addonBefore={
+                <span style={{ color: "#b1b1b1" }}>/ {context.dataFolder}</span>
+              }
+              placeholder={context.input + context.ln + context.directory}
               suffix={
-                <Tooltip title="数据分区：主机所设置的数据分区">
+                <Tooltip title={msgMap[locale].dataFolderMsg}>
                   <InfoCircleOutlined style={{ color: "rgba(0,0,0,.45)" }} />
                 </Tooltip>
               }
             />
           </Form.Item>
           <Form.Item
-            label="日志目录"
+            label={context.log + context.ln + context.directory}
             key="log_dir"
             name={`${itemData.name}-log_dir`}
             style={{ marginTop: 10, width: 600 }}
           >
             <Input
-              addonBefore={<span style={{ color: "#b1b1b1" }}>/ 数据分区</span>}
-              placeholder="请输入数据目录"
+              addonBefore={
+                <span style={{ color: "#b1b1b1" }}>/ {context.dataFolder}</span>
+              }
+              placeholder={context.input + context.ln + context.directory}
               suffix={
-                <Tooltip title="数据分区：主机所设置的数据分区">
+                <Tooltip title={msgMap[locale].dataFolderMsg}>
                   <InfoCircleOutlined style={{ color: "rgba(0,0,0,.45)" }} />
                 </Tooltip>
               }
             />
           </Form.Item>
           <Form.Item
-            label="运行用户"
+            label={context.runUser}
             key="run_user"
             name={`${itemData.name}-run_user`}
             style={{ marginTop: 10, width: 600 }}
           >
-            <Input placeholder="请输入运行用户" />
+            <Input placeholder={context.input + context.ln + context.runUser} />
           </Form.Item>
           <Form.Item
-            label="服务端口"
+            label={context.service + context.ln + context.port}
             key="service_port"
             name={`${itemData.name}-service_port`}
             style={{ marginTop: 10, width: 600 }}
           >
-            <Input placeholder="请输入服务端口" />
+            <Input placeholder={context.input + context.ln + context.port} />
           </Form.Item>
         </Panel>
       </Collapse>
@@ -168,23 +200,19 @@ const Step1 = ({
   getServiceData,
   setCheckServiceData,
   setServiceConnectionData,
+  context,
+  locale,
 }) => {
   const ipArr = Object.keys(getServiceData?.ips || []);
-
   const viewHeight = useSelector((state) => state.layouts.viewSize.height);
-
   // 选中ip数据
   const [getServiceIpArr, setGetServiceIpArr] = useState([]);
-
   // 选中所有ip
   const [selectAllIp, setSelectAllIp] = useState(false);
-
   // 服务数据表单
   const [serviceForm] = Form.useForm();
-
   // 扫描中对话框
   const [ingVisible, setIngVisible] = useState(false);
-
   // 加载
   const [loading, setLoading] = useState(false);
 
@@ -283,6 +311,7 @@ const Step1 = ({
 
   return (
     <div>
+      {/* -- 顶部提示语 -- */}
       <div
         style={{
           marginTop: 20,
@@ -296,8 +325,10 @@ const Step1 = ({
         <ExclamationCircleFilled
           style={{ fontSize: 16, marginRight: 10, color: "rgb(72,134,247)" }}
         />
-        请选择本次纳管的主机范围，填写服务相关信息
+        {msgMap[locale].basicMsg}
       </div>
+
+      {/* -- 基本信息区域 -- */}
       <Spin spinning={loading}>
         <div
           style={{
@@ -306,18 +337,17 @@ const Step1 = ({
             backgroundColor: "#fff",
           }}
         >
-          <div
-            style={{
-              width: 240,
-            }}
-          >
+          {/* -- 左侧主机选择 -- */}
+          <div style={{ width: 240 }}>
             <div
               style={{
                 padding: "15px 5px 10px 5px",
+                height: viewHeight + 30,
+                overflowY: "auto",
               }}
             >
               <p style={{ marginLeft: 20 }}>
-                选择主机 :
+                {context.select + context.ln + context.host}
                 <Radio
                   style={{ float: "right" }}
                   disabled={ipArr.length === 0}
@@ -328,13 +358,13 @@ const Step1 = ({
                     setGetServiceIpArr(target ? ipArr : []);
                   }}
                 >
-                  全选
+                  {context.all}
                 </Radio>
               </p>
 
               {ipArr?.length === 0 ? (
                 <span style={{ marginLeft: 30, color: "#a7abb7" }}>
-                  暂无可选的主机
+                  {context.noData}
                 </span>
               ) : (
                 <Checkbox.Group
@@ -345,9 +375,7 @@ const Step1 = ({
                       checkedValues.length === ipArr.length ? true : false
                     );
                   }}
-                  style={{
-                    marginLeft: 30,
-                  }}
+                  style={{ marginLeft: 30 }}
                 >
                   {ipArr.map((e) => {
                     return (
@@ -365,23 +393,9 @@ const Step1 = ({
                 </Checkbox.Group>
               )}
             </div>
-
-            <div
-              style={{
-                overflowY: "auto",
-              }}
-            >
-              <div
-                style={{
-                  cursor: "pointer",
-                  borderRight: "0px",
-                  height: viewHeight - 390,
-                }}
-              >
-                <div style={{ height: 100 }}></div>
-              </div>
-            </div>
           </div>
+
+          {/* -- 右侧服务信息 -- */}
           <div
             style={{
               flex: 1,
@@ -406,6 +420,8 @@ const Step1 = ({
                         form={serviceForm}
                         errInfo={item.error}
                         productName={item.name}
+                        context={context}
+                        locale={locale}
                       />
                     );
                   });
@@ -415,6 +431,8 @@ const Step1 = ({
                     itemData={item}
                     form={serviceForm}
                     errInfo={item.error}
+                    context={context}
+                    locale={locale}
                   />
                 );
               })}
@@ -422,6 +440,8 @@ const Step1 = ({
           </div>
         </div>
       </Spin>
+
+      {/* -- 底部统计条 -- */}
       <div
         style={{
           position: "fixed",
@@ -438,7 +458,8 @@ const Step1 = ({
         }}
       >
         <div style={{ paddingLeft: 20 }}>
-          分布主机: {getServiceIpArr.length} 台
+          {context.host + context.ln + context.total + " : "}
+          {getServiceIpArr.length} {context.tai}
         </div>
         <div>
           <Button
@@ -448,32 +469,27 @@ const Step1 = ({
               !getServiceData?.is_continue || getServiceIpArr.length === 0
             }
             loading={loading}
-            onClick={() => {
-              startGetService();
-            }}
+            onClick={() => startGetService()}
           >
-            扫描服务
+            {context.scan + context.ln + context.service}
           </Button>
         </div>
       </div>
 
+      {/* -- 扫描中对话框 -- */}
       <Modal
         title={
           <span>
             <span style={{ position: "relative", left: "-10px" }}>
               <ZoomInOutlined />
             </span>
-            <span>服务纳管</span>
+            <span>{context.service + context.ln + context.incorporate}</span>
           </span>
         }
         visible={ingVisible}
         width={600}
-        bodyStyle={{
-          fontSize: 14,
-        }}
-        onCancel={() => {
-          setIngVisible(false);
-        }}
+        bodyStyle={{ fontSize: 14 }}
+        onCancel={() => setIngVisible(false)}
         footer={null}
       >
         <div style={{ margin: 20 }}>
@@ -484,7 +500,7 @@ const Step1 = ({
               fontSize: 16,
             }}
           />
-          正在按照服务相关信息，对指定服务器进行扫描，请稍后...
+          {msgMap[locale].waitMsg}
         </div>
       </Modal>
     </div>
@@ -498,9 +514,10 @@ const Step2 = ({
   checkServiceData,
   serviceConnectionData,
   setServiceConnectionData,
+  context,
+  locale,
 }) => {
   const tableData = checkServiceData?.ser_info;
-
   // 加载
   const [loading, setLoading] = useState(false);
 
@@ -541,18 +558,18 @@ const Step2 = ({
 
   const tableColumn = [
     {
-      title: "服务名称",
+      title: context.service + context.ln + context.name,
       dataIndex: "name",
       key: "name",
       align: "center",
-      width: 200,
+      width: 180,
     },
     {
-      title: "扫描到该服务的IP",
+      title: msgMap[locale].ipMsg,
       dataIndex: "ip",
       key: "ip",
       align: "center",
-      width: 300,
+      width: 220,
       filters: Object.keys(getServiceData?.ips || []).map((i) => {
         return {
           value: i,
@@ -577,11 +594,11 @@ const Step2 = ({
       },
     },
     {
-      title: "关联集群",
+      title: msgMap[locale].clusterMsg,
       dataIndex: "is_use_exist",
       key: "is_use_exist",
       align: "center",
-      width: 80,
+      width: 120,
       render: (text, record) => {
         return (
           <Switch
@@ -609,14 +626,14 @@ const Step2 = ({
       },
     },
     {
-      title: "可选集群实例",
+      title: context.cluster + context.ln + context.instance,
       dataIndex: "exist_instance",
       key: "exist_instance",
       align: "center",
-      width: 260,
+      width: 220,
       render: (text, record) => {
         if (record.exist_instance.length === 0) {
-          return "无可用实例";
+          return context.noData;
         } else {
           return (
             <Select
@@ -651,7 +668,7 @@ const Step2 = ({
       },
     },
     {
-      title: "校验结果",
+      title: context.result,
       dataIndex: "check",
       key: "check",
       align: "center",
@@ -669,7 +686,7 @@ const Step2 = ({
       },
     },
     {
-      title: "错误信息",
+      title: context.error + context.ln + context.description,
       dataIndex: "error",
       key: "error",
       align: "center",
@@ -681,6 +698,7 @@ const Step2 = ({
 
   return (
     <div>
+      {/* -- 顶部提示 -- */}
       <div
         style={{
           marginTop: 20,
@@ -694,9 +712,10 @@ const Step2 = ({
         <ExclamationCircleFilled
           style={{ fontSize: 16, marginRight: 10, color: "rgb(72,134,247)" }}
         />
-        扫描结果如下
+        {context.scan + context.ln + context.result}
       </div>
 
+      {/* -- 扫描结果表格 -- */}
       <div
         style={{
           width: "100%",
@@ -717,6 +736,7 @@ const Step2 = ({
         />
       </div>
 
+      {/* -- 底部 上一步/纳管 -- */}
       <div
         style={{
           position: "fixed",
@@ -734,24 +754,17 @@ const Step2 = ({
       >
         <div />
         <div>
-          <Button
-            type="primary"
-            onClick={() => {
-              setStepNum(0);
-            }}
-          >
-            上一步
+          <Button type="primary" onClick={() => setStepNum(0)}>
+            {context.previous}
           </Button>
           <Button
             style={{ marginLeft: 10 }}
             type="primary"
             disabled={!checkServiceData?.is_continue}
             loading={loading}
-            onClick={() => {
-              addService();
-            }}
+            onClick={() => addService()}
           >
-            纳管
+            {context.incorporate}
           </Button>
         </div>
       </div>
@@ -759,25 +772,27 @@ const Step2 = ({
   );
 };
 
-const GetService = () => {
+const GetService = ({ locale }) => {
   const history = useHistory();
   const location = useLocation();
-
   // 服务纳管初始数据
   const getServiceData = location.state?.getServiceData;
+  if (getServiceData === undefined) {
+    history.push({
+      pathname: "/application_management/app_store",
+    });
+  }
   // 服务扫描信息
   const [checkServiceData, setCheckServiceData] = useState(null);
   // 服务关联信息
   const [serviceConnectionData, setServiceConnectionData] = useState({});
   // 步骤
   const [stepNum, setStepNum] = useState(0);
+  const context = locales[locale].common;
 
   return (
-    <div
-      style={{
-        backgroundColor: "rgb(240, 242, 245)",
-      }}
-    >
+    <div style={{ backgroundColor: "rgb(240, 242, 245)" }}>
+      {/* -- 顶部步骤条 -- */}
       <div
         style={{
           height: 50,
@@ -792,29 +807,33 @@ const GetService = () => {
         <div style={{ fontSize: 16 }}>
           <LeftOutlined
             style={{ fontSize: 16, marginRight: 20 }}
-            onClick={() => {
-              history?.goBack();
-            }}
+            onClick={() => history?.goBack()}
           />
-          服务纳管
+          {context.service + context.ln + context.incorporate}
         </div>
         <div style={{ width: 600, position: "relative", left: -60 }}>
           <Steps size="small" current={stepNum}>
-            <Steps.Step title="基本信息" />
-            <Steps.Step title="扫描结果" />
-            <Steps.Step title="服务纳管" />
+            <Steps.Step title={context.basic + context.ln + context.info} />
+            <Steps.Step title={context.scan + context.ln + context.result} />
+            <Steps.Step title={context.incorporate} />
           </Steps>
         </div>
         <div />
       </div>
+
+      {/* -- step0 基本信息 -- */}
       {stepNum == 0 && (
         <Step1
           setStepNum={setStepNum}
           getServiceData={getServiceData}
           setCheckServiceData={setCheckServiceData}
           setServiceConnectionData={setServiceConnectionData}
+          context={context}
+          locale={locale}
         />
       )}
+
+      {/* -- step1 扫描结果 -- */}
       {stepNum == 1 && (
         <Step2
           setStepNum={setStepNum}
@@ -822,23 +841,30 @@ const GetService = () => {
           checkServiceData={checkServiceData}
           serviceConnectionData={serviceConnectionData}
           setServiceConnectionData={setServiceConnectionData}
+          context={context}
+          locale={locale}
         />
       )}
+
+      {/* -- step2 服务纳管 -- */}
       {stepNum == 2 && (
         <Result
-          style={{
-            paddingTop: "10%",
-            backgroundColor: "#fff",
-          }}
+          style={{ paddingTop: "10%", backgroundColor: "#fff" }}
           status="success"
-          title="服务纳管执行成功"
+          title={
+            context.service +
+            context.ln +
+            context.incorporate +
+            context.ln +
+            context.succeeded
+          }
           extra={[
             <Button
               onClick={() => {
                 history?.goBack();
               }}
             >
-              返回
+              {context.back}
             </Button>,
             <Button
               type="primary"
@@ -846,7 +872,7 @@ const GetService = () => {
                 history?.push("/application_management/service_management");
               }}
             >
-              查看服务
+              {context.view + context.ln + context.service}
             </Button>,
           ]}
         />

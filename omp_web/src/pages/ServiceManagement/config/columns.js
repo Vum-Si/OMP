@@ -1,11 +1,21 @@
+import { OmpToolTip } from "@/components";
 import {
   nonEmptyProcessing,
   renderDisc,
   RenderStatusForResult,
 } from "@/utils/utils";
-import { OmpToolTip } from "@/components";
 import { DesktopOutlined } from "@ant-design/icons";
-import { Dropdown, Menu, Drawer, Tooltip, Spin, Timeline } from "antd";
+import {
+  Dropdown,
+  Menu,
+  Drawer,
+  Tooltip,
+  Spin,
+  Timeline,
+  Descriptions,
+  Divider,
+  Empty,
+} from "antd";
 import moment from "moment";
 import styles from "../index.module.less";
 import { useSelector } from "react-redux";
@@ -17,13 +27,85 @@ const colorConfig = {
   critical: "#f04134",
 };
 
-export const DetailHost = ({
+// 平台访问入口
+export const UrlInfo = ({
+  isShowDrawer,
+  setIsShowDrawer,
+  urlData,
+  context,
+}) => {
+  return (
+    <Drawer
+      title={context.platformAccess}
+      placement="right"
+      closable={true}
+      width={640}
+      style={{
+        height: "calc(100%)",
+      }}
+      onClose={() => {
+        setIsShowDrawer(false);
+      }}
+      visible={isShowDrawer}
+      destroyOnClose={true}
+    >
+      <div
+        style={{
+          marginTop: -30,
+        }}
+      >
+        {urlData.length > 0 ? (
+          urlData.map((e) => {
+            return (
+              <div>
+                <Divider
+                  orientation="left"
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 16,
+                    marginTop: 26,
+                  }}
+                >
+                  {e.app_name}
+                </Divider>
+                <Descriptions key={e.app_name} title={null} bordered>
+                  <Descriptions.Item label={context.website} span={3}>
+                    <a href={e.url} target="_blank">
+                      {e.url}
+                    </a>
+                  </Descriptions.Item>
+                  <Descriptions.Item label={context.username}>
+                    {e.username}
+                  </Descriptions.Item>
+                  <Descriptions.Item label={context.password}>
+                    {e.password}
+                  </Descriptions.Item>
+                </Descriptions>
+              </div>
+            );
+          })
+        ) : (
+          <Empty
+            style={{
+              width: "100%",
+              marginTop: 180,
+            }}
+            description={context.noData}
+          />
+        )}
+      </div>
+    </Drawer>
+  );
+};
+
+export const DetailService = ({
   isShowDrawer,
   setIsShowDrawer,
   loading,
   data,
   setInstallationRecordModal,
   queryServiceInstallHistoryDetail,
+  context,
 }) => {
   // 视口宽度
   const viewHeight = useSelector((state) => state.layouts.viewSize.height);
@@ -33,22 +115,18 @@ export const DetailHost = ({
       title={
         <div style={{ display: "flex" }}>
           <DesktopOutlined style={{ position: "relative", top: 3, left: -5 }} />
-          服务信息面板
+          {context.service + context.ln + context.detail}
           <span style={{ paddingLeft: 30, fontWeight: 400, fontSize: 15 }}>
-            实例名称: {isShowDrawer.record?.service_instance_name}
+            {context.serviceInstance} :{" "}
+            {isShowDrawer.record?.service_instance_name}
           </span>
         </div>
       }
-      headerStyle={{
-        padding: "19px 24px",
-      }}
+      headerStyle={{ padding: "19px 24px" }}
       placement="right"
       closable={true}
       width={`calc(100% - 200px)`}
-      style={{
-        height: "calc(100%)",
-        // paddingTop: "60px",
-      }}
+      style={{ height: "calc(100%)" }}
       onClose={() => {
         setIsShowDrawer({
           ...isShowDrawer,
@@ -58,8 +136,7 @@ export const DetailHost = ({
       visible={isShowDrawer.isOpen}
       bodyStyle={{
         padding: 10,
-        //paddingLeft:10,
-        backgroundColor: "#e7e9f0", //"#f4f6f8"
+        backgroundColor: "#e7e9f0",
         height: "calc(100%)",
       }}
       destroyOnClose={true}
@@ -68,29 +145,31 @@ export const DetailHost = ({
         style={{ height: "calc(100% - 15px)", width: "100%", display: "flex" }}
       >
         <div style={{ flex: 4 }}>
+          {/* -- 基本信息 -- */}
           <div
             style={{
-              height: "calc(50%)",
+              height: "calc(46%)",
               width: "100%",
-              //border: "solid 1px rgb(220,220,220)",
               borderRadius: "5px",
               backgroundColor: "#fff",
-              //flex: 4,
               padding: 20,
+              paddingTop: 14,
+              paddingBottom: 10,
+              overflowY: "auto",
             }}
           >
-            <div style={{ paddingBottom: 15, fontSize: 15, fontWeight: 500 }}>
-              基本信息
+            <div style={{ paddingBottom: 10, fontSize: 15, fontWeight: 500 }}>
+              {context.basic + context.ln + context.info}
             </div>
             <div
               style={{
                 display: "flex",
                 //paddingTop: 15,
-                paddingBottom: 5,
+                paddingBottom: 4,
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>实例名称</div>
+              <div style={{ flex: 2 }}>{context.serviceInstance}</div>
               <div style={{ flex: 3 }}>
                 <OmpToolTip maxLength={30}>
                   {isShowDrawer.record?.service_instance_name}
@@ -100,96 +179,92 @@ export const DetailHost = ({
             <div
               style={{
                 display: "flex",
-                paddingTop: 15,
-                paddingBottom: 5,
+                paddingTop: 12,
+                paddingBottom: 4,
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>服务名称</div>
+              <div style={{ flex: 2 }}>{context.appName}</div>
               <div style={{ flex: 3 }}>
                 <OmpToolTip maxLength={30}>
                   {nonEmptyProcessing(isShowDrawer.record?.app_name)}
                 </OmpToolTip>
               </div>
             </div>
-            {/* <div
-            style={{
-              display: "flex",
-              paddingTop: 15,
-              paddingBottom: 5,
-              borderBottom: "solid 1px rgb(220,220,220)",
-            }}
-          >
-            <div style={{ flex: 1 }}>IP地址</div>
-            <div style={{ flex: 1 }}>{isShowDrawer.record.ip}</div>
-          </div> */}
             <div
               style={{
                 display: "flex",
-                paddingTop: 15,
-                paddingBottom: 5,
+                paddingTop: 8,
+                paddingBottom: 4,
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>版本</div>
+              <div style={{ flex: 2 }}>{context.version}</div>
               <div style={{ flex: 3 }}>{isShowDrawer.record?.app_version}</div>
             </div>
             <div
               style={{
                 display: "flex",
-                paddingTop: 15,
-                paddingBottom: 5,
+                paddingTop: 8,
+                paddingBottom: 4,
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>服务分类</div>
+              <div style={{ flex: 2 }}>{context.module}</div>
               <div style={{ flex: 3 }}>{isShowDrawer.record?.label_name}</div>
             </div>
             <div
               style={{
                 display: "flex",
-                paddingTop: 15,
-                paddingBottom: 5,
+                paddingTop: 8,
+                paddingBottom: 4,
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>集群模式</div>
-              <div style={{ flex: 3 }}>{isShowDrawer.record?.cluster_type}</div>
+              <div style={{ flex: 2 }}>{context.clusterMode}</div>
+              <div style={{ flex: 3 }}>
+                {isShowDrawer.record?.cluster_type === "单实例"
+                  ? context.single
+                  : context.cluster}
+              </div>
             </div>
             <div
               style={{
                 display: "flex",
-                paddingTop: 15,
-                paddingBottom: 5,
+                paddingTop: 8,
+                paddingBottom: 4,
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>IP地址</div>
+              <div style={{ flex: 2 }}>{context.ip}</div>
               <div style={{ flex: 3 }}>{isShowDrawer.record?.ip}</div>
             </div>
           </div>
+
+          {/* -- 安装信息 -- */}
           <div
             style={{
               marginTop: "3%",
-              height: "calc(48%)",
+              height: "calc(52%)",
               width: "100%",
-              //border: "solid 1px rgb(220,220,220)",
               borderRadius: "5px",
               backgroundColor: "#fff",
-              //flex: 4,
               padding: 20,
+              paddingTop: 14,
+              paddingBottom: 10,
+              overflowY: "auto",
             }}
           >
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                paddingBottom: 15,
+                paddingBottom: 10,
                 fontSize: 15,
                 fontWeight: 500,
               }}
             >
-              安装信息
+              {context.deployment + context.ln + context.info}
               <a
                 onClick={() => {
                   setInstallationRecordModal(true);
@@ -197,18 +272,23 @@ export const DetailHost = ({
                 }}
                 style={{ fontSize: 13, fontWeight: 400 }}
               >
-                查看安装记录
+                {context.view +
+                  context.ln +
+                  context.install +
+                  context.ln +
+                  context.record}
               </a>
             </div>
             <div
               style={{
                 display: "flex",
-                //paddingTop: 15,
-                paddingBottom: 5,
+                paddingBottom: 4,
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>安装目录</div>
+              <div style={{ flex: 2 }}>
+                {context.install + context.ln + context.directory}
+              </div>
               <div style={{ flex: 3 }}>
                 <OmpToolTip maxLength={32}>
                   {data.install_info?.base_dir}
@@ -223,7 +303,9 @@ export const DetailHost = ({
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>数据目录</div>
+              <div style={{ flex: 2 }}>
+                {context.data + context.ln + context.directory}
+              </div>
               <div style={{ flex: 3 }}>
                 <OmpToolTip maxLength={32}>
                   {data.install_info?.data_dir}
@@ -238,7 +320,9 @@ export const DetailHost = ({
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>日志目录</div>
+              <div style={{ flex: 2 }}>
+                {context.log + context.ln + context.directory}
+              </div>
               <div style={{ flex: 3 }}>
                 <OmpToolTip maxLength={32}>
                   {data.install_info?.log_dir}
@@ -253,7 +337,7 @@ export const DetailHost = ({
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>端口号</div>
+              <div style={{ flex: 2 }}>{context.port}</div>
               <div style={{ flex: 3 }}>{data.install_info?.service_port}</div>
             </div>
             <div
@@ -264,7 +348,7 @@ export const DetailHost = ({
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>用户名</div>
+              <div style={{ flex: 2 }}>{context.username}</div>
               <div style={{ flex: 3 }}>{data.install_info?.username}</div>
             </div>
             <div
@@ -275,7 +359,7 @@ export const DetailHost = ({
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>密码</div>
+              <div style={{ flex: 2 }}>{context.password}</div>
               <div style={{ flex: 3 }}>{data.install_info?.password}</div>
             </div>
             <div
@@ -286,7 +370,9 @@ export const DetailHost = ({
                 borderBottom: "solid 1px rgb(220,220,220)",
               }}
             >
-              <div style={{ flex: 2 }}>安装时间</div>
+              <div style={{ flex: 2 }}>
+                {context.install + context.ln + context.timestamp}
+              </div>
               <div style={{ flex: 3 }}>
                 {data?.created
                   ? moment(data?.created).format("YYYY-MM-DD HH:mm:ss")
@@ -296,6 +382,7 @@ export const DetailHost = ({
           </div>
         </div>
 
+        {/* -- 历史记录 -- */}
         <div
           style={{
             height: "100%",
@@ -321,7 +408,7 @@ export const DetailHost = ({
             }}
           >
             <div style={{ paddingBottom: 20, fontSize: 15, fontWeight: 500 }}>
-              历史记录
+              {context.historicRecords}
             </div>
             <Spin spinning={loading} wrapperClassName={styles.omp_spin_wrapper}>
               <Timeline
@@ -356,23 +443,19 @@ export const DetailHost = ({
   );
 };
 
-//操作
+//操作菜单
 const renderMenu = (
-  // setUpdateMoadlVisible,
-  // setCloseMaintainModal,
-  // setOpenMaintainModal,
-
   record,
   setOperateAciton,
   setServiceAcitonModal,
   queryDeleteMsg,
-  deleteConditionReset
+  deleteConditionReset,
+  context
 ) => {
   return (
-    <Menu>
+    <Menu style={{ textAlign: "center" }}>
       <Menu.Item
         disabled={!record.operable}
-        style={{ textAlign: "center" }}
         key="start"
         onClick={() => {
           setOperateAciton(1);
@@ -380,7 +463,7 @@ const renderMenu = (
         }}
       >
         <span style={{ fontSize: 12, paddingLeft: 5, paddingRight: 5 }}>
-          启动
+          {context.start}
         </span>
       </Menu.Item>
       <Menu.Item
@@ -392,7 +475,7 @@ const renderMenu = (
         }}
       >
         <span style={{ fontSize: 12, paddingLeft: 5, paddingRight: 5 }}>
-          停止
+          {context.stop}
         </span>
       </Menu.Item>
       <Menu.Item
@@ -404,11 +487,10 @@ const renderMenu = (
         }}
       >
         <span style={{ fontSize: 12, paddingLeft: 5, paddingRight: 5 }}>
-          重启
+          {context.restart}
         </span>
       </Menu.Item>
       <Menu.Item
-        //disabled={!record.operable}
         key="delete"
         onClick={() => {
           queryDeleteMsg([record]);
@@ -418,83 +500,84 @@ const renderMenu = (
         }}
       >
         <span style={{ fontSize: 12, paddingLeft: 5, paddingRight: 5 }}>
-          卸载
+          {context.delete}
         </span>
       </Menu.Item>
     </Menu>
   );
 };
 
-const renderStatus = (text) => {
+// 渲染状态
+const renderStatus = (text, context) => {
   switch (text) {
     case "未监控":
       return (
         <span>
           {renderDisc("notMonitored", 7, -1)}
-          {text}
+          {context.noMonitored}
         </span>
       );
     case "启动中":
       return (
         <span>
           {renderDisc("warning", 7, -1)}
-          {text}
+          {context.starting}
         </span>
       );
     case "停止中":
       return (
         <span>
           {renderDisc("warning", 7, -1)}
-          {text}
+          {context.stopping}
         </span>
       );
     case "重启中":
       return (
         <span>
           {renderDisc("warning", 7, -1)}
-          {text}
+          {context.restarting}
         </span>
       );
     case "未知":
       return (
         <span>
           {renderDisc("warning", 7, -1)}
-          {text}
+          {context.unknown}
         </span>
       );
     case "安装中":
       return (
         <span>
           {renderDisc("warning", 7, -1)}
-          {text}
+          {context.installing}
         </span>
       );
     case "待安装":
       return (
         <span>
           {renderDisc("warning", 7, -1)}
-          {text}
+          {context.waiting}
         </span>
       );
     case "停止":
       return (
         <span>
           {renderDisc("critical", 7, -1)}
-          {text}
+          {context.noRunning}
         </span>
       );
     case "安装失败":
       return (
         <span>
           {renderDisc("critical", 7, -1)}
-          {text}
+          {context.installFailed}
         </span>
       );
     default:
       return (
         <span>
           {renderDisc("normal", 7, -1)}
-          {text}
+          {context.running}
         </span>
       );
   }
@@ -503,11 +586,7 @@ const renderStatus = (text) => {
 const getColumnsConfig = (
   setIsShowDrawer,
   setRow,
-  //setUpdateMoadlVisible,
   fetchHistoryData,
-  // setCloseMaintainModal,
-  // setOpenMaintainModal,
-  //setShowIframe,
   history,
   labelsData,
   queryRequest,
@@ -517,17 +596,19 @@ const getColumnsConfig = (
   setOperateAciton,
   setServiceAcitonModal,
   queryDeleteMsg,
+  context,
   // 删除的前置条件重置
   deleteConditionReset
 ) => {
   return [
     {
-      title: "实例名称",
+      title: context.serviceInstance,
       key: "service_instance_name",
       dataIndex: "service_instance_name",
       sorter: (a, b) => a.service_instance_name - b.service_instance_name,
       sortDirections: ["descend", "ascend"],
       align: "center",
+      width: 160,
       ellipsis: true,
       fixed: "left",
       render: (text, record) => {
@@ -549,7 +630,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "ip",
       dataIndex: "ip",
       sorter: (a, b) => a.ip - b.ip,
@@ -567,7 +648,7 @@ const getColumnsConfig = (
       //ellipsis: true,
     },
     {
-      title: "CPU使用率",
+      title: context.cpu,
       key: "cpu_usage",
       dataIndex: "cpu_usage",
       align: "center",
@@ -587,7 +668,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "内存使用率",
+      title: context.memory,
       key: "mem_usage",
       dataIndex: "mem_usage",
       sorter: (a, b) => a.mem_usage - b.mem_usage,
@@ -607,23 +688,57 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "状态",
+      title: context.status,
       key: "service_status",
       dataIndex: "service_status",
       align: "center",
       //ellipsis: true,
+      render: (text) => renderStatus(text, context),
+    },
+    {
+      title: context.port,
+      key: "port",
+      dataIndex: "port",
+      align: "center",
+      ellipsis: true,
       render: (text) => {
-        return renderStatus(text);
+        return <Tooltip title={text}>{text ? text : "-"}</Tooltip>;
       },
     },
     {
-      title: "告警次数",
+      title: context.clusterMode,
+      key: "cluster_type",
+      dataIndex: "cluster_type",
+      align: "center",
+      //ellipsis: true,
+      render: (text, record) => {
+        if (record.cluster_url?.length > 0) {
+          return (
+            <a
+              onClick={() => {
+                setShowIframe({
+                  isOpen: true,
+                  src: record.cluster_url,
+                  record: record,
+                  isLog: false,
+                });
+              }}
+            >
+              {context.cluster}
+            </a>
+          );
+        }
+        return context.single;
+      },
+    },
+    {
+      title: context.alert + context.ln + context.total,
       key: "alert_count",
       dataIndex: "alert_count",
       align: "center",
       render: (text, record) => {
         if (text == "-" || text == "0次") {
-          return text;
+          return text.replace("次", context.ci);
         } else {
           return (
             <a
@@ -637,7 +752,7 @@ const getColumnsConfig = (
                   });
               }}
             >
-              {text}
+              {text.replace("次", context.ci)}
             </a>
           );
         }
@@ -645,31 +760,21 @@ const getColumnsConfig = (
       //ellipsis: true,
     },
     {
-      title: "端口",
-      key: "port",
-      dataIndex: "port",
-      align: "center",
-      ellipsis: true,
-      render: (text) => {
-        return <Tooltip title={text}>{text ? text : "-"}</Tooltip>;
-      },
-    },
-    {
-      title: "服务名称",
+      title: context.service + context.ln + context.name,
       key: "app_name",
       dataIndex: "app_name",
       align: "center",
       ellipsis: true,
     },
     {
-      title: "版本",
+      title: context.version,
       key: "app_version",
       dataIndex: "app_version",
       align: "center",
       ellipsis: true,
     },
     {
-      title: "功能模块",
+      title: context.module,
       key: "label_name",
       dataIndex: "label_name",
       usefilter: true,
@@ -683,7 +788,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "服务类型",
+      title: context.type,
       key: "app_type",
       dataIndex: "app_type",
       align: "center",
@@ -693,40 +798,30 @@ const getColumnsConfig = (
       filterMenuList: [
         {
           value: 0,
-          text: "基础组件",
+          text: context.component,
         },
         {
           value: 1,
-          text: "应用服务",
+          text: context.application,
         },
       ],
       render: (text) => {
-        return text ? "应用服务" : "基础组件";
+        return text ? context.application : context.component;
       },
       //ellipsis: true,
     },
-
     {
-      title: "集群模式",
-      key: "cluster_type",
-      dataIndex: "cluster_type",
-      align: "center",
-      //ellipsis: true,
-    },
-    {
-      title: "操作",
+      title: context.action,
       //width: 100,
       width: 140,
       key: "",
       dataIndex: "",
       align: "center",
       fixed: "right",
-      render: function renderFunc(text, record, index) {
+      render: (text, record, index) => {
         return (
           <div
-            onClick={() => {
-              setRow(record);
-            }}
+            onClick={() => setRow(record)}
             style={{ display: "flex", justifyContent: "space-around" }}
           >
             <div style={{ margin: "auto" }}>
@@ -741,10 +836,12 @@ const getColumnsConfig = (
                     });
                   }}
                 >
-                  监控
+                  {context.monitor}
                 </a>
               ) : (
-                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>监控</span>
+                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>
+                  {context.monitor}
+                </span>
               )}
 
               {record.log_url ? (
@@ -759,11 +856,11 @@ const getColumnsConfig = (
                     });
                   }}
                 >
-                  日志
+                  {context.log}
                 </a>
               ) : (
                 <span style={{ color: "rgba(0, 0, 0, 0.25)", marginLeft: 10 }}>
-                  日志
+                  {context.log}
                 </span>
               )}
 
@@ -771,20 +868,15 @@ const getColumnsConfig = (
                 arrow
                 placement="bottomCenter"
                 overlay={renderMenu(
-                  // setUpdateMoadlVisible,
-                  // setCloseMaintainModal,
-                  // setOpenMaintainModal,
                   record,
                   setOperateAciton,
                   setServiceAcitonModal,
                   queryDeleteMsg,
-                  deleteConditionReset
+                  deleteConditionReset,
+                  context
                 )}
               >
-                <a style={{ marginLeft: 10 }}>
-                  更多
-                  {/* <DownOutlined style={{ position: "relative", top: 1 }} /> */}
-                </a>
+                <a style={{ marginLeft: 10 }}>{context.more}</a>
               </Dropdown>
             </div>
           </div>

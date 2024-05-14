@@ -12,37 +12,30 @@ import { apiRequest } from "@/config/requestApi";
 import getColumnsConfig from "./config/columns";
 import { SearchOutlined } from "@ant-design/icons";
 import { useHistory, useLocation } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const ExceptionList = () => {
+const ExceptionList = ({ locale }) => {
   const history = useHistory();
   const location = useLocation();
-
   const initIp = location.state?.ip;
   const initInstanceName = location.state?.instance_name;
-
   const [loading, setLoading] = useState(false);
-
   const [searchLoading, setSearchLoading] = useState(false);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [ipListSource, setIpListSource] = useState([]);
-
   const [selectValue, setSelectValue] = useState(initIp);
-
   const [instanceSelectValue, setInstanceSelectValue] =
     useState(initInstanceName);
-
   const [searchParams, setSearchParams] = useState({});
-
   // 筛选label
   const [labelControl, setLabelControl] = useState(
     initIp ? "ip" : "instance_name"
   );
-
   const [showIframe, setShowIframe] = useState({});
+  const context = locales[locale].common;
 
-  function fetchData(searchParams = {}) {
+  const fetchData = (searchParams = {}) => {
     setLoading(true);
     fetchGet(apiRequest.ExceptionList.exceptionList, {
       params: {
@@ -66,7 +59,7 @@ const ExceptionList = () => {
         setLoading(false);
         fetchIPlist();
       });
-  }
+  };
 
   const fetchIPlist = () => {
     setSearchLoading(true);
@@ -92,6 +85,7 @@ const ExceptionList = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部搜索 -- */}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <div />
         <div style={{ display: "flex" }}>
@@ -99,7 +93,7 @@ const ExceptionList = () => {
             <Input.Group compact style={{ display: "flex" }}>
               <Select
                 value={labelControl}
-                style={{ width: 100 }}
+                style={{ minWidth: 100 }}
                 onChange={(e) => {
                   setLabelControl(e);
                   fetchData({
@@ -111,11 +105,14 @@ const ExceptionList = () => {
                   setSelectValue();
                 }}
               >
-                <Select.Option value="ip"> IP地址</Select.Option>
-                <Select.Option value="instance_name">实例名称</Select.Option>
+                <Select.Option value="ip">{context.ipAddress}</Select.Option>
+                <Select.Option value="instance_name">
+                  {context.serviceInstance}
+                </Select.Option>
               </Select>
               {labelControl === "ip" && (
                 <OmpSelect
+                  placeholder={context.input + context.ln + context.ip}
                   searchLoading={searchLoading}
                   selectValue={selectValue}
                   listSource={ipListSource}
@@ -127,7 +124,9 @@ const ExceptionList = () => {
               )}
               {labelControl === "instance_name" && (
                 <Input
-                  placeholder="输入实例名称"
+                  placeholder={
+                    context.input + context.ln + context.serviceInstance
+                  }
                   style={{ width: 200 }}
                   allowClear
                   value={instanceSelectValue}
@@ -171,11 +170,13 @@ const ExceptionList = () => {
                 fetchData({ ...searchParams });
               }}
             >
-              刷新
+              {context.refresh}
             </Button>
           </div>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -185,7 +186,6 @@ const ExceptionList = () => {
       >
         <OmpTable
           loading={loading}
-          //scroll={{ x: 1400 }}
           onChange={(e, filters, sorter) => {
             if (sorter.columnKey) {
               let sort = sorter.order == "descend" ? 0 : 1;
@@ -204,7 +204,8 @@ const ExceptionList = () => {
             },
             setShowIframe,
             history,
-            location.state?.type
+            location.state?.type,
+            context
           )}
           dataSource={dataSource}
           pagination={{
@@ -215,26 +216,29 @@ const ExceptionList = () => {
                 style={{
                   display: "flex",
                   width: "200px",
-                  //justifyContent: "space-between",
                   flexDirection: "row-reverse",
                   lineHeight: 2.8,
                 }}
               >
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {dataSource?.length}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
           }}
-          //rowKey={(record) => record.ip}
-          //checkedState={[checkedList, setCheckedList]}
         />
       </div>
-      <OmpDrawer showIframe={showIframe} setShowIframe={setShowIframe} />
+
+      {/* -- 监控面板 -- */}
+      <OmpDrawer
+        showIframe={showIframe}
+        setShowIframe={setShowIframe}
+        context={context}
+      />
     </OmpContentWrapper>
   );
 };

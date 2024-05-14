@@ -35,7 +35,7 @@ class RedisLock(object):
         return True, self.rdcon
 
 
-def back_end_verified_init(operation_user):
+def back_end_verified_init(operation_user, is_test=False):
     """
     后台扫描接口
     :param operation_user: 操作用户
@@ -68,12 +68,12 @@ def back_end_verified_init(operation_user):
             package_md5='1',
             package_path="verified")
         upload_obj.save()
-        front_end_verified_init(uuid, operation_user, j, upload_obj.id)
+        front_end_verified_init(j, upload_obj.id, is_test=is_test)
     publish_bak_end.delay(uuid, len(exec_name))
     return uuid, exec_name
 
 
-def front_end_verified_init(uuid, operation_user, package_name, obj_id, md5=None):
+def front_end_verified_init(package_name, obj_id, md5=None, is_test=False):
     # 前端发布校验接口
     random_str = ''.join(
         random.sample('abcdefghijklmnopqrstuvwxyz1234567890', 10))
@@ -81,5 +81,4 @@ def front_end_verified_init(uuid, operation_user, package_name, obj_id, md5=None
         ver_dir = package_dir.get("front_end_verified")
     else:
         ver_dir = package_dir.get("back_end_verified")
-    front_end_verified.delay(uuid, operation_user, package_name,
-                             random_str, ver_dir, obj_id)
+    front_end_verified.delay(package_name, random_str, ver_dir, obj_id, is_test=is_test)

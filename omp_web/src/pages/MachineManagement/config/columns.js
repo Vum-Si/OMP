@@ -1,14 +1,13 @@
+import { OmpToolTip } from "@/components";
 import {
   nonEmptyProcessing,
   renderDisc,
   RenderStatusForResult,
 } from "@/utils/utils";
-import { OmpToolTip } from "@/components";
 import { DesktopOutlined } from "@ant-design/icons";
-import { Dropdown, Menu, Drawer, Tooltip, Spin, Timeline } from "antd";
+import { Drawer, Tooltip, Spin, Timeline } from "antd";
 import moment from "moment";
 import styles from "../index.module.less";
-import { useSelector } from "react-redux";
 import { useRef } from "react";
 
 const colorConfig = {
@@ -17,15 +16,130 @@ const colorConfig = {
   critical: "#f04134",
 };
 
+const msgMap = {
+  "en-US": {
+    nosshTitle: "No SSH automatic host addition",
+    oneMsg: "1. Modify OMP configuration file",
+    oneTrueMsg: "# In the scenario without SSH, please change to true",
+    twoMsg: "2. Restart OMP service",
+    threeMsg:
+      "3. Login to all servers that require hosting, and execute the following command in the install directory (such as /data)",
+    comMsg: "This command will",
+  },
+  "zh-CN": {
+    nosshTitle: "无 SSH 自动添加主机",
+    oneMsg: "1. 修改 OMP 配置文件",
+    oneTrueMsg: "# 无ssh场景下，请更改为 true",
+    twoMsg: "2. 重启 OMP 服务",
+    threeMsg: "3. 登陆所有需要纳管的服务器，在安装目录 (如 /data) 执行如下命令",
+    comMsg: "该命令会",
+  },
+};
+
+export const NoSshUrlInfo = ({
+  isShowDrawer,
+  setIsShowDrawer,
+  urlData,
+  context,
+  locale,
+}) => {
+  return (
+    <Drawer
+      title={msgMap[locale].nosshTitle}
+      placement="right"
+      closable={true}
+      width={640}
+      style={{ height: "calc(100%)" }}
+      onClose={() => setIsShowDrawer(false)}
+      visible={isShowDrawer}
+      destroyOnClose={true}
+    >
+      <div
+        style={{
+          marginTop: -30,
+          padding: 16,
+          paddingTop: 32,
+        }}
+      >
+        <p>
+          {msgMap[locale].oneMsg + " : "}
+          <strong>omp/config/omp.yaml</strong>
+        </p>
+        <p
+          style={{
+            paddingLeft: 2,
+            marginLeft: 14,
+            marginTop: -4,
+            border: "1px solid #ebeef2",
+            backgroundColor: "rgb(40, 54, 70)",
+            color: "white",
+          }}
+        >
+          {msgMap[locale].oneTrueMsg}
+          <br />
+          is_no_ssh: true
+        </p>
+        <p>
+          {msgMap[locale].twoMsg + " : "}
+          <strong>uwsgi、worker</strong>
+        </p>
+        <p
+          style={{
+            paddingLeft: 2,
+            marginLeft: 14,
+            marginTop: -4,
+            border: "1px solid #ebeef2",
+            backgroundColor: "rgb(40, 54, 70)",
+            color: "white",
+          }}
+        >
+          bash omp/scripts/omp uwsgi restart
+          <br />
+          bash omp/scripts/omp worker restart
+        </p>
+        <p>
+          {msgMap[locale].threeMsg}
+          <br />
+          <span style={{ marginLeft: 15 }}>
+            {msgMap[locale].comMsg + " : "}
+          </span>
+          <ul style={{ marginTop: 4 }}>
+            <li>
+              {context.install}{" "}
+              <strong>
+                {context.hostAgent + " & " + context.monitorAgent}
+              </strong>
+            </li>
+            <li>
+              {context.upgrade} <strong>{context.hostAgent}</strong>
+            </li>
+          </ul>
+        </p>
+        <p
+          style={{
+            paddingLeft: 2,
+            marginLeft: 14,
+            marginTop: -4,
+            border: "1px solid #ebeef2",
+            backgroundColor: "rgb(40, 54, 70)",
+            color: "white",
+          }}
+        >
+          {urlData}
+        </p>
+      </div>
+    </Drawer>
+  );
+};
+
 export const DetailHost = ({
   isShowDrawer,
   setIsShowDrawer,
   loading,
   data,
   baseEnv,
+  context,
 }) => {
-  // 视口宽度
-  const viewHeight = useSelector((state) => state.layouts.viewSize.height);
   // 组件图片字符串
   const componentImgStr = `<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1634633143436" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2388" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200"><defs><style type="text/css"></style></defs><path d="M882.521 282.988L527.534 78.127c-8.98-5.219-20.146-5.219-29.127 0L143.42 282.988c-8.98 5.219-14.563 14.806-14.563 25.244v409.842c0 10.437 5.583 20.025 14.563 25.244L498.407 948.3c4.491 2.548 9.588 3.884 14.563 3.884s10.073-1.334 14.563-3.884L882.52 743.318c8.98-5.219 14.563-14.806 14.563-25.244V308.232c0-10.437-5.583-20.025-14.563-25.244zM838.83 701.326L512.971 889.438 187.112 701.326V325.101l325.859-188.112L838.83 325.101v376.225z" p-id="2389"></path><path d="M270.124 383.476c-8.01 13.957-3.277 31.797 10.681 39.807l202.676 116.994v231.439c0 16.142 12.986 29.127 29.127 29.127s29.127-12.986 29.127-29.127V540.641l203.404-117.479c13.957-8.01 18.69-25.851 10.681-39.807s-25.851-18.69-39.807-10.681L512.973 489.91l-203.04-117.236c-13.957-8.01-31.676-3.155-39.807 10.801z" p-id="2390"></path></svg>`;
 
@@ -35,22 +149,17 @@ export const DetailHost = ({
       title={
         <div style={{ display: "flex" }}>
           <DesktopOutlined style={{ position: "relative", top: 3, left: -5 }} />
-          主机详细信息面板
+          {context.host + context.ln + context.detail}
           <span style={{ paddingLeft: 30, fontWeight: 400, fontSize: 15 }}>
-            IP: {isShowDrawer.record.ip}
+            {context.ip} : {isShowDrawer.record.ip}
           </span>
         </div>
       }
-      headerStyle={{
-        padding: "19px 24px",
-      }}
+      headerStyle={{ padding: "19px 24px" }}
       placement="right"
       closable={true}
       width={`calc(100% - 200px)`}
-      style={{
-        height: "calc(100%)",
-        // paddingTop: "60px",
-      }}
+      style={{ height: "calc(100%)" }}
       onClose={() => {
         setIsShowDrawer({
           ...isShowDrawer,
@@ -69,19 +178,20 @@ export const DetailHost = ({
       <div
         style={{ height: "calc(100% - 14px)", width: "100%", display: "flex" }}
       >
+        {/* -- 基本信息 -- */}
         <div
           style={{
             height: "100%",
             width: "100%",
-            //border: "solid 1px rgb(220,220,220)",
             borderRadius: "5px",
             backgroundColor: "#fff",
             flex: 4,
             padding: 20,
+            overflowY: "auto",
           }}
         >
-          <div style={{ paddingBottom: 35, fontSize: 15, fontWeight: 500 }}>
-            基本信息
+          <div style={{ paddingBottom: 20, fontSize: 15, fontWeight: 500 }}>
+            {context.basic + context.ln + context.info}
           </div>
           <div
             style={{
@@ -91,7 +201,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>实例名称</div>
+            <div style={{ flex: 1 }}>{context.instanceName}</div>
             <div style={{ flex: 1 }}>{isShowDrawer.record.instance_name}</div>
           </div>
           <div
@@ -102,7 +212,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>HOSTNAME</div>
+            <div style={{ flex: 1 }}>{context.hostname}</div>
             <div style={{ flex: 1 }}>
               {nonEmptyProcessing(isShowDrawer.record.host_name)}
             </div>
@@ -115,7 +225,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>IP地址</div>
+            <div style={{ flex: 1 }}>{context.ip}</div>
             <div style={{ flex: 1 }}>{isShowDrawer.record.ip}</div>
           </div>
           <div
@@ -126,7 +236,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>SSH端口</div>
+            <div style={{ flex: 1 }}>{context.sshPort}</div>
             <div style={{ flex: 1 }}>{isShowDrawer.record.port}</div>
           </div>
           <div
@@ -137,7 +247,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>用户名</div>
+            <div style={{ flex: 1 }}>{context.username}</div>
             <div style={{ flex: 1 }}>{isShowDrawer.record.username}</div>
           </div>
           <div
@@ -148,7 +258,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>系统</div>
+            <div style={{ flex: 1 }}>{context.system}</div>
             <div style={{ flex: 1 }}>{isShowDrawer.record.operate_system}</div>
           </div>
           <div
@@ -159,7 +269,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>CPU</div>
+            <div style={{ flex: 1 }}>{context.cpu}</div>
             <div style={{ flex: 1 }}>
               {nonEmptyProcessing(isShowDrawer.record.cpu)} c
             </div>
@@ -172,7 +282,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>内存</div>
+            <div style={{ flex: 1 }}>{context.memory}</div>
             <div style={{ flex: 1 }}>
               {nonEmptyProcessing(isShowDrawer.record.memory)} G
             </div>
@@ -185,7 +295,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>硬盘</div>
+            <div style={{ flex: 1 }}>{context.disk}</div>
             <div style={{ flex: 1 }}>
               {isShowDrawer.record.disk
                 ? Object.keys(isShowDrawer.record.disk).map((item) => (
@@ -215,7 +325,7 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>创建时间</div>
+            <div style={{ flex: 1 }}>{context.created}</div>
             <div style={{ flex: 1 }}>
               {moment(isShowDrawer.record.created).format(
                 "YYYY-MM-DD HH:mm:ss"
@@ -230,9 +340,11 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>维护模式</div>
+            <div style={{ flex: 1 }}>{context.maintainMode}</div>
             <div style={{ flex: 1 }}>
-              {isShowDrawer.record.is_maintenance ? "是" : "否"}
+              {isShowDrawer.record.is_maintenance
+                ? context.open
+                : context.close}
             </div>
           </div>
           <div
@@ -243,12 +355,14 @@ export const DetailHost = ({
               borderBottom: "solid 1px rgb(220,220,220)",
             }}
           >
-            <div style={{ flex: 1 }}>主机初始化</div>
+            <div style={{ flex: 1 }}>{context.init}</div>
             <div style={{ flex: 1 }}>
-              {renderInitStatue(isShowDrawer.record.init_status)}
+              {renderInitStatue(isShowDrawer.record.init_status, context)}
             </div>
           </div>
         </div>
+
+        {/* -- 右侧板块 -- */}
         <div
           style={{
             height: "100%",
@@ -259,6 +373,7 @@ export const DetailHost = ({
             flexWrap: "wrap",
           }}
         >
+          {/* -- Agent -- */}
           <div
             style={{
               height: "100%",
@@ -270,22 +385,24 @@ export const DetailHost = ({
               padding: 20,
             }}
           >
-            <div style={{ paddingBottom: 35, fontSize: 15, fontWeight: 500 }}>
-              Agent状态
+            <div style={{ paddingBottom: 22, fontSize: 15, fontWeight: 500 }}>
+              {context.agent}
             </div>
             <div style={{ display: "flex", paddingTop: 15, paddingBottom: 15 }}>
-              <div style={{ flex: 1 }}>主机Agent</div>
+              <div style={{ flex: 1 }}>{context.hostAgent}</div>
               <div style={{ flex: 1 }}>
-                {renderStatus(isShowDrawer.record.host_agent)}
+                {renderStatus(isShowDrawer.record.host_agent, context)}
               </div>
             </div>
             <div style={{ display: "flex", paddingTop: 15, paddingBottom: 15 }}>
-              <div style={{ flex: 1 }}>监控Agent</div>
+              <div style={{ flex: 1 }}>{context.monitorAgent}</div>
               <div style={{ flex: 1 }}>
-                {renderStatus(isShowDrawer.record.monitor_agent)}
+                {renderStatus(isShowDrawer.record.monitor_agent, context)}
               </div>
             </div>
           </div>
+
+          {/* -- 部署组件信息 -- */}
           <div
             style={{
               height: "100%",
@@ -299,21 +416,26 @@ export const DetailHost = ({
             }}
           >
             <Spin spinning={loading} wrapperClassName={styles.omp_spin_wrapper}>
-              <div style={{ paddingBottom: 35, fontSize: 15, fontWeight: 500 }}>
-                部署组件信息
+              <div style={{ paddingBottom: 22, fontSize: 15, fontWeight: 500 }}>
+                {context.component + context.ln + context.info}
               </div>
               <div
                 style={{ display: "flex", paddingTop: 15, paddingBottom: 15 }}
               >
-                <div style={{ flex: 1 }}>部署组件</div>
                 <div style={{ flex: 1 }}>
-                  {isShowDrawer.record.service_num} 个
+                  {context.component + context.ln + context.total}
+                </div>
+                <div style={{ flex: 1 }}>
+                  {isShowDrawer.record.service_num}
+                  {context.ge}
                 </div>
               </div>
               <div
                 style={{ display: "flex", paddingTop: 15, paddingBottom: 15 }}
               >
-                <div style={{ flex: 1 }}>基础环境</div>
+                <div style={{ flex: 1 }}>
+                  {context.basic + context.ln + context.env}
+                </div>
                 <div
                   style={{
                     flex: 1,
@@ -349,13 +471,14 @@ export const DetailHost = ({
                       );
                     })
                   ) : (
-                    <div style={{ marginLeft: 10 }}>无</div>
+                    <div style={{ marginLeft: 10 }}>{context.none}</div>
                   )}
                 </div>
               </div>
             </Spin>
           </div>
 
+          {/* -- 历史记录 -- */}
           <div
             ref={wrapperRef}
             style={{
@@ -371,7 +494,7 @@ export const DetailHost = ({
             }}
           >
             <div style={{ paddingBottom: 20, fontSize: 15, fontWeight: 500 }}>
-              历史记录
+              {context.historicRecords}
             </div>
             <Spin spinning={loading} wrapperClassName={styles.omp_spin_wrapper}>
               <Timeline
@@ -405,58 +528,80 @@ export const DetailHost = ({
   );
 };
 
-//操作
-const renderMenu = (
-  setUpdateMoadlVisible,
-  setCloseMaintainModal,
-  setOpenMaintainModal,
-  record
-) => {
-  return (
-    <Menu>
-      <Menu.Item key="changge" onClick={() => setUpdateMoadlVisible(true)}>
-        <span style={{ fontSize: 12 }}>修改主机信息</span>
-      </Menu.Item>
-      {record.is_maintenance ? (
-        <Menu.Item key="close" onClick={() => setCloseMaintainModal(true)}>
-          <span style={{ fontSize: 12 }}>关闭维护模式</span>
-        </Menu.Item>
-      ) : (
-        <Menu.Item key="open" onClick={() => setOpenMaintainModal(true)}>
-          <span style={{ fontSize: 12 }}>开启维护模式</span>
-        </Menu.Item>
-      )}
-    </Menu>
-  );
-};
-
-const renderStatus = (text) => {
+// 渲染运行状态
+const renderStatus = (text, context) => {
   switch (text) {
     case 0:
-      return <span>{renderDisc("normal", 7, -1)}正常</span>;
+      return (
+        <span>
+          {renderDisc("normal", 7, -1)}
+          {context.normal}
+        </span>
+      );
     case 1:
-      return <span>{renderDisc("warning", 7, -1)}重启中</span>;
+      return (
+        <span>
+          {renderDisc("warning", 7, -1)}
+          {context.restarting}
+        </span>
+      );
     case 2:
-      return <span>{renderDisc("critical", 7, -1)}启动失败</span>;
+      return (
+        <span>
+          {renderDisc("critical", 7, -1)}
+          {context.startupFailed}
+        </span>
+      );
     case 3:
-      return <span>{renderDisc("warning", 7, -1)}部署中</span>;
+      return (
+        <span>
+          {renderDisc("warning", 7, -1)}
+          {context.installing}
+        </span>
+      );
     case 4:
-      return <span>{renderDisc("critical", 7, -1)}部署失败</span>;
+      return (
+        <span>
+          {renderDisc("critical", 7, -1)}
+          {context.installFailed}
+        </span>
+      );
     default:
       return "-";
   }
 };
 
-const renderInitStatue = (text) => {
+// 渲染执行状态
+const renderInitStatue = (text, context) => {
   switch (text) {
     case 0:
-      return <span>{renderDisc("normal", 7, -1)}成功</span>;
+      return (
+        <span>
+          {renderDisc("normal", 7, -1)}
+          {context.succeeded}
+        </span>
+      );
     case 1:
-      return <span>{renderDisc("notMonitored", 7, -1)}未执行</span>;
+      return (
+        <span>
+          {renderDisc("notMonitored", 7, -1)}
+          {context.unexecuted}
+        </span>
+      );
     case 2:
-      return <span>{renderDisc("warning", 7, -1)}执行中</span>;
+      return (
+        <span>
+          {renderDisc("warning", 7, -1)}
+          {context.executing}
+        </span>
+      );
     case 3:
-      return <span>{renderDisc("critical", 7, -1)}失败</span>;
+      return (
+        <span>
+          {renderDisc("critical", 7, -1)}
+          {context.failed}
+        </span>
+      );
   }
 };
 
@@ -465,14 +610,13 @@ const getColumnsConfig = (
   setRow,
   setUpdateMoadlVisible,
   fetchHostDetail,
-  setCloseMaintainModal,
-  setOpenMaintainModal,
   setShowIframe,
-  history
+  history,
+  context
 ) => {
   return [
     {
-      title: "IP地址",
+      title: context.ip,
       key: "ip",
       dataIndex: "ip",
       sorter: (a, b) => a.ip - b.ip,
@@ -503,7 +647,7 @@ const getColumnsConfig = (
       fixed: "left",
     },
     {
-      title: "实例名称",
+      title: context.instanceName,
       key: "instance_name",
       dataIndex: "instance_name",
       align: "center",
@@ -517,7 +661,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "CPU使用率",
+      title: context.cpu,
       key: "cpu_usage",
       dataIndex: "cpu_usage",
       align: "center",
@@ -537,7 +681,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "内存使用率",
+      title: context.memory,
       key: "mem_usage",
       dataIndex: "mem_usage",
       sorter: (a, b) => a.mem_usage - b.mem_usage,
@@ -557,7 +701,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "根分区使用率",
+      title: context.rootFolder,
       key: "root_disk_usage",
       //width:120,
       dataIndex: "root_disk_usage",
@@ -583,8 +727,7 @@ const getColumnsConfig = (
       // width:120
     },
     {
-      title: "数据分区使用率",
-      width: 130,
+      title: context.dataFolder,
       key: "data_disk_usage",
       dataIndex: "data_disk_usage",
       align: "center",
@@ -608,28 +751,18 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "维护模式",
+      title: context.maintainMode,
       key: "is_maintenance",
       dataIndex: "is_maintenance",
       align: "center",
       //ellipsis: true,
       render: (text) => {
         if (nonEmptyProcessing(text) == "-") return "-";
-        return text ? "开" : "关";
+        return text ? context.open : context.close;
       },
     },
-    // {
-    //   title: "主机初始化",
-    //   key: "init_status",
-    //   dataIndex: "init_status",
-    //   align: "center",
-    //   //ellipsis: true,
-    //   render: (text) => {
-    //     return renderInitStatue(text);
-    //   },
-    // },
     {
-      title: "主机Agent",
+      title: context.hostAgent,
       key: "host_agent",
       dataIndex: "host_agent",
       align: "center",
@@ -637,11 +770,11 @@ const getColumnsConfig = (
       sorter: (a, b) => a.host_agent - b.host_agent,
       sortDirections: ["descend", "ascend"],
       render: (text) => {
-        return renderStatus(text);
+        return renderStatus(text, context);
       },
     },
     {
-      title: "监控Agent",
+      title: context.monitorAgent,
       key: "monitor_agent",
       dataIndex: "monitor_agent",
       sorter: (a, b) => a.monitor_agent - b.monitor_agent,
@@ -649,11 +782,11 @@ const getColumnsConfig = (
       align: "center",
       //ellipsis: true,
       render: (text) => {
-        return renderStatus(text);
+        return renderStatus(text, context);
       },
     },
     {
-      title: "服务总数",
+      title: context.service + context.ln + context.total,
       key: "service_num",
       dataIndex: "service_num",
       align: "center",
@@ -674,19 +807,16 @@ const getColumnsConfig = (
                   });
               }}
             >
-              {text}个
+              {text}
+              {context.ge}
             </a>
           );
-        } else {
-          if ((!text || text == "-") && text !== 0) {
-            return "-";
-          }
-          return `${text}个`;
         }
+        return "-";
       },
     },
     {
-      title: "告警总数",
+      title: context.alert + context.ln + context.total,
       key: "alert_num",
       dataIndex: "alert_num",
       align: "center",
@@ -707,19 +837,16 @@ const getColumnsConfig = (
                   });
               }}
             >
-              {text}次
+              {text}
+              {context.ci}
             </a>
           );
-        } else {
-          if ((!text || text == "-") && text !== 0) {
-            return "-";
-          }
-          return `${text}次`;
         }
+        return "-";
       },
     },
     {
-      title: "操作",
+      title: context.action,
       //width: 100,
       width: 100,
       key: "",
@@ -736,21 +863,18 @@ const getColumnsConfig = (
               style={{ display: "flex", justifyContent: "space-around" }}
             >
               <div style={{ margin: "auto" }}>
-                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>监控</span>
+                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>
+                  {context.monitor}
+                </span>
                 <span style={{ color: "rgba(0, 0, 0, 0.25)", marginLeft: 10 }}>
-                  更多
+                  {context.more}
                 </span>
               </div>
             </div>
           );
         }
         return (
-          <div
-            onClick={() => {
-              setRow(record);
-            }}
-            style={{ display: "flex" }}
-          >
+          <div onClick={() => setRow(record)} style={{ display: "flex" }}>
             <div style={{ margin: "auto" }}>
               {record.monitor_url ? (
                 <a
@@ -763,24 +887,19 @@ const getColumnsConfig = (
                     });
                   }}
                 >
-                  监控
+                  {context.monitor}
                 </a>
               ) : (
-                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>监控</span>
+                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>
+                  {context.monitor}
+                </span>
               )}
-
-              <Dropdown
-                arrow
-                placement="bottomCenter"
-                overlay={renderMenu(
-                  setUpdateMoadlVisible,
-                  setCloseMaintainModal,
-                  setOpenMaintainModal,
-                  record
-                )}
+              <a
+                style={{ marginLeft: 10 }}
+                onClick={() => setUpdateMoadlVisible(true)}
               >
-                <a style={{ marginLeft: 10 }}>更多</a>
-              </Dropdown>
+                {context.edit}
+              </a>
             </div>
           </div>
         );

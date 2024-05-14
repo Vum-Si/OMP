@@ -15,17 +15,18 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.mixins import (
-    ListModelMixin, CreateModelMixin, DestroyModelMixin, UpdateModelMixin
+    ListModelMixin, CreateModelMixin, DestroyModelMixin
 )
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from rest_framework.viewsets import GenericViewSet
+from rest_framework.views import APIView
 
 from db_models.models import (
     Host, MonitorUrl,
     Alert, Maintain, ApplicationHub, Service, EmailSMTPSetting,
     AlertSendWaySetting, HostThreshold, ServiceThreshold,
-    ServiceCustomThreshold, Rule, AlertRule, Env
+    ServiceCustomThreshold, Rule, AlertRule, Env, AlertSettings
 )
 from omp_server.settings import CUSTOM_THRESHOLD_SERVICES
 from promemonitor import grafana_url
@@ -35,13 +36,16 @@ from promemonitor.promemonitor_filters import AlertFilter, MyTimeFilter, \
 from promemonitor.promemonitor_serializers import (
     MonitorUrlSerializer, ListAlertSerializer, UpdateAlertSerializer,
     MaintainSerializer, MonitorAgentRestartSerializer,
-    ReceiveAlertSerializer, RuleSerializer, QuotaSerializer
+    ReceiveAlertSerializer, RuleSerializer, QuotaSerializer, AlertSettingSerializer
 )
 from promemonitor.prometheus import Prometheus
 from utils.common.exceptions import OperateError
 from utils.common.paginations import PageNumberPager
 from utils.parse_config import PROMETHEUS_AUTH
 from promemonitor.prometheus_utils import PrometheusUtils
+from promemonitor.grafana_url import get_service_log_url
+from utils.common.paginations import RawPage
+from rest_framework_bulk import BulkUpdateAPIView
 
 logger = logging.getLogger('server')
 
@@ -134,8 +138,11 @@ class UpdateAlertViewSet(CreateModelMixin, GenericViewSet):
 
 class MaintainViewSet(GenericViewSet, CreateModelMixin, ListModelMixin):
     """
-    create:
-    全局进入 / 退出维护模式
+        list:
+        查看全局维护模式状态
+
+        create:
+        全局进入 / 退出维护模式
     """
     queryset = Maintain.objects.filter(
         matcher_name='env', matcher_value='default')
@@ -155,6 +162,8 @@ class ReceiveAlertViewSet(GenericViewSet, CreateModelMixin):
     # 关闭权限、认证设置
     authentication_classes = ()
     permission_classes = ()
+    # 限流
+    throttle_scope = "alert_receive"
 
 
 class MonitorAgentRestartView(GenericViewSet, CreateModelMixin):
@@ -501,12 +510,6 @@ class UpdateSendEmailConfig(GenericViewSet, CreateModelMixin):
         email_host_user = request.data.get("username")
         if not email_host_user:
             return Response(data={"code": 1, "message": "请填写SMTP邮件服务器发件箱！"})
-        try:
-            EmailValidator()(email_host_user)
-        except Exception as e:
-            message = "SMTP邮件服务器发件箱格式错误！"
-            logger.error(f"{message} 错误信息：{str(e)}")
-            return Response(data={"code": 1, "message": message})
         email_host_password = request.data.get("password")
         if not email_host_password:
             return Response(data={"code": 1, "message": "填写SMTP邮件服务器发件箱格式错误！"})
@@ -535,7 +538,7 @@ class GetSendAlertSettingView(GenericViewSet, ListModelMixin):
     get_description = "获取监控邮箱收件配置"
 
     def list(self, request, *args, **kwargs):
-        env_id = request.GET.get("env_id", 0)
+        env_id = request.GET.get("env_id", 1)
         filter_kwargs = dict(env_id=env_id)
         way_name = request.GET.get("way_name")
         if way_name:
@@ -888,18 +891,7 @@ class QuotaView(ListModelMixin, GenericViewSet, CreateModelMixin, DestroyModelMi
     def create(self, request, *args, **kwargs):
         """
         添加监控指标项
-        env_id = models.IntegerField("环境id", default=1)
-        expr = models.TextField("监控指标表达式，报警语法", null=False, blank=False)
-        threshold_value = models.FloatField("阈值的数值", null=False, blank=False)
-        compare_str = models.CharField("比较符", max_length=64)
-        for_time = models.CharField("持续一段时间获取不到信息就触发告警", max_length=64)
-        severity = models.CharField("告警级别", max_length=64)
-        alert = models.TextField("标题，自定义摘要")
-        service = models.CharField("指标所属服务名称", max_length=255)
-        status = models.IntegerField("启用状态", default=0)
-        quota_type = models.IntegerField("指标的类型", choices=TYPE, default=0)
-        labels = models.JSONField("额外指定标签")
-        description = models.TextField("描述, 告警指标描述", null=True)
+        # ToDo 代码需要更新
         """
         p = PrometheusUtils()
         compare_str_dict = {
@@ -950,7 +942,7 @@ class QuotaView(ListModelMixin, GenericViewSet, CreateModelMixin, DestroyModelMi
                 pass
             else:
                 return Response(
-                    data={"code": 1, "message": f"创建指标规则过程中出错: 未识别的规则类型"})
+                    data={"code": 1, "message": "创建指标规则过程中出错: 未识别的规则类型"})
             if request.data["service"] != "service":
                 request.data["labels"] = {
                     "job": '{}Exporter'.format(request.data["service"]),
@@ -964,11 +956,11 @@ class QuotaView(ListModelMixin, GenericViewSet, CreateModelMixin, DestroyModelMi
                 if AlertRule.objects.filter(expr=request.data["expr"],
                                             severity=severity).exclude(id=id).exists():
                     return Response(data={"code": 1,
-                                          "message": f"更新指标规则过程中出错: "
-                                                     f"同一指标规则级别重复添加"})
+                                          "message": "更新指标规则过程中出错: "
+                                                     "同一指标规则级别重复添加"})
                 if not p.update_rule_file(add_data=request.data, update=True, rule_id=id):
                     return Response(data={"code": 1,
-                                          "message": f"更新指标规则错误"})
+                                          "message": "更新指标规则错误"})
                 AlertRule.objects.filter(id=id).update(**request.data)
                 ok = p.reload_prometheus()
                 if not ok:
@@ -977,11 +969,11 @@ class QuotaView(ListModelMixin, GenericViewSet, CreateModelMixin, DestroyModelMi
             print(request.data["expr"], severity)
             if AlertRule.objects.filter(expr=request.data["expr"], severity=severity).exists():
                 return Response(data={"code": 1,
-                                      "message": f"创建指标规则过程中出错: "
-                                                 f"同一指标规则级别重复添加"})
+                                      "message": "创建指标规则过程中出错: "
+                                                 "同一指标规则级别重复添加"})
             if not p.update_rule_file(add_data=request.data, add=True):
                 return Response(data={"code": 1,
-                                      "message": f"创建指标规则错误"})
+                                      "message": "创建指标规则错误"})
             AlertRule(**request.data).save()
             ok = p.reload_prometheus()
             if not ok:
@@ -1001,7 +993,7 @@ class QuotaView(ListModelMixin, GenericViewSet, CreateModelMixin, DestroyModelMi
         p = PrometheusUtils()
         if not p.update_rule_file(delete=True, rule_id=id):
             return Response(data={"code": 1,
-                                  "message": f"删除指标规则时，更新配置文件失败"})
+                                  "message": "删除指标规则时，更新配置文件失败"})
         num, _ = AlertRule.objects.filter(id=id).delete()
         if num == 0:
             return Response(data={"code": 1, "message": "删除失败"})
@@ -1014,6 +1006,10 @@ class QuotaView(ListModelMixin, GenericViewSet, CreateModelMixin, DestroyModelMi
 
 
 class BuiltinsRuleView(GenericViewSet, ListModelMixin):
+    """
+        list:
+        获取内置指标列表
+    """
     post_description = "获取内置指标列表"
     serializer_class = RuleSerializer
     queryset = Rule.objects.all()
@@ -1031,6 +1027,10 @@ class BuiltinsRuleView(GenericViewSet, ListModelMixin):
 
 
 class PromSqlTestView(GenericViewSet, CreateModelMixin):
+    """
+        create:
+        添加指标规则
+    """
     post_description = "测试指标"
     serializer_class = Serializer
 
@@ -1062,10 +1062,145 @@ class BatchUpdateRuleView(GenericViewSet, CreateModelMixin):
             AlertRule.objects.filter(id=id).update(status=status)
         if not p.update_rule_file():
             return Response(data={"code": 1,
-                                  "message": f"删除指标规则时，更新配置文件失败"})
+                                  "message": "删除指标规则时，更新配置文件失败"})
         ok = p.reload_prometheus()
         if not ok:
             return Response(data={"code": 1,
                                   "message": "prometheus 重载规则失败，请手动重启prometheus进行重载"})
 
         return Response()
+
+
+class ListContainerInstanceView(APIView):
+    """展示容器内服务"""
+
+    def get(self, request):
+        new_res_list = list()
+        filter_field = ""
+        is_reverse = False
+        ordering = request.query_params.get("ordering", "instance_name")
+        _ip = request.query_params.get("pod_ip", "")
+        _instance_name = request.query_params.get("instance_name", "")
+        res_list = Prometheus().get_container_service_list()
+        # 过滤
+        if _ip:
+            res_list = list(filter(lambda x: x.get("pod_ip", "").__contains__(_ip), res_list))
+        elif _instance_name:
+            res_list = list(filter(lambda x: x.get("instance_name", "").__contains__(_instance_name), res_list))
+        else:
+            pass
+        # 排序
+        if ordering.startswith("-"):
+            is_reverse = True
+            ordering = ordering.replace("-", "")
+        try:
+            new_res_list = sorted(res_list, key=lambda e: (e.__getitem__("service_status"), e.__getitem__(ordering)),
+                                  reverse=is_reverse)
+        except Exception as e:
+            logger.error(f"排序res_list: {res_list}, 出现错误为{e}")
+            new_res_list = res_list
+        # 分页
+        return RawPage(new_res_list, request).get_paginated_response()
+
+
+from promemonitor.tasks import ManageJavaLogLevel
+from utils.plugin.public_utils import check_env_cmd
+from collections import OrderedDict
+
+
+class SelfServiceLogView(GenericViewSet, ListModelMixin, CreateModelMixin):
+    """操作自研java服务日志等级"""
+    get_description = "读取服务的日志等级"
+    post_description = "更新服务的日志等级"
+
+    serializer_class = Serializer
+
+    def list(self, request, *args, **kwargs):
+        is_reverse = False
+        # doim不监控
+        query_list = Service.objects.filter(
+            service__app_monitor__isnull=False).exclude(service__app_name='doim')
+        # 过滤 ip, service_instance_name
+        service_instance_name = request.query_params.get(
+            "service_instance_name", "")
+        if service_instance_name:
+            query_list = query_list.filter(
+                service_instance_name__icontains=service_instance_name)
+        ip = request.query_params.get("ip", "")
+        if ip:
+            query_list = query_list.filter(ip__icontains=ip)
+        real_query_list = [service_obj for service_obj in query_list if
+                           service_obj.service.app_monitor.get("type", "").lower() == "javaspringboot"]
+        # 排序
+        ordering = request.query_params.get(
+            "ordering", "service_instance_name")
+        if ordering.startswith("-"):
+            is_reverse = True
+            ordering = ordering[1:]
+        raw_dict_list = [{"service_obj": service_obj, "ip": service_obj.ip,
+                          "service_instance_name": service_obj.service_instance_name} for service_obj in
+                         real_query_list]
+        try:
+            ordered_dict_list = sorted(
+                raw_dict_list, key=lambda e: e.__getitem__(ordering), reverse=is_reverse)
+        except Exception as e:
+            logger.error(f"排序res_list: {raw_dict_list}, 出现错误为{e}")
+            ordered_dict_list = raw_dict_list
+        logger.info(f"ordered_dict_list=={ordered_dict_list}")
+        res_dict_list = [{"service_obj": item_dict["service_obj"]}
+                         for item_dict in ordered_dict_list]
+        del ordered_dict_list
+        # 分页
+        raw_page_obj = RawPage(res_dict_list, request)
+        # 获取log_level
+        data = ManageJavaLogLevel.get_services_log_level(
+            many_data=raw_page_obj.get_paginated_data)
+        # 排序: 多线程执行器后，需要排序
+        try:
+            data = sorted(data, key=lambda e: e.__getitem__(
+                ordering), reverse=is_reverse)
+        except Exception as e:
+            logger.error(f"排序data: {data}, 出现错误为{e}")
+            data = data
+        # 获取日志面板url
+        for item_dict in data:
+            item_dict["log_url"] = get_service_log_url(
+                item_dict["app_name"], item_dict["service_instance_name"])
+        return Response(OrderedDict([
+            ("count", raw_page_obj.count),
+            ("next", raw_page_obj.get_next_link()),
+            ("previous", raw_page_obj.get_previous_link()),
+            ("data", data),
+        ]))
+
+    def create(self, request, *args, **kwargs):
+        many_data = request.data.get("data")
+        ids = [data.get("id", "-1") for data in many_data]
+        service_obj_list = Service.objects.filter(id__in=ids)
+        ip_list = service_obj_list.values_list("ip", flat=True)
+        res = check_env_cmd(ip=ip_list, need_check_agent=True)
+        if isinstance(res, tuple):
+            raise OperateError(res[1])
+        if len(service_obj_list) != len(ids):
+            raise OperateError("未找到对应的service_id")
+        if len(many_data) < 2:
+            one_data = many_data[0]
+            flag, msg = ManageJavaLogLevel.update_one_service_log_level(
+                **one_data)
+            if not flag:
+                return Response(f"{msg}")
+            return Response(f"{msg}")
+        else:
+            res_list = ManageJavaLogLevel.update_services_log_level(many_data)
+            err_list = [item for item in res_list if not item[0]]
+            if err_list:
+                return Response("批量更新服务日志失败")
+            return Response("批量更新服务日志成功")
+
+
+class alertSettingView(GenericViewSet, ListModelMixin, BulkUpdateAPIView):
+    """自愈策略"""
+    queryset = AlertSettings.objects.all()
+    serializer_class = AlertSettingSerializer
+    # 操作信息描述
+    get_description = ""

@@ -6,29 +6,26 @@ import React, { useEffect, useState } from "react";
 import { useHistory } from "react-router-dom";
 import styles from "./index.module.less";
 import OmpStateBlock from "@/components/OmpStateBlock";
-import { OmpProgress } from "@/components";
-//import { context } from "@/Root";
+import { OmpProgress, OmpContentWrapper } from "@/components";
 import ExceptionList from "./warningList";
-import { OmpContentWrapper } from "@/components";
+import { locales } from "@/config/locales";
 
-function calcPercentage(normal = 0, total = 1) {
+const calcPercentage = (normal = 0, total = 1) => {
   const percent = ((normal / total) * 100).toFixed(0);
   return isNaN(Number(percent)) ? 100 : Number(percent);
-}
+};
 
-const Homepage = () => {
+const Homepage = ({ locale }) => {
   const history = useHistory();
-
   const [isLoading, setLoading] = useState(false);
-
   const [dataSource, setDataSource] = useState({});
+  const context = locales[locale].common;
 
   // data数据源，key聚合数据的唯一值
   const dataAggregation = (data, key) => {
     let arr = [];
     data?.map((i, d) => {
       let isExistenceArr = arr.filter((e) => e[key] == i[key]);
-      // console.log(isExistenceArr);
       if (isExistenceArr.length == 0) {
         arr.push({
           [key]: i[key],
@@ -41,7 +38,6 @@ const Homepage = () => {
         });
       } else {
         let m = data[d];
-        // console.log(m);
         let idx = arr.indexOf(isExistenceArr[0]);
         arr[idx] = {
           [key]: i[key],
@@ -55,7 +51,6 @@ const Homepage = () => {
         };
       }
     });
-    console.log(arr);
     return arr;
   };
 
@@ -64,7 +59,6 @@ const Homepage = () => {
     fetchGet(apiRequest.homepage.instrumentPanel)
       .then((res) => {
         handleResponse(res, (res) => {
-          console.log(res);
           setDataSource(res.data);
         });
       })
@@ -77,7 +71,7 @@ const Homepage = () => {
   useEffect(() => {
     queryData();
   }, []);
-  console.log();
+
   return (
     <OmpContentWrapper
       wrapperStyle={{
@@ -88,28 +82,26 @@ const Homepage = () => {
       }}
     >
       <div className={styles.homepageWrapper}>
-        {/* <OmpProgress /> */}
         <Spin spinning={isLoading}>
+          {/* -- 状态概览 -- */}
           <div
             className={styles.pageBlock}
             style={{
               borderRadius: 4,
-              //border:"1px solid  #DCDEE5",
               marginBottom: "15px",
               backgroundColor: "white",
             }}
           >
-            <div className={styles.blockTitle}>状态概览</div>
+            <div className={styles.blockTitle}>{context.statusOverview}</div>
             <div
               style={{
                 display: "flex",
                 flexFlow: "row wrap",
                 justifyContent: "space-around",
-                //border: "1px solid  #DCDEE5"
               }}
               className={styles.blockContent}
             >
-              {/* 应用服务 */}
+              {/* -- 服务实例 -- */}
               <div className={styles.blockOverviewItem}>
                 <OmpProgress
                   percent={calcPercentage(
@@ -137,7 +129,7 @@ const Homepage = () => {
                   ]}
                 />
                 <div className={styles.progressInfo}>
-                  <div>应用服务状态</div>
+                  <div>{context.serviceInstance}</div>
                   <div
                     onClick={() =>
                       dataSource.service?.service_info_all_count &&
@@ -154,7 +146,7 @@ const Homepage = () => {
                         : { marginBottom: 2 }
                     }
                   >
-                    服务总数：
+                    {context.total}:{" "}
                     <span
                       style={
                         dataSource.service?.service_info_all_count
@@ -162,15 +154,10 @@ const Homepage = () => {
                           : {}
                       }
                     >
-                      {dataSource.service?.service_info_all_count}个
+                      {dataSource.service?.service_info_all_count}
+                      {context.ge}
                     </span>
                   </div>
-                  {/* <div style={{ marginBottom: 2 }}>
-                    未监控数：
-                    <span>
-                      {dataSource.service?.service_info_no_monitor_count}个
-                    </span>
-                  </div> */}
                   <div
                     style={
                       dataSource.service?.service_info_exc_count > 0
@@ -187,7 +174,7 @@ const Homepage = () => {
                       })
                     }
                   >
-                    异常服务：
+                    {context.exception}:{" "}
                     <span
                       style={
                         dataSource.service?.service_info_exc_count > 0
@@ -195,13 +182,14 @@ const Homepage = () => {
                           : {}
                       }
                     >
-                      {dataSource.service?.service_info_exc_count}个
+                      {dataSource.service?.service_info_exc_count}
+                      {context.ge}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* 基础组件 */}
+              {/* -- 基础组件 -- */}
               <div className={styles.blockOverviewItem}>
                 <OmpProgress
                   percent={calcPercentage(
@@ -230,7 +218,7 @@ const Homepage = () => {
                   ]}
                 />
                 <div className={styles.progressInfo}>
-                  <div>基础组件状态</div>
+                  <div>{context.component}</div>
                   <div
                     onClick={() =>
                       dataSource.component?.component_info_all_count &&
@@ -247,7 +235,7 @@ const Homepage = () => {
                         : { marginBottom: 2 }
                     }
                   >
-                    组件实例：
+                    {context.total}:{" "}
                     <span
                       style={
                         dataSource.component?.component_info_all_count
@@ -255,15 +243,10 @@ const Homepage = () => {
                           : {}
                       }
                     >
-                      {dataSource.component?.component_info_all_count}个
+                      {dataSource.component?.component_info_all_count}
+                      {context.ge}
                     </span>
                   </div>
-                  {/* <div style={{ marginBottom: 2 }}>
-                    未监控数：
-                    <span>
-                      {dataSource.component?.component_info_no_monitor_count}个
-                    </span>
-                  </div> */}
                   <div
                     style={
                       dataSource.component?.component_info_exc_count > 0
@@ -280,7 +263,7 @@ const Homepage = () => {
                       })
                     }
                   >
-                    异常组件：
+                    {context.exception}:{" "}
                     <span
                       style={
                         dataSource.component?.component_info_exc_count > 0
@@ -288,13 +271,14 @@ const Homepage = () => {
                           : {}
                       }
                     >
-                      {dataSource.component?.component_info_exc_count}个
+                      {dataSource.component?.component_info_exc_count}
+                      {context.ge}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* 数据库 */}
+              {/* -- 数据库 -- */}
               <div className={styles.blockOverviewItem}>
                 <OmpProgress
                   percent={calcPercentage(
@@ -323,7 +307,7 @@ const Homepage = () => {
                   ]}
                 />
                 <div className={styles.progressInfo}>
-                  <div>数据库状态</div>
+                  <div>{context.database}</div>
                   <div
                     onClick={() =>
                       dataSource.database?.database_info_all_count &&
@@ -340,7 +324,7 @@ const Homepage = () => {
                         : { marginBottom: 2 }
                     }
                   >
-                    数据库实例：
+                    {context.total}:{" "}
                     <span
                       style={
                         dataSource.database?.database_info_all_count > 0
@@ -348,15 +332,10 @@ const Homepage = () => {
                           : {}
                       }
                     >
-                      {dataSource.database?.database_info_all_count}个
+                      {dataSource.database?.database_info_all_count}
+                      {context.ge}
                     </span>
                   </div>
-                  {/* <div style={{ marginBottom: 2 }}>
-                    未监控数：
-                    <span>
-                      {dataSource.database?.database_info_no_monitor_count}个
-                    </span>
-                  </div> */}
                   <div
                     style={
                       dataSource.database?.database_info_exc_count > 0
@@ -373,7 +352,7 @@ const Homepage = () => {
                       })
                     }
                   >
-                    异常实例：
+                    {context.exception}:{" "}
                     <span
                       style={
                         dataSource.database?.database_info_exc_count > 0
@@ -381,12 +360,14 @@ const Homepage = () => {
                           : {}
                       }
                     >
-                      {dataSource.database?.database_info_exc_count}个
+                      {dataSource.database?.database_info_exc_count}
+                      {context.ge}
                     </span>
                   </div>
                 </div>
               </div>
-              {/* 主机状态 */}
+
+              {/* -- 主机 -- */}
               <div className={styles.blockOverviewItem}>
                 <OmpProgress
                   percent={calcPercentage(
@@ -414,7 +395,7 @@ const Homepage = () => {
                   ]}
                 />
                 <div className={styles.progressInfo}>
-                  <div>主机状态</div>
+                  <div>{context.host}</div>
                   <div
                     onClick={() =>
                       dataSource.host?.host_info_all_count &&
@@ -428,7 +409,7 @@ const Homepage = () => {
                         : {}
                     }
                   >
-                    主机总数：
+                    {context.total}:{" "}
                     <span
                       style={
                         dataSource.host?.host_info_all_count
@@ -436,7 +417,8 @@ const Homepage = () => {
                           : {}
                       }
                     >
-                      {dataSource.host?.host_info_all_count}个
+                      {dataSource.host?.host_info_all_count}
+                      {context.ge}
                     </span>
                   </div>
                   <div
@@ -455,7 +437,7 @@ const Homepage = () => {
                       })
                     }
                   >
-                    异常主机：
+                    {context.exception}:{" "}
                     <span
                       style={
                         dataSource.host?.host_info_exc_count > 0
@@ -463,104 +445,21 @@ const Homepage = () => {
                           : {}
                       }
                     >
-                      {dataSource.host?.host_info_exc_count}个
+                      {dataSource.host?.host_info_exc_count}
+                      {context.ge}
                     </span>
                   </div>
                 </div>
               </div>
-              {/* 三方组件 */}
-              {/* <div className={styles.blockOverviewItem}>
-                <OmpProgress
-                  percent={calcPercentage(
-                    dataSource.third?.third_info_all_count -
-                      dataSource.third?.third_info_exc_count -
-                      dataSource.third?.third_info_no_monitor_count,
-                    dataSource.third?.third_info_all_count
-                  )}
-                  trafficWay={[
-                    {
-                      name: "异常",
-                      value: dataSource.third?.third_info_exc_count,
-                    },
-                    {
-                      name: "未监控",
-                      value: dataSource.third?.third_info_no_monitor_count,
-                    },
-                    {
-                      name: "正常",
-                      value:
-                        dataSource.third?.third_info_all_count -
-                        dataSource.third?.third_info_exc_count -
-                        dataSource.third?.third_info_no_monitor_count,
-                    },
-                  ]}
-                />
-                <div className={styles.progressInfo}>
-                  <div style={{ marginBottom: 8 }}>三方组件状态</div>
-                  <div
-                    onClick={() =>
-                      dataSource.third?.third_info_all_count &&
-                      history.push({
-                        pathname: "/application_management/service_management",
-                      })
-                    }
-                    style={
-                      dataSource.third?.third_info_all_count
-                        ? { cursor: "pointer", marginBottom: 2 }
-                        : { marginBottom: 2 }
-                    }
-                  >
-                    组件实例：
-                    <span
-                      style={
-                        dataSource.third?.third_info_all_count
-                          ? { color: "#1890ff" }
-                          : {}
-                      }
-                    >
-                      {dataSource.third?.third_info_all_count}个
-                    </span>
-                  </div>
-                  <div style={{ marginBottom: 2 }}>
-                    未监控数：
-                    <span>
-                      {dataSource.third?.third_info_no_monitor_count}个
-                    </span>
-                  </div>
-                  <div
-                    style={
-                      dataSource.third?.third_info_exc_count > 0
-                        ? { cursor: "pointer" }
-                        : {}
-                    }
-                    onClick={() =>
-                      dataSource.third?.third_info_exc_count &&
-                      history.push({
-                        pathname: "/application-monitoring/exception-list",
-                      })
-                    }
-                  >
-                    异常实例：
-                    <span
-                      style={
-                        dataSource.third?.third_info_exc_count > 0
-                          ? { color: "#cf1322" }
-                          : {}
-                      }
-                    >
-                      {dataSource.third?.third_info_exc_count}个
-                    </span>
-                  </div>
-                </div>
-              </div> */}
             </div>
           </div>
 
+          {/* -- 异常清单 -- */}
           <div
             style={{
               marginBottom: 10,
               backgroundColor: "#fff",
-              paddingBottom: 10,
+              paddingBottom: 0,
             }}
           >
             <p
@@ -572,17 +471,17 @@ const Homepage = () => {
                 fontWeight: 500,
               }}
             >
-              异常清单
+              {context.exceptionList}
             </p>
-            <ExceptionList />
+            <ExceptionList context={context} />
           </div>
 
+          {/* -- 服务实例 -- */}
           <div className={styles.pageBlock}>
             <OmpStateBlock
-              // key={"serviceData"}
-              // tag={"all"}
+              locale={locale}
+              title={context.serviceInstance}
               link={(data) => {
-                console.log(data);
                 history.push({
                   pathname: "/application_management/service_management",
                   state: {
@@ -600,8 +499,6 @@ const Homepage = () => {
                   },
                 });
               }}
-              title={"应用服务状态"}
-              // hasNotMonitored
               data={dataAggregation(
                 dataSource.service?.service_info_list,
                 "instance_name"
@@ -609,10 +506,11 @@ const Homepage = () => {
             />
           </div>
 
+          {/* -- 基础组件 -- */}
           <div className={styles.pageBlock}>
             <OmpStateBlock
-              // key={"serviceData"}
-              // tag={"all"}
+              locale={locale}
+              title={context.component}
               link={(data) => {
                 history.push({
                   pathname: "/application_management/service_management",
@@ -631,8 +529,6 @@ const Homepage = () => {
                   },
                 });
               }}
-              // hasNotMonitored
-              title={"基础组件状态"}
               data={dataAggregation(
                 dataSource.component?.component_info_list,
                 "instance_name"
@@ -640,10 +536,11 @@ const Homepage = () => {
             />
           </div>
 
+          {/* -- 数据库 -- */}
           <div className={styles.pageBlock}>
             <OmpStateBlock
-              // key={"serviceData"}
-              // tag={"all"}
+              locale={locale}
+              title={context.database}
               link={(data) => {
                 history.push({
                   pathname: "/application_management/service_management",
@@ -662,19 +559,18 @@ const Homepage = () => {
                   },
                 });
               }}
-              // hasNotMonitored
-              title={"数据库状态"}
               data={dataAggregation(
                 dataSource.database?.database_info_list,
                 "instance_name"
               )}
             />
           </div>
+
+          {/* -- 主机 -- */}
           <div className={styles.pageBlock}>
             <OmpStateBlock
-              // key={"serviceData"}
-              // tag={"all"}
-              title={"主机运行状态"}
+              locale={locale}
+              title={context.host}
               link={(data) => {
                 history.push({
                   pathname: "/resource-management/machine-management",
@@ -695,32 +591,6 @@ const Homepage = () => {
               data={dataAggregation(dataSource.host?.host_info_list, "ip")}
             />
           </div>
-          {/* <div className={styles.pageBlock}>
-            <OmpStateBlock
-              // key={"serviceData"}
-              // tag={"all"}
-              link={(data) => {
-                history.push({
-                  pathname: "/application_management/service_management",
-                  state: {
-                    ip: data.ip,
-                  },
-                });
-              }}
-              criticalLink={(data) => {
-                history.push({
-                  pathname: "/application-monitoring/exception-list",
-                  state: {
-                    ip: data.ip,
-                    type: "service",
-                  },
-                });
-              }}
-              hasNotMonitored
-              title={"三方组件状态"}
-              data={dataSource.third?.third_info_list}
-            />
-          </div> */}
         </Spin>
       </div>
     </OmpContentWrapper>

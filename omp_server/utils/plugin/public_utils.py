@@ -15,6 +15,14 @@ import socket
 import hashlib
 import ipaddress
 import subprocess
+import time
+from functools import wraps
+from db_models.models import Host, Service
+from collections import Counter
+from utils.plugin.salt_client import SaltClient
+from omp_server.settings import PROJECT_DIR
+from promemonitor.prometheus import Prometheus
+from utils.parse_config import DISK_ERROR_LINE, DISK_AVAILABLE_SIZE
 
 
 def local_cmd(command):
@@ -33,6 +41,92 @@ def local_cmd(command):
     _out, _err, _code = \
         stdout.decode("utf8"), stderr.decode("utf8"), p.returncode
     return _out, _err, _code
+
+
+def check_agent_df(ip_dc):
+    ip_dc = Prometheus().get_host_data_disk_usage(ip_dc)
+    disk_err = []
+    for i in ip_dc:
+        # 监控存在异常不检查
+        if not i.get('data_disk_usage'):
+            continue
+        if float(i.get('data_disk_usage')) >= DISK_ERROR_LINE or i.get('data_disk_status') not in ["normal", "warning"]:
+            disk_err.append(i.get('ip'))
+    return disk_err
+
+
+def check_agent(ip=None):
+    """
+    检查salt_agent状态
+    :param ip: ip列表 ["192.168.0.1",...] 不填写为全部主机
+    :return: list 异常ip列表
+    """
+    ip_ls = Host.objects.all() if ip is None else \
+        Host.objects.filter(ip__in=ip)
+    ip_ls = list(ip_ls.values("ip", "data_folder"))
+    error_lst = []
+    salt_cli = SaltClient()
+    for i in ip_ls:
+        _flag, _ = salt_cli.fun(target=i.get("ip"), fun="test.ping")
+        if not _flag:
+            error_lst.append(i.get("ip"))
+    if not error_lst and ip_ls:
+        return error_lst, check_agent_df(ip_ls)
+    return error_lst, []
+
+
+def check_localhost_df():
+    cmd = {f"df --block-size=1G {PROJECT_DIR} |tail -1"}
+    out, _, _ = local_cmd(cmd)
+    out_ls = out.split()
+    if float(out_ls[3]) <= DISK_AVAILABLE_SIZE or float(out_ls[4][:-1]) >= DISK_ERROR_LINE:
+        return False, "omp服务端磁盘资源即将占满，请清理磁盘后再使用。"
+    return True, "磁盘正常"
+
+
+def check_env_cmd(ip=None, need_check_agent=False):
+    """
+    检查omp当前状态状态
+    :param ip: ip列表 ["192.168.0.1",...]
+    :param need_check_agent: 是否需要检查salt agent 默认不检查
+    :return: bool 状态， str 异常信息
+    """
+    cmd_service = {"salt-master": "salt-master",
+                   "\"celery -A omp_server worker\"": "worker",
+                   "component/redis/bin/redis-server": "redis"
+                   }
+
+    for cmd in cmd_service.keys():
+        out, err, code = local_cmd(
+            f" ps -eO lstart  |grep {cmd} |grep -v grep  | awk '{{print $5}}' |uniq |wc -l")
+        if str(out).strip() == "2":
+            out, err, code = local_cmd(
+                f"ps  -eO lstart |grep {cmd} |grep -v grep  | awk '{{print $5}}'|uniq|sort")
+            out_ls = out.split()
+            old_time = int(time.mktime(time.strptime(out_ls[0], "%H:%M:%S")))
+            new_time = int(time.mktime(time.strptime(out_ls[1], "%H:%M:%S")))
+            if old_time - new_time <= 7200:
+                out = 1
+            else:
+                out = 2
+        if code == 0 and str(out).strip() != "0":
+            continue
+        service_name = cmd_service.get(cmd, "")
+        err_str = f"{service_name}进程不存在" if str(out).strip() == "0" else f"{service_name}存在可能存在残留进程"
+        err_str = f"{service_name}进程查询异常:{err}" if code != 0 else err_str
+        return False, err_str
+    # 检查磁盘
+    status, msg = check_localhost_df()
+    if not status:
+        return False, msg
+
+    if need_check_agent:
+        error_ls, error_disk = check_agent(ip)
+        if error_ls:
+            return False, f"agent存在异常，请检查agent状态:{','.join(error_ls)}"
+        if error_disk:
+            return False, f"agent磁盘超过最大限制或磁盘异常，请及时清理磁盘空间，避免服务掉线{','.join(error_disk)}"
+    return True
 
 
 def get_file_md5(file_path):
@@ -149,9 +243,27 @@ def file_md5(file_path):
 
 def format_location_size(size):
     # 格式化文件大小
-    if int(size/1024) < 100:
+    if int(size / 1024) < 100:
         return "%.3f" % (size / 1024) + "K"
-    size = size/1024
-    if int(size/1024) < 100:
+    size = size / 1024
+    if int(size / 1024) < 100:
         return "%.3f" % (size / 1024) + "M"
-    return "%.3f" % (size/1024/1024) + "G"
+    return "%.3f" % (size / 1024 / 1024) + "G"
+
+
+def sync_service_num(f):
+    """
+    同步主机服务数
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        res = f(*args, **kwargs)
+        ip_ls = list(Service.objects.all().values_list("ip", flat=True))
+        counter = dict(Counter(ip_ls))
+        for i in Host.objects.all():
+            ser_count = counter.get(i.ip)
+            if ser_count and ser_count != i.service_num:
+                i.service_num = ser_count
+                i.save()
+        return res
+    return decorated

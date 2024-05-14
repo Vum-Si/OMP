@@ -27,60 +27,58 @@ import { apiRequest } from "@/config/requestApi";
 import {
   SearchOutlined,
   QuestionCircleOutlined,
-  ExclamationCircleOutlined,
   ImportOutlined,
   UploadOutlined,
   FormOutlined,
   CloseOutlined,
   DownloadOutlined,
 } from "@ant-design/icons";
-import { useHistory } from "react-router-dom";
 import axios from "axios";
 import star from "./asterisk.svg";
+import { locales } from "@/config/locales";
 
-const RuleExtend = () => {
+const msgMap = {
+  "en-US": {
+    hostMsg: "Bind Host",
+    bindMsg:
+      "The number of hosts bound by the script, after binding the hosts, indicators will be collected on that host",
+    scanMsg: "Specify the interval time for Prometheus to collect indicators",
+    deleteMsg: "Are you sure to delete this indicator?",
+  },
+  "zh-CN": {
+    hostMsg: "绑定主机",
+    bindMsg: "脚本绑定主机数量，绑定主机后会在该主机上采集指标",
+    scanMsg: "指定 Prometheus 对指标采集间隔时间",
+    deleteMsg: "确认删除此指标吗？",
+  },
+};
+
+const RuleExtend = ({ locale }) => {
   const [loading, setLoading] = useState(false);
   const [modalForm] = Form.useForm();
-
   const [upDateForm] = Form.useForm();
-
-  const history = useHistory();
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-
   const [row, setRow] = useState({});
-
-  // 删除操作
-  const [deleteVisible, setDeleteVisible] = useState(false);
-
   // 行内删除操作
   const [deleteRowVisible, setDeleteRowVisible] = useState(false);
-
   // 添加操作控制器
   const [addVisible, setAddVisible] = useState(false);
-
   // 修改操作控制器
   const [upDateVisible, setUpDateVisible] = useState(false);
-
   // 查询操作控制器
   const [statusVisible, setStatusVisible] = useState(false);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [selectValue, setSelectValue] = useState();
-
   // detail数据
   const [detailList, setDetailList] = useState([]);
-
   // 选中的绑定主机
   const [executionData, setExecutionData] = useState([]);
-
   // 绑定主机控制器
   const [hostListVisible, setHostListVisible] = useState(false);
-
   // 是否展示执行绑定主机校验信息
   const [isShowErrMsg, setIsShowErrMsg] = useState(false);
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -88,29 +86,53 @@ const RuleExtend = () => {
     ordering: "",
     searchParams: {},
   });
-
   // 主机翻页数据
   const [hostPagination, setHostPagination] = useState({
     current: 1,
     pageSize: 10,
     total: 0,
   });
-
   // 主机列表
   const [hostList, setHostList] = useState([]);
+  const context = locales[locale].common;
 
   const renderStatus = (text) => {
     switch (text) {
       case 0:
-        return <span>{renderDisc("normal", 7, -1)}正常</span>;
+        return (
+          <span>
+            {renderDisc("normal", 7, -1)}
+            {context.normal}
+          </span>
+        );
       case 1:
-        return <span>{renderDisc("warning", 7, -1)}重启中</span>;
+        return (
+          <span>
+            {renderDisc("warning", 7, -1)}
+            {context.restarting}
+          </span>
+        );
       case 2:
-        return <span>{renderDisc("critical", 7, -1)}启动失败</span>;
+        return (
+          <span>
+            {renderDisc("critical", 7, -1)}
+            {context.startupFailed}
+          </span>
+        );
       case 3:
-        return <span>{renderDisc("warning", 7, -1)}部署中</span>;
+        return (
+          <span>
+            {renderDisc("warning", 7, -1)}
+            {context.installing}
+          </span>
+        );
       case 4:
-        return <span>{renderDisc("critical", 7, -1)}部署失败</span>;
+        return (
+          <span>
+            {renderDisc("critical", 7, -1)}
+            {context.installFailed}
+          </span>
+        );
       default:
         return "-";
     }
@@ -118,12 +140,9 @@ const RuleExtend = () => {
 
   const columns = [
     {
-      title: "描述",
-      // width: 60,
+      title: context.description,
       key: "description",
       dataIndex: "description",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 220,
       fixed: "left",
@@ -132,7 +151,7 @@ const RuleExtend = () => {
     {
       title: (
         <span>
-          绑定主机
+          {msgMap[locale].hostMsg}
           <span
             name="tishi"
             style={{
@@ -142,7 +161,7 @@ const RuleExtend = () => {
             }}
           >
             {" "}
-            <Tooltip title="脚本绑定主机数量，绑定主机后会在该主机上采集指标">
+            <Tooltip title={msgMap[locale].bindMsg}>
               <QuestionCircleOutlined />
             </Tooltip>
           </span>
@@ -154,27 +173,24 @@ const RuleExtend = () => {
       align: "center",
     },
     {
-      title: "探测周期(s)",
+      title: context.scan + context.ln + context.period,
       key: "scrape_interval",
       dataIndex: "scrape_interval",
       width: 120,
       align: "center",
     },
     {
-      title: "操作",
+      title: context.action,
       width: 100,
       key: "",
       dataIndex: "",
       align: "center",
       fixed: "right",
-      render: function renderFunc(text, record, index) {
+      render: (text, record, index) => {
         return (
           <div
             style={{ display: "flex", justifyContent: "space-around" }}
-            onClick={() => {
-              console.log(record);
-              setRow(record);
-            }}
+            onClick={() => setRow(record)}
           >
             <div style={{ margin: "auto" }}>
               <a
@@ -193,28 +209,22 @@ const RuleExtend = () => {
                   setUpDateVisible(true);
                 }}
               >
-                修改
+                {context.edit}
               </a>
               <a
-                style={{
-                  marginLeft: 10,
-                }}
+                style={{ marginLeft: 10 }}
                 onClick={() => {
                   queryExpansionIndex(record.id);
                   setStatusVisible(true);
                 }}
               >
-                查询
+                {context.query}
               </a>
               <a
-                style={{
-                  marginLeft: 10,
-                }}
-                onClick={() => {
-                  setDeleteRowVisible(true);
-                }}
+                style={{ marginLeft: 10 }}
+                onClick={() => setDeleteRowVisible(true)}
               >
-                删除
+                {context.delete}
               </a>
             </div>
           </div>
@@ -223,11 +233,11 @@ const RuleExtend = () => {
     },
   ];
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.ruleCenter.queryExtendRuleList, {
       params: {
@@ -261,7 +271,7 @@ const RuleExtend = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   /* 限制数字输入框只能输入整数 */
   const limitNumber = (value) => {
@@ -294,7 +304,7 @@ const RuleExtend = () => {
         if (response && response.data && response.data.code == 1) {
           message.warning(response.data.message);
         } else {
-          message.success(`添加操作下发成功`);
+          message.success(context.add + context.ln + context.succeeded);
         }
       })
       .catch(function (error) {
@@ -316,13 +326,13 @@ const RuleExtend = () => {
   };
 
   // 删除规则
-  function deleteRule(id) {
+  const deleteRule = (id) => {
     setLoading(true);
     fetchDelete(`${apiRequest.ruleCenter.queryExtendRuleList}${id}/`)
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success(`删除操作下发成功`);
+            message.success(context.delete + context.ln + context.succeeded);
           }
         });
       })
@@ -340,7 +350,7 @@ const RuleExtend = () => {
           }
         );
       });
-  }
+  };
 
   // 查询扩展指标
   const queryExpansionIndex = (id) => {
@@ -405,7 +415,7 @@ const RuleExtend = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success(`修改操作下发成功`);
+            message.success(context.edit + context.ln + context.succeeded);
           }
         });
       })
@@ -431,59 +441,19 @@ const RuleExtend = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部添加/过滤 -- */}
       <div style={{ display: "flex" }}>
-        <Button
-          type="primary"
-          onClick={() => {
-            setAddVisible(true);
-          }}
-        >
-          添加
+        <Button type="primary" onClick={() => setAddVisible(true)}>
+          {context.add}
         </Button>
-        {/* <Button
-          disabled={checkedList.map((item) => item.id).length == 0}
-          onClick={() => {
-            setDeleteVisible(true);
-          }}
-          style={{ marginLeft: 10 }}
-        >
-          删除
-        </Button> */}
-        {/* <Dropdown
-          //placement="bottomLeft"
-          overlay={
-            <Menu>
-              <Menu.Item
-                key="openMaintain"
-                style={{ textAlign: "center" }}
-                onClick={() => {}}
-                disabled={checkedList.map((item) => item.id).length == 0}
-              >
-                禁用
-              </Menu.Item>
-              <Menu.Item
-                key="closeMaintain"
-                style={{ textAlign: "center" }}
-                disabled={checkedList.length == 0}
-                onClick={() => {}}
-              >
-                启用
-              </Menu.Item>
-            </Menu>
-          }
-          placement="bottomCenter"
-        >
-          <Button style={{ marginLeft: 10, paddingRight: 10, paddingLeft: 15 }}>
-            更多
-            <DownOutlined />
-          </Button>
-        </Dropdown> */}
         <div style={{ display: "flex", marginLeft: "auto" }}>
-          <span style={{ width: 50, display: "flex", alignItems: "center" }}>
-            描述:
+          <span
+            style={{ marginRight: 5, display: "flex", alignItems: "center" }}
+          >
+            {context.description + " : "}
           </span>
           <Input
-            placeholder="请输入描述"
+            placeholder={context.input + context.ln + context.description}
             style={{ width: 200 }}
             allowClear
             value={selectValue}
@@ -543,10 +513,12 @@ const RuleExtend = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -581,13 +553,15 @@ const RuleExtend = () => {
                   justifyContent: "space-between",
                 }}
               >
-                <p>已选中 {checkedList.length} 条</p>
+                <p>
+                  {context.selected} {checkedList.length} {context.tiao}
+                </p>
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -597,63 +571,17 @@ const RuleExtend = () => {
         />
       </div>
 
+      {/* -- 删除指标 -- */}
       <OmpMessageModal
         visibleHandle={[deleteRowVisible, setDeleteRowVisible]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
-        onFinish={() => {
-          deleteRule(row.id);
-          // statusUpdate([row.id], 1)
-          // deleteQuota(row);
-        }}
+        onFinish={() => deleteRule(row.id)}
       >
-        <div style={{ padding: "20px" }}>
-          确定要对 <span style={{ fontWeight: 500 }}>{row.description}</span>{" "}
-          指标 <span style={{ fontWeight: 500 }}>下发删除命令</span> ？
-        </div>
+        <div style={{ padding: "20px" }}>{msgMap[locale].deleteMsg}</div>
       </OmpMessageModal>
 
-      {/* <OmpMessageModal
-        visibleHandle={[deleteVisible, setDeleteVisible]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
-        loading={loading}
-        onFinish={() => {
-          // statusUpdate([row.id], 1)
-          // deleteQuota(row);
-        }}
-      >
-        <div style={{ padding: "20px" }}>
-          确定要对 <span style={{ fontWeight: 500 }}>{checkedList.length}</span>{" "}
-          条指标 <span style={{ fontWeight: 500 }}>下发删除命令</span> ？
-        </div>
-      </OmpMessageModal> */}
-      {/* 添加规则 */}
+      {/* -- 添加扩展指标 -- */}
       <OmpModal
         loading={loading}
         width={600}
@@ -661,23 +589,18 @@ const RuleExtend = () => {
         formWrapperCol={{ span: 18 }}
         setLoading={setLoading}
         visibleHandle={[addVisible, setAddVisible]}
-        okBtnText={"确定"}
         title={
           <span>
             <span style={{ position: "relative", left: "-10px" }}>
               <ImportOutlined />
             </span>
-            <span>添加扩展指标</span>
+            <span>{context.add + context.ln + context.extendedMetrics}</span>
           </span>
         }
         form={modalForm}
-        onFinish={(data) => {
-          console.log(data);
-          addExtend(data);
-        }}
-        initialValues={{
-          scrape_interval: 60,
-        }}
+        onFinish={(data) => addExtend(data)}
+        initialValues={{ scrape_interval: 60 }}
+        context={context}
       >
         <div
           style={{
@@ -686,24 +609,23 @@ const RuleExtend = () => {
             left: -10,
           }}
         >
-          <Form.Item label="下载模版" name="down" key="down">
+          <Form.Item label={context.download} name="down" key="down">
             <Button
-              onClick={() => {
-                downloadFile("/custom_scripts/template.py");
-              }}
+              onClick={() => downloadFile("/custom_scripts/template.py")}
               icon={<DownloadOutlined />}
             >
-              点击下载
+              {context.template}
             </Button>
           </Form.Item>
+
           <Form.Item
-            label="上传采集脚本"
+            label={context.upload + context.ln + context.script}
             name="collectionScript"
             key="collectionScript"
             rules={[
               {
                 required: true,
-                message: "请上传采集脚本",
+                message: context.upload + context.ln + context.script,
               },
             ]}
           >
@@ -720,23 +642,24 @@ const RuleExtend = () => {
                 // return Upload.LIST_IGNORE;
               }}
               customRequest={(e) => {
-                // console.log(e)
                 // 直接调用成功，在整个表单提交的时候去携带文件流
                 e.onSuccess();
               }}
             >
-              <Button icon={<UploadOutlined />}>点击上传</Button>
+              <Button icon={<UploadOutlined />}>
+                {context.click + context.ln + context.upload}
+              </Button>
             </Upload>
           </Form.Item>
 
           <Form.Item
-            label="探测周期(s)"
+            label={context.scan + context.ln + context.period}
             name="scrape_interval"
             key="scrape_interval"
             rules={[
               {
                 required: true,
-                message: "请输入探测周期",
+                message: context.input + context.ln + context.period,
               },
             ]}
           >
@@ -757,7 +680,7 @@ const RuleExtend = () => {
               }}
             >
               {" "}
-              <Tooltip title="指定Prometheus对指标采集间隔时间">
+              <Tooltip title={msgMap[locale].scanMsg}>
                 <QuestionCircleOutlined />
               </Tooltip>
             </span>
@@ -765,13 +688,15 @@ const RuleExtend = () => {
         </div>
       </OmpModal>
 
-      {/* 查询 */}
+      {/* -- 扩展指标详细信息 -- */}
       <OmpMessageModal
         width={900}
         visibleHandle={[statusVisible, setStatusVisible]}
         noFooter
         style={{ position: "relative", top: 180 }}
-        title={<span>查看扩展指标状态</span>}
+        title={
+          <span>{context.extendedMetrics + context.ln + context.detail}</span>
+        }
         loading={loading}
       >
         <div style={{ border: "1px solid #d6d6d6" }}>
@@ -779,7 +704,7 @@ const RuleExtend = () => {
             scroll={{ x: 800 }}
             columns={[
               {
-                title: "采集端",
+                title: context.target,
                 key: "scrape_url",
                 dataIndex: "scrape_url",
                 align: "center",
@@ -793,21 +718,20 @@ const RuleExtend = () => {
                 },
               },
               {
-                title: "状态",
+                title: context.status,
                 key: "status",
                 dataIndex: "status",
                 align: "center",
                 width: 120,
-                // fixed: "right",
                 render: (text) => {
                   if (text === "down") {
-                    return "停用";
+                    return context.disabled;
                   }
-                  return "正常";
+                  return context.enabled;
                 },
               },
               {
-                title: "采集用时",
+                title: context.duration,
                 key: "last_scrape_duration",
                 dataIndex: "last_scrape_duration",
                 align: "center",
@@ -819,10 +743,9 @@ const RuleExtend = () => {
 
                   return `${(text * 1000).toFixed(2)}ms`;
                 },
-                // fixed: "right",
               },
               {
-                title: "错误信息",
+                title: context.error + context.ln + context.info,
                 key: "last_error",
                 dataIndex: "last_error",
                 align: "center",
@@ -842,7 +765,7 @@ const RuleExtend = () => {
         </div>
       </OmpMessageModal>
 
-      {/* 修改规则 */}
+      {/* -- 编辑扩展指标 -- */}
       <OmpModal
         loading={loading}
         width={900}
@@ -850,30 +773,24 @@ const RuleExtend = () => {
         formWrapperCol={{ span: 16 }}
         setLoading={setLoading}
         visibleHandle={[upDateVisible, setUpDateVisible]}
-        okBtnText={"确定"}
         title={
           <span>
             <span style={{ position: "relative", left: "-10px" }}>
               <FormOutlined />
             </span>
-            <span>修改扩展指标</span>
+            <span>{context.edit + context.ln + context.extendedMetrics}</span>
           </span>
         }
         form={upDateForm}
         beForeOk={() => {
           if (executionData.length == 0) {
-            // performTasks();
             setIsShowErrMsg(true);
           }
         }}
-        afterClose={() => {
-          setExecutionData([]);
-        }}
+        context={context}
+        afterClose={() => setExecutionData([])}
         onFinish={(data) => {
-          console.log(data);
           if (executionData.length !== 0) {
-            // performTasks();
-            console.log("通过");
             upDateRule(
               {
                 description: data.description,
@@ -884,9 +801,7 @@ const RuleExtend = () => {
             );
           }
         }}
-        initialValues={{
-          scrape_interval: 60,
-        }}
+        initialValues={{ scrape_interval: 60 }}
       >
         <div
           style={{
@@ -896,27 +811,30 @@ const RuleExtend = () => {
           }}
         >
           <Form.Item
-            label="描述"
+            label={context.description}
             name="description"
             key="description"
             rules={[
               {
                 required: true,
-                message: "请输入描述",
+                message: context.input + context.ln + context.description,
               },
             ]}
           >
-            <Input style={{ width: 520 }} placeholder={"请输入描述"} />
+            <Input
+              style={{ width: 520 }}
+              placeholder={context.input + context.ln + context.description}
+            />
           </Form.Item>
 
           <Form.Item
-            label="探测周期(s)"
+            label={context.scan + context.ln + context.period}
             name="scrape_interval"
             key="scrape_interval"
             rules={[
               {
                 required: true,
-                message: "请选择规则类型",
+                message: context.input + context.ln + context.period,
               },
             ]}
           >
@@ -937,7 +855,7 @@ const RuleExtend = () => {
               }}
             >
               {" "}
-              <Tooltip title="指定Prometheus对指标采集间隔时间">
+              <Tooltip title={msgMap[locale].scanMsg}>
                 <QuestionCircleOutlined />
               </Tooltip>
             </span>
@@ -961,7 +879,7 @@ const RuleExtend = () => {
                     top: isShowErrMsg ? 0 : -20,
                   }}
                 >
-                  请选择绑定主机
+                  {context.select + context.ln + msgMap[locale].hostMsg}
                 </span>
               </div>
             }
@@ -971,7 +889,7 @@ const RuleExtend = () => {
                   src={star}
                   style={{ position: "relative", top: -3, left: -4 }}
                 />
-                绑定主机
+                {msgMap[locale].hostMsg}
               </span>
             }
           >
@@ -1012,7 +930,7 @@ const RuleExtend = () => {
                     setIsShowErrMsg(true);
                   }}
                 >
-                  清除
+                  {context.delete}
                 </Button>
                 <Button
                   style={{ padding: "3px 20px", height: 30, marginLeft: 15 }}
@@ -1022,7 +940,7 @@ const RuleExtend = () => {
                     setHostListVisible(true);
                   }}
                 >
-                  添加
+                  {context.add}
                 </Button>
               </div>
             </div>
@@ -1030,18 +948,14 @@ const RuleExtend = () => {
         </div>
       </OmpModal>
 
+      {/* -- 选择绑定主机 -- */}
       <Modal
-        title="选择绑定主机"
+        title={context.select + msgMap[locale].hostMsg}
         width={800}
-        afterClose={() => {
-          setCheckedList([]);
-        }}
-        onCancel={() => {
-          setHostListVisible(false);
-        }}
+        afterClose={() => setCheckedList([])}
+        onCancel={() => setHostListVisible(false)}
         visible={hostListVisible}
         footer={null}
-        //width={1000}
         loading={loading}
         bodyStyle={{
           paddingLeft: 30,
@@ -1053,11 +967,10 @@ const RuleExtend = () => {
           <div style={{ border: "1px solid rgb(235, 238, 242)" }}>
             <OmpTable
               size="small"
-              // scroll={{ x: executionColumns.length * 150 }}
               loading={loading}
               columns={[
                 {
-                  title: "实例名称",
+                  title: context.instanceName,
                   key: "instance_name",
                   dataIndex: "instance_name",
                   align: "center",
@@ -1073,13 +986,13 @@ const RuleExtend = () => {
                   },
                 },
                 {
-                  title: "IP地址",
+                  title: context.ip,
                   key: "ip",
                   dataIndex: "ip",
                   align: "center",
                   ellipsis: true,
                   width: 120,
-                  render: (text, record) => {
+                  render: (text) => {
                     let v = text || "-";
                     return (
                       <Tooltip title={v}>
@@ -1089,15 +1002,12 @@ const RuleExtend = () => {
                   },
                 },
                 {
-                  title: "主机Agent",
+                  title: context.hostAgent,
                   key: "host_agent",
                   dataIndex: "host_agent",
                   align: "center",
                   width: 120,
-                  //ellipsis: true,
-                  render: (text) => {
-                    return renderStatus(text);
-                  },
+                  render: (text) => renderStatus(text),
                 },
               ]}
               onChange={(e, filters, sorter) => {
@@ -1120,13 +1030,15 @@ const RuleExtend = () => {
                       top: -3,
                     }}
                   >
-                    <p>已选中 {checkedList.length} 条</p>
+                    <p>
+                      {context.selected} {checkedList.length} {context.tiao}
+                    </p>
                     <p style={{ color: "rgb(152, 157, 171)" }}>
-                      共计{" "}
+                      {context.total}{" "}
                       <span style={{ color: "rgb(63, 64, 70)" }}>
                         {hostPagination.total}
-                      </span>{" "}
-                      条
+                      </span>
+                      {context.tiao}
                     </p>
                   </div>
                 ),
@@ -1146,18 +1058,19 @@ const RuleExtend = () => {
                 justifyContent: "space-between",
               }}
             >
-              <Button onClick={() => setHostListVisible(false)}>取消</Button>
+              <Button onClick={() => setHostListVisible(false)}>
+                {context.cancel}
+              </Button>
               <Button
                 type="primary"
                 style={{ marginLeft: 16 }}
                 loading={loading}
-                // disabled={checkedList.length == 0}
                 onClick={() => {
                   setExecutionData(checkedList);
                   setHostListVisible(false);
                 }}
               >
-                确认
+                {context.ok}
               </Button>
             </div>
           </div>

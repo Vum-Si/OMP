@@ -2,7 +2,7 @@ import { Select, Form, Input } from "antd";
 import { useEffect, useState } from "react";
 import { randomNumber } from "@/utils/utils";
 
-const RenderArr = ({ data, form }) => {
+const RenderArr = ({ data, form, context }) => {
   const [deployValue, setDeployValue] = useState(data.deploy_mode[0]?.key);
 
   useEffect(() => {
@@ -19,7 +19,7 @@ const RenderArr = ({ data, form }) => {
     <>
       <div style={{ flex: 3 }}>
         <Form.Item
-          label="部署数量"
+          label={context.deployNum}
           name={`${data.name}=num`}
           style={{ marginBottom: 0, width: 100 }}
         >
@@ -43,17 +43,30 @@ const RenderArr = ({ data, form }) => {
       >
         {(deployValue == "master-slave" || deployValue == "master-master") && (
           <Form.Item
-            label="集群名称"
+            label={context.cluster + context.ln + context.name}
             name={`${data.name}=name`}
             style={{ marginBottom: 0, width: 240 }}
             rules={[
               {
                 required: true,
-                message: "请输入集群名称",
+                message:
+                  context.input +
+                  context.ln +
+                  context.cluster +
+                  context.ln +
+                  context.name,
               },
             ]}
           >
-            <Input placeholder="请输入集群名称" />
+            <Input
+              placeholder={
+                context.input +
+                context.ln +
+                context.cluster +
+                context.ln +
+                context.name
+              }
+            />
           </Form.Item>
         )}
       </div>
@@ -68,11 +81,11 @@ const RenderArr = ({ data, form }) => {
             rules={[
               {
                 required: true,
-                message: "请输入vip",
+                message: context.input + context.ln + "vip",
               },
             ]}
           >
-            <Input placeholder="请输入vip" />
+            <Input placeholder={context.input + context.ln + "vip"} />
           </Form.Item>
         )}
       </div>

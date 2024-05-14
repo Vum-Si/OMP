@@ -55,60 +55,13 @@ def utc_local(utc_time_str, utc_format='%Y-%m-%dT%H:%M:%SZ'):
         return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def get_item_type(item, database_list, service_list, component_list):
-    """
-    获取item类型
-    """
-    app_name_str = ""
-    if item.get("labels").get("job") == "nodeExporter":
-        return "host"
-    app_name_str = item.get("labels").get("app") if item.get("labels").get("app") else \
-        item.get("labels").get("job", "").split("Exporter")[0]
-    if not app_name_str:
-        return "service"
-    if list(filter(
-            lambda x: x.service.app_name == app_name_str,
-            list(database_list))):
-        return "database"
-    elif list(filter(
-            lambda x: x.service.app_name == app_name_str, list(
-                service_list)
-    )):
-        return "service"
-    elif list(filter(
-            lambda x: x.service.app_name == app_name_str, list(
-                component_list)
-    )):
-        return "component"
-    else:
-        return "service"
-
-
 def explain_prometheus(params):
     """
       生成前端异常清单所需要的json列表
     """
-    ignore_status_list = [Service.SERVICE_STATUS_NORMAL,
-                          Service.SERVICE_STATUS_STARTING,
-                          Service.SERVICE_STATUS_STOPPING,
-                          Service.SERVICE_STATUS_RESTARTING,
-                          Service.SERVICE_STATUS_STOP]
+    s_app = ""
     host_list = Host.objects.values('ip', 'instance_name')
     host_ip_list = [host.get("ip") for host in host_list]
-    database_list = Service.objects.filter(
-        service__app_type=ApplicationHub.APP_TYPE_COMPONENT).filter(
-        service__app_labels__label_name__contains="数据库").filter(
-        service_status__in=ignore_status_list).filter(
-        service__is_base_env=False)
-    service_list = Service.objects.filter(
-        service__app_type=ApplicationHub.APP_TYPE_SERVICE).filter(
-        service_status__in=ignore_status_list).filter(
-        service__is_base_env=False).filter(
-        service_controllers__start__isnull=False)
-    component_list = Service.objects.filter(
-        service__app_type=ApplicationHub.APP_TYPE_COMPONENT).filter(
-        service_status__in=ignore_status_list).filter(
-        service__is_base_env=False)
     r = CurlPrometheus.curl_prometheus()
     if r.get('status') == 'success':
         prometheus_info = []
@@ -128,14 +81,12 @@ def explain_prometheus(params):
             if tmp_list in compare_list:
                 continue
             compare_list.append(tmp_list)
-            _type = get_item_type(item=lab, database_list=database_list, service_list=service_list,
-                                  component_list=component_list)
-            tmp_dict['type'] = _type
-            _ip = label.get('instance').split(":")[0] if label.get('instance') else ''
-            tmp_dict['ip'] = _ip
             s_app = label.get('app') if label.get(
                 'app') else label.get("job", "").split("Exporter")[0]
-            tmp_dict['instance_name'] = f"{s_app}-{_ip.split('.')[2]}-{_ip.split('.')[3]}" if _type != "host" else s_app
+            tmp_dict['type'] = get_item_type(app_name=s_app)
+            _ip = label.get('instance').split(":")[0] if label.get('instance') else ''
+            tmp_dict['ip'] = _ip
+            tmp_dict['instance_name'] = f"{s_app}-{_ip.split('.')[2]}-{_ip.split('.')[3]}" if s_app != "node" else s_app
             tmp_dict['severity'] = label.get('severity')
             annotation = lab.get('annotations')
             tmp_dict['description'] = annotation.get('description')
@@ -170,7 +121,7 @@ def explain_filter(prometheus_json, params):
     return explain_filter(fil_info, params)
 
 
-def explain_url(explain_info, is_service=None, is_host=None):
+def explain_url(explain_info, is_service=None, is_host=None, env='default'):
     """
     封装dict添加grafana的url
     """
@@ -202,7 +153,7 @@ def explain_url(explain_info, is_service=None, is_host=None):
             instance_info['cluster_url'] = ""
             if monitor_url:
                 instance_info['monitor_url'] = grafana_url + \
-                                               monitor_url + f"?var-instance={service_ip}&kiosk=tv"
+                                               monitor_url + f"?var-instance={service_ip}&var-app={service_name}&kiosk=tv"
                 if Service.objects.filter(
                         service_instance_name=service_instance_name).first() and Service.objects.filter(
                     service_instance_name=service_instance_name).first().cluster:
@@ -223,8 +174,7 @@ def explain_url(explain_info, is_service=None, is_host=None):
                         instance_info['monitor_url'] = grafana_url + url_dict.get(
                             'javaspringboot',
                             'nojavaspringboot') + \
-                                                       f"?var-env=default&var-ip={service_ip}" \
-                                                       f"&var-app={service_name}&var-job={service_name}Exporter&kiosk=tv"
+                                                       f"?var-env={env}&var-app={service_name}&var-instance_name={service_instance_name}&kiosk=tv"
                     else:
                         instance_info['monitor_url'] = grafana_url + url_dict.get(
                             'service', 'noservice') + f"?var-ip={service_ip}&var-app={service_name}&kiosk=tv"
@@ -235,10 +185,61 @@ def explain_url(explain_info, is_service=None, is_host=None):
             instance_info['log_url'] = grafana_url + \
                                        url_dict.get(
                                            'log',
-                                           'nolog') + f"?var-env=default&var-app={service_name}" + f"&var-instance={service_instance_name}"
+                                           'nolog') + f"?var-env={env}&var-app={service_name}" + f"&var-instance={service_instance_name}"
         else:
             instance_info['monitor_url'] = grafana_url + \
                                            url_dict.get('node', 'nohosts') + \
                                            f"?var-node={service_ip}&kiosk=tv"
             instance_info['log_url'] = None
     return explain_info
+
+
+def get_service_log_url(service_name, service_instance_name):
+    raw_url = ""
+    raw_url = GrafanaMainPage.objects.filter(instance_name="log").first().instance_url or ''
+    return raw_url + f"?var-env=default&var-app={service_name}" + f"&var-instance={service_instance_name}"
+
+
+def get_item_type(app_name=None):
+    """
+    获取app_name类型
+    """
+    ignore_status_list = [Service.SERVICE_STATUS_NORMAL,
+                          Service.SERVICE_STATUS_STARTING,
+                          Service.SERVICE_STATUS_STOPPING,
+                          Service.SERVICE_STATUS_RESTARTING,
+                          Service.SERVICE_STATUS_STOP]
+    database_list = Service.objects.filter(
+        service__app_type=ApplicationHub.APP_TYPE_COMPONENT).filter(
+        service__app_labels__label_name__contains="数据库").filter(
+        service_status__in=ignore_status_list).filter(
+        service__is_base_env=False)
+    service_list = Service.objects.filter(
+        service__app_type=ApplicationHub.APP_TYPE_SERVICE).filter(
+        service_status__in=ignore_status_list).filter(
+        service__is_base_env=False).filter(
+        service_controllers__start__isnull=False)
+    component_list = Service.objects.filter(
+        service__app_type=ApplicationHub.APP_TYPE_COMPONENT).filter(
+        service_status__in=ignore_status_list).filter(
+        service__is_base_env=False)
+    if app_name == "node":
+        return "host"
+    if not app_name:
+        return "service"
+    if list(filter(
+            lambda x: x.service.app_name == app_name,
+            list(database_list))):
+        return "database"
+    elif list(filter(
+            lambda x: x.service.app_name == app_name, list(
+                service_list)
+    )):
+        return "service"
+    elif list(filter(
+            lambda x: x.service.app_name == app_name, list(
+                component_list)
+    )):
+        return "component"
+    else:
+        return "service"

@@ -8,12 +8,26 @@ import getColumnsConfig from "./config/columns";
 import { ExclamationCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import { useHistory } from "react-router-dom";
 import PatrolInspectionDetail from "@/pages/PatrolInspectionRecord/config/detail";
-const PatrolInspectionRecord = () => {
+import { locales } from "@/config/locales";
+
+const msgMap = {
+  "en-US": {
+    exeLeft: "Are you sure to execute",
+    exeRight: "inspection?",
+    clickMsg: "If you need to configure a default receiver, please click",
+  },
+  "zh-CN": {
+    exeLeft: "确认要执行",
+    exeRight: "巡检吗?",
+    clickMsg: " 如果需要配置默认的巡检报告接收人，请点击",
+  },
+};
+
+const PatrolInspectionRecord = ({ locale }) => {
   const history = useHistory();
   const [loading, setLoading] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const [instanceSelectValue, setInstanceSelectValue] = useState("");
-
   // 深度分析modal弹框
   const [deepAnalysisModal, setDeepAnalysisModal] = useState(false);
   // 主机巡检modal弹框
@@ -22,14 +36,11 @@ const PatrolInspectionRecord = () => {
   const [componenetAnalysisModal, setComponenetAnalysisModal] = useState(false);
   // 邮件推送modal弹框
   const [pushAnalysisModal, setPushAnalysisModal] = useState(false);
-
   const [checkboxGroupData, setcheckboxGroupData] = useState([]);
-
   // ip列表
   const [ipListSource, setIpListSource] = useState([]);
   // service列表
   const [serviceListSource, setServiceListSource] = useState([]);
-
   const [dataSource, setDataSource] = useState([]);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -38,23 +49,22 @@ const PatrolInspectionRecord = () => {
     ordering: "",
     searchParams: {},
   });
-
   // 详情数据
   const [showDetail, setShowDetail] = useState({
     isShow: false,
     data: {},
   });
-
   // 推送表单数据
   const [pushForm] = Form.useForm();
   // 点击推送按钮数据
   const [pushInfo, setPushInfo] = useState();
+  const context = locales[locale].common;
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams = {},
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.inspection.inspectionList, {
       params: {
@@ -89,7 +99,7 @@ const PatrolInspectionRecord = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   const taskDistribution = (type, data) => {
     setLoading(true);
@@ -172,7 +182,7 @@ const PatrolInspectionRecord = () => {
             message.warning(res.data.message);
           }
           if (res.data.code == 0) {
-            message.success("推送成功");
+            message.success(context.push + context.ln + context.succeeded);
             setPushAnalysisModal(false);
             fetchData();
           }
@@ -188,13 +198,10 @@ const PatrolInspectionRecord = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部巡检按钮/过滤 -- */}
       <div style={{ display: "flex" }}>
-        <Button
-          type="primary"
-          // size="middle"
-          onClick={() => setDeepAnalysisModal(true)}
-        >
-          深度分析
+        <Button type="primary" onClick={() => setDeepAnalysisModal(true)}>
+          {context.deep + context.ln + context.inspection}
         </Button>
 
         <Button
@@ -202,7 +209,7 @@ const PatrolInspectionRecord = () => {
           onClick={() => setHostAnalysisModal(true)}
           style={{ marginLeft: 10 }}
         >
-          主机巡检
+          {context.host + context.ln + context.inspection}
         </Button>
 
         <Button
@@ -210,16 +217,23 @@ const PatrolInspectionRecord = () => {
           onClick={() => setComponenetAnalysisModal(true)}
           style={{ marginLeft: 10 }}
         >
-          组件巡检
+          {context.component + context.ln + context.inspection}
         </Button>
 
         <div style={{ display: "flex", marginLeft: "auto" }}>
-          <span style={{ width: 80, display: "flex", alignItems: "center" }}>
-            报告名称:
+          <span
+            style={{ marginRight: 5, display: "flex", alignItems: "center" }}
+          >
+            {context.report + context.ln + context.name + " : "}
           </span>
           <Input
-            // size="middle"
-            placeholder="输入报告名称"
+            placeholder={
+              context.input +
+              context.ln +
+              context.report +
+              context.ln +
+              context.name
+            }
             style={{ width: 200 }}
             allowClear
             value={instanceSelectValue}
@@ -271,10 +285,12 @@ const PatrolInspectionRecord = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -284,7 +300,6 @@ const PatrolInspectionRecord = () => {
       >
         <OmpTable
           loading={loading}
-          //   /scroll={{ x: 1900 }}
           onChange={(e, filters, sorter) => {
             console.log("ui");
             let ordering = sorter.order
@@ -296,7 +311,6 @@ const PatrolInspectionRecord = () => {
           }}
           columns={getColumnsConfig(
             (params) => {
-              // console.log(pagination.searchParams)
               fetchData(
                 { current: 1, pageSize: pagination.pageSize },
                 { ...pagination.searchParams, ...params },
@@ -304,8 +318,8 @@ const PatrolInspectionRecord = () => {
               );
             },
             history,
-            { pushForm, setPushLoading, setPushAnalysisModal, setPushInfo }
-            //fetchDetailData
+            { pushForm, setPushLoading, setPushAnalysisModal, setPushInfo },
+            context
           )}
           dataSource={dataSource}
           pagination={{
@@ -321,11 +335,11 @@ const PatrolInspectionRecord = () => {
                 }}
               >
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -333,36 +347,27 @@ const PatrolInspectionRecord = () => {
           }}
         />
       </div>
+
+      {/* -- 深度巡检 -- */}
       <OmpMessageModal
         visibleHandle={[deepAnalysisModal, setDeepAnalysisModal]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
-        onFinish={() => {
-          taskDistribution("deep");
-        }}
+        onFinish={() => taskDistribution("deep")}
       >
         <div style={{ padding: "20px" }}>
-          确定要执行 <span style={{ fontWeight: 500 }}>深度分析</span> 操作 ？
+          {msgMap[locale].exeLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {context.deep}{" "}
+          </span>
+          {msgMap[locale].exeLeft}
         </div>
       </OmpMessageModal>
 
+      {/* -- 主机巡检 -- */}
       <OmpMessageModal
-        afterClose={() => {
-          setcheckboxGroupData([]);
-        }}
+        afterClose={() => setcheckboxGroupData([])}
         visibleHandle={[hostAnalysisModal, setHostAnalysisModal]}
         disabled={checkboxGroupData.length == 0}
         title={
@@ -376,9 +381,10 @@ const PatrolInspectionRecord = () => {
                 top: 2,
               }}
             />
-            主机巡检
+            {context.host + context.ln + context.inspection}
           </span>
         }
+        context={context}
         loading={loading}
         onFinish={() => {
           taskDistribution("host", {
@@ -399,10 +405,8 @@ const PatrolInspectionRecord = () => {
                 checkboxGroupData.length !== 0 &&
                 checkboxGroupData.length !== ipListSource.length
               }
-              // onChange={this.onCheckAllChange}
               checked={checkboxGroupData.length == ipListSource.length}
               onChange={(e) => {
-                //console.log(e.target.checked)
                 if (e.target.checked) {
                   setcheckboxGroupData(ipListSource);
                 } else {
@@ -410,14 +414,12 @@ const PatrolInspectionRecord = () => {
                 }
               }}
             >
-              全选
+              {context.all}
             </Checkbox>
           </div>
           <Checkbox.Group
             style={{ width: "100%" }}
-            onChange={(e) => {
-              setcheckboxGroupData(e);
-            }}
+            onChange={(e) => setcheckboxGroupData(e)}
             value={checkboxGroupData}
           >
             <div style={{ display: "flex", flexWrap: "wrap" }}>
@@ -435,10 +437,9 @@ const PatrolInspectionRecord = () => {
         </>
       </OmpMessageModal>
 
+      {/* -- 服务巡检 -- */}
       <OmpMessageModal
-        afterClose={() => {
-          setcheckboxGroupData([]);
-        }}
+        afterClose={() => setcheckboxGroupData([])}
         visibleHandle={[componenetAnalysisModal, setComponenetAnalysisModal]}
         disabled={checkboxGroupData.length == 0}
         title={
@@ -452,9 +453,10 @@ const PatrolInspectionRecord = () => {
                 top: 2,
               }}
             />
-            组件巡检
+            {context.component + context.ln + context.inspection}
           </span>
         }
+        context={context}
         loading={loading}
         onFinish={() => {
           taskDistribution("service", {
@@ -475,10 +477,8 @@ const PatrolInspectionRecord = () => {
                 checkboxGroupData.length !== 0 &&
                 checkboxGroupData.length !== serviceListSource.length
               }
-              // onChange={this.onCheckAllChange}
               checked={checkboxGroupData.length == serviceListSource.length}
               onChange={(e) => {
-                //console.log(e.target.checked)
                 if (e.target.checked) {
                   setcheckboxGroupData(
                     serviceListSource.map((i) => i.service__id)
@@ -488,14 +488,12 @@ const PatrolInspectionRecord = () => {
                 }
               }}
             >
-              全选
+              {context.all}
             </Checkbox>
           </div>
           <Checkbox.Group
             style={{ width: "100%" }}
-            onChange={(e) => {
-              setcheckboxGroupData(e);
-            }}
+            onChange={(e) => setcheckboxGroupData(e)}
             value={checkboxGroupData}
           >
             <div style={{ display: "flex", flexWrap: "wrap" }}>
@@ -516,48 +514,45 @@ const PatrolInspectionRecord = () => {
         </>
       </OmpMessageModal>
 
+      {/* -- 邮件推送 -- */}
       <OmpMessageModal
         visibleHandle={[pushAnalysisModal, setPushAnalysisModal]}
-        title={<span>邮件推送</span>}
+        title={context.email + context.ln + context.push}
+        context={context}
         loading={pushLoading}
         onFinish={() => pushEmail()}
       >
         <Form style={{ marginLeft: 40 }} form={pushForm}>
           <Form.Item
             name="email"
-            label="接收人"
+            label={context.receiver}
             rules={[
               {
                 type: "email",
-                message: "请输入正确格式的邮箱",
+                message: context.input + context.ln + context.email,
               },
             ]}
           >
             <Input
-              placeholder="例如: emailname@163.com"
-              style={{
-                width: 320,
-              }}
+              placeholder={context.example + context.ln + ": emailname@163.com"}
+              style={{ width: 320 }}
             />
           </Form.Item>
           <p
             style={{
-              marginTop: 30,
-              paddingLeft: 40,
+              marginTop: 20,
               fontSize: 13,
             }}
           >
             <ExclamationCircleOutlined style={{ paddingRight: 10 }} />
-            如果需要配置默认的巡检报告接收人，请点击
+            {msgMap[locale].clickMsg}
             <a
               onClick={() =>
-                history.push({
-                  pathname: "/status-patrol/patrol-strategy",
-                })
+                history.push({ pathname: "/status-patrol/patrol-strategy" })
               }
               style={{ marginLeft: 4 }}
             >
-              这里
+              {context.here}
             </a>
           </p>
         </Form>

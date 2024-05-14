@@ -12,6 +12,7 @@ from django.db import transaction
 from concurrent.futures import (
     ThreadPoolExecutor, as_completed
 )
+from utils.parse_config import python_cmd_env
 from utils.plugin.salt_client import SaltClient
 
 THREAD_POOL_MAX_WORKERS = 20
@@ -65,7 +66,7 @@ class Hadoop(object):
                 target_host.data_folder, "omp_packages",
                 f"{detail_obj.main_install_history.operation_uuid}.json")
 
-            cmd_str = f"python {init_script_path} --local_ip {target_ip} " \
+            cmd_str = f"{python_cmd_env(json_path)} {init_script_path} --local_ip {target_ip} " \
                       f"--data_json {json_path} --action_type {action[0]} --action_object {action[1]}"
             # 执行初始化
             is_success, message = salt_client.cmd(
@@ -281,7 +282,7 @@ class Hadoop(object):
                     for role in roles_name.split(","):
                         ser_obj = self._create_service(role, obj)
                         self._create_detail(ser_obj, obj)
-                    obj.service.service_status = Service.SERVICE_STATUS_UNKNOWN
+                    obj.service.service_status = Service.SERVICE_STATUS_NORMAL
                     obj.service.service_split = 1
                     obj.service.save()
                     # obj.service.delete()

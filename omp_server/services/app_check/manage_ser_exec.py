@@ -11,8 +11,9 @@ from db_models.models import (
     ServiceHistory, Host
 )
 import random
-from app_store.new_install_utils import RedisDB
+from app_store.new_install_utils import RedisDB, change_conf
 from app_store.tasks import add_prometheus
+from utils.plugin.public_utils import sync_service_num
 
 logger = logging.getLogger('server')
 
@@ -28,6 +29,7 @@ class ManagerService:
         self.env = None
         self.is_base_env = ApplicationHub.objects.filter(
             is_base_env=True).values_list("app_name", flat=True)
+        self.ser_ids = []
 
     @staticmethod
     def _get_cluster_ip():
@@ -144,7 +146,11 @@ class ManagerService:
             main_install_history=main_obj,
             install_step_status=install_status,
             send_msg=f"{now_time} {app_obj.app_name} {msg}",
-            install_detail_args=install_detail
+            install_detail_args=install_detail,
+            start_flag=install_status,
+            send_flag=install_status,
+            unzip_flag=install_status,
+            init_flag=install_status,
         )
 
     def get_service_dependence(self, dependence, ip):
@@ -286,9 +292,11 @@ class ManagerService:
             ser_obj = Service.objects.create(
                 **copy_data
             )
+            self.ser_ids.append(ser_obj.id)
             # 创建detail表
             self.create_install_detail(main_obj, install_detail_args, ser_obj, copy_data, app_obj)
 
+    @sync_service_num
     def create_database_all(self):
         # main表 相关联的服务表 信息集群表，然后detail表
         with transaction.atomic():
@@ -324,5 +332,7 @@ class ManagerService:
         if self.is_extend:
             return main_id
         self.redis_obj.delete_keys(self.redis_key)
+        # 进行配置同步 及json更新
+        change_conf(self.ser_ids)
         return {"is_error": False,
                 "message": "服务纳管成功"}

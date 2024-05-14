@@ -18,7 +18,9 @@ from app_store.views import (
     DeploymentPlanImportView, DeploymentPlanListView,
     DeploymentOperableView, DeploymentTemplateView,
     ExecutionRecordAPIView, DeleteAppStorePackageView,
-    ProductCompositionView)
+    ProductCompositionView, InstallTempFirstView,
+    InstallTempLastView, InstallTempSecondView,
+    StopProcessView)
 from app_store.views_for_install import (
     ComponentEntranceView,
     ProductEntranceView,
@@ -41,7 +43,8 @@ from app_store.new_install_view import (
     ShowSingleServiceInstallLogView,
     MainInstallHistoryView,
     CreateComponentInstallInfoView,
-    RetryInstallView
+    RetryInstallView,
+    InstallClusterArgsView
 )
 
 router = DefaultRouter()
@@ -192,4 +195,35 @@ router.register(
     "productComposition",
     ProductCompositionView,
     basename="productComposition"
+)
+
+# 模版生成接口
+router.register(
+    "installTempFirst",
+    InstallTempFirstView,
+    basename="installTempFirst"
+)
+router.register(
+    "InstallTempLast",
+    InstallTempLastView,
+    basename="InstallTempLast"
+)
+
+router.register(
+    "InstallTempSecond",
+    InstallTempSecondView,
+    basename="InstallTempSecond"
+)
+
+router.register(
+    "StopProcess",
+    StopProcessView,
+    basename="StopProcess"
+)
+
+router.register(
+    "InstallClusterArgs",
+    InstallClusterArgsView,
+    basename="InstallClusterArgs"
+
 )

@@ -13,7 +13,7 @@ from db_models.models import (
     MainInstallHistory, DetailInstallHistory
 )
 from utils.plugin.salt_client import SaltClient
-from utils.parse_config import THREAD_POOL_MAX_WORKERS
+from utils.parse_config import THREAD_POOL_MAX_WORKERS, python_cmd_env
 
 logger = logging.getLogger("server")
 
@@ -227,7 +227,7 @@ class InstallServiceExecutor:
                 target_host.data_folder, "omp_packages",
                 f"{detail_obj.main_install_history.operation_uuid}.json")
 
-            cmd_str = f"python {install_script_path} --local_ip {target_ip} --data_json {json_path}"
+            cmd_str = f"{python_cmd_env(json_path)} {install_script_path} --local_ip {target_ip} --data_json {json_path}"
 
             # 执行安装
             is_success, message = salt_client.cmd(
@@ -296,7 +296,7 @@ class InstallServiceExecutor:
                 target_host.data_folder, "omp_packages",
                 f"{detail_obj.main_install_history.operation_uuid}.json")
 
-            cmd_str = f"python {init_script_path} --local_ip {target_ip} " \
+            cmd_str = f"{python_cmd_env(json_path)} {init_script_path} --local_ip {target_ip} " \
                       f"--data_json {json_path}"
             # 执行初始化
             is_success, message = salt_client.cmd(

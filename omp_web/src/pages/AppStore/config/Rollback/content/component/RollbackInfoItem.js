@@ -1,14 +1,13 @@
 import RollbackDetail from "./RollbackDetail";
+import { logCreate } from "../../../Installation/component/logUtil";
 
-const RollbackInfoItem = ({ id, data, title, log, idx, instance_name }) => {
+const RollbackInfoItem = ({ id, data, title, log, idx, context, locale }) => {
   return (
     <div
       id={id}
       style={{
-        //marginTop: 20,
         backgroundColor: "#fff",
         padding: 10,
-        //marginBottom: 15,
         marginTop: idx !== 0 && 15,
       }}
     >
@@ -41,19 +40,22 @@ const RollbackInfoItem = ({ id, data, title, log, idx, instance_name }) => {
           paddingLeft: 20,
           marginTop: 10,
           paddingBottom: 5,
-          // paddingTop: 20,
         }}
       >
         {data?.map((item) => {
-          console.log(item);
           return (
             <RollbackDetail
               title={title}
               key={`${title}=${item.ip}`}
               status={item.rollback_state}
               ip={item.ip}
-              log={item.message}
+              log={
+                locale === "zh-CN"
+                  ? item.message
+                  : logCreate(title, item.message, context)
+              }
               instance_name={item.instance_name}
+              context={context}
             />
           );
         })}

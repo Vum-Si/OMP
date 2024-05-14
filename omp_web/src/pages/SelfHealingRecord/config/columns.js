@@ -2,13 +2,13 @@ import { renderDisc } from "@/utils/utils";
 import { Tooltip, Badge } from "antd";
 import moment from "moment";
 
-const renderStatus = (state) => {
+const renderStatus = (state, context) => {
   switch (state) {
     case 1:
       return (
         <span>
           {renderDisc("normal", 7, -1)}
-          自愈成功
+          {context.succeeded}
         </span>
       );
       break;
@@ -16,7 +16,7 @@ const renderStatus = (state) => {
       return (
         <span>
           {renderDisc("critical", 7, -1)}
-          自愈失败
+          {context.failed}
         </span>
       );
       break;
@@ -24,7 +24,7 @@ const renderStatus = (state) => {
       return (
         <span>
           {renderDisc("warning", 7, -1)}
-          自愈中
+          {context.repairing}
         </span>
       );
       break;
@@ -38,11 +38,12 @@ const getColumnsConfig = (
   queryRequest,
   setShowIframe,
   updateAlertRead,
-  history
+  history,
+  context
 ) => {
   return [
     {
-      title: "实例名称",
+      title: context.serviceInstance,
       key: "instance_name",
       dataIndex: "instance_name",
       align: "center",
@@ -64,7 +65,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "host_ip",
       width: 140,
       dataIndex: "host_ip",
@@ -74,53 +75,45 @@ const getColumnsConfig = (
       align: "center",
     },
     {
-      title: "自愈状态",
+      title: context.status,
       key: "state",
       dataIndex: "state",
       align: "center",
       width: 120,
-      // sorter: (a, b) => a.severity - b.severity,
-      // sortDirections: ["descend", "ascend"],
-      //ellipsis: true,
-      //width:120,
       usefilter: true,
       queryRequest: queryRequest,
       filterMenuList: [
         {
           value: "1",
-          text: "自愈成功",
+          text: context.succeeded,
         },
         {
           value: "0",
-          text: "自愈失败",
+          text: context.failed,
         },
         {
           value: "2",
-          text: "自愈中",
+          text: context.repairing,
         },
       ],
-      render: renderStatus,
+      render: (text) => renderStatus(text, context),
     },
     {
-      title: "重试次数",
+      title: context.retry,
       key: "healing_count",
       dataIndex: "healing_count",
       align: "center",
-      //ellipsis: true,
       width: 80,
       render: (text) => {
-        return text ? `${text}次` : "-";
+        return text ? text + context.ci : "-";
       },
     },
     {
-      title: "故障时间",
+      title: context.timestamp,
       width: 180,
       key: "alert_time",
       dataIndex: "alert_time",
       align: "center",
-      //ellipsis: true,
-      // sorter: (a, b) => a.alert_time - b.alert_time,
-      // sortDirections: ["descend", "ascend"],
       render: (text) => {
         if (text) {
           let str = moment(text).format("YYYY-MM-DD HH:mm:ss");
@@ -130,14 +123,11 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "结束时间",
+      title: context.endTime,
       width: 180,
       key: "end_time",
       dataIndex: "end_time",
       align: "center",
-      //ellipsis: true,
-      // sorter: (a, b) => a.create_time - b.create_time,
-      // sortDirections: ["descend", "ascend"],
       render: (text) => {
         if (text) {
           let str = moment(text).format("YYYY-MM-DD HH:mm:ss");
@@ -147,7 +137,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "故障描述",
+      title: context.description,
       key: "alert_content",
       dataIndex: "alert_content",
       align: "center",
@@ -162,7 +152,7 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "自愈日志",
+      title: context.repair + context.ln + context.log,
       key: "healing_log",
       dataIndex: "healing_log",
       align: "center",
@@ -177,14 +167,13 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "操作",
+      title: context.action,
       width: 140,
       key: "",
       dataIndex: "",
       fixed: "right",
       align: "center",
-      render: function renderFunc(text, record, index) {
-        //console.log(record);
+      render: (text, record, index) => {
         return (
           <div style={{ display: "flex", justifyContent: "space-around" }}>
             <div style={{ margin: "auto" }}>
@@ -201,10 +190,12 @@ const getColumnsConfig = (
                     });
                   }}
                 >
-                  关联告警
+                  {context.view + context.ln + context.alarm}
                 </a>
               ) : (
-                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>关联告警</span>
+                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>
+                  {context.view + context.ln + context.alarm}
+                </span>
               )}
 
               {record.monitor_log ? (
@@ -223,11 +214,11 @@ const getColumnsConfig = (
                     });
                   }}
                 >
-                  服务日志
+                  {context.log}
                 </a>
               ) : (
                 <span style={{ color: "rgba(0, 0, 0, 0.25)", marginLeft: 10 }}>
-                  服务日志
+                  {context.log}
                 </span>
               )}
             </div>

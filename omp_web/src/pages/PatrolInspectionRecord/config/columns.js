@@ -4,7 +4,7 @@ import moment from "moment";
 import { apiRequest } from "src/config/requestApi";
 import { fetchGet } from "@/utils/request";
 
-const getColumnsConfig = (queryRequest, history, pushData) => {
+const getColumnsConfig = (queryRequest, history, pushData, context) => {
   // 推送邮件相关数据
   const { pushForm, setPushLoading, setPushAnalysisModal, setPushInfo } =
     pushData;
@@ -49,14 +49,11 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
   const clickPush = (record) => {
     setPushAnalysisModal(true);
     fetchPushDate(record);
-    // pushForm.setFieldsValue({
-    //   id:
-    // })
   };
 
   return [
     {
-      title: "序列",
+      title: context.row,
       width: 40,
       key: "idx",
       dataIndex: "idx",
@@ -64,8 +61,8 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
       fixed: "left",
     },
     {
-      title: "报告名称",
-      width: 120,
+      title: context.report + context.ln + context.name,
+      width: 100,
       key: "inspection_name",
       dataIndex: "inspection_name",
       align: "center",
@@ -74,16 +71,17 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
         if (record.inspection_status == 2) {
           return (
             <a
-              style={{
-                fontSize: 12,
-              }}
+              style={{ fontSize: 12 }}
               onClick={() => {
                 history?.push({
                   pathname: `/status-patrol/patrol-inspection-record/status-patrol-detail/${record.id}`,
                 });
               }}
             >
-              {text}
+              {text
+                .replace("深度巡检", context.deep)
+                .replace("主机巡检", context.host)
+                .replace("组件巡检", context.component)}
             </a>
           );
         }
@@ -91,7 +89,7 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
       },
     },
     {
-      title: "报告类型",
+      title: context.report + context.ln + context.type,
       width: 80,
       key: "inspection_type",
       align: "center",
@@ -101,32 +99,32 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
       filterMenuList: [
         {
           value: "service",
-          text: "组件巡检",
+          text: context.component,
         },
         {
           value: "host",
-          text: "主机巡检",
+          text: context.host,
         },
         {
           value: "deep",
-          text: "深度分析",
+          text: context.deep,
         },
       ],
-      render: (text, record, index) => {
-        if (text == "service") {
-          return "组件巡检";
+      render: (text) => {
+        if (text === "service") {
+          return context.component;
         }
-        if (text == "host") {
-          return "主机巡检";
+        if (text === "host") {
+          return context.host;
         }
-        if (text == "deep") {
-          return "深度分析";
+        if (text === "deep") {
+          return context.deep;
         }
       },
     },
     {
-      title: "巡检结果",
-      width: 150,
+      title: context.result,
+      width: 80,
       key: "inspection_status",
       dataIndex: "inspection_status",
       usefilter: true,
@@ -134,63 +132,78 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
       filterMenuList: [
         {
           value: "1",
-          text: "进行中",
+          text: context.executing,
         },
         {
           value: "2",
-          text: "成功",
+          text: context.succeeded,
         },
         {
           value: "3",
-          text: "失败",
+          text: context.failed,
         },
       ],
       align: "center",
-      render: (text, record, index) => {
+      render: (text) => {
         if (!text && text !== 0) {
           return "-";
-        } else if (text === 2) {
-          return <div>{renderDisc("normal", 7, -1)}成功</div>;
         } else if (text === 1) {
-          return <div>{renderDisc("normal", 7, -1)}进行中</div>;
+          return (
+            <div>
+              {renderDisc("normal", 7, -1)}
+              {context.executing}
+            </div>
+          );
+        } else if (text === 2) {
+          return (
+            <div>
+              {renderDisc("normal", 7, -1)}
+              {context.succeeded}
+            </div>
+          );
         } else if (text === 3) {
-          return <div>{renderDisc("critical", 7, -1)}失败</div>;
+          return (
+            <div>
+              {renderDisc("critical", 7, -1)}
+              {context.failed}
+            </div>
+          );
         } else {
           return text;
         }
       },
     },
     {
-      title: "执行方式",
+      title: context.execute + context.ln + context.type,
       align: "center",
       dataIndex: "execute_type",
       key: "execute_type",
+      width: 80,
       usefilter: true,
       queryRequest: queryRequest,
       filterMenuList: [
         {
           value: "man",
-          text: "手动",
+          text: context.manually,
         },
         {
           value: "auto",
-          text: "定时",
+          text: context.regularly,
         },
       ],
       render: (text) => {
-        if (text == "man") {
-          return "手动执行";
-        } else if (text == "auto") {
-          return "定时执行";
+        if (text === "man") {
+          return context.manually;
+        } else if (text === "auto") {
+          return context.regularly;
         } else {
           return "-";
         }
       },
-      width: 80,
     },
     {
-      title: "巡检时间",
-      width: 200,
+      title: context.timestamp,
+      width: 120,
       key: "start_time",
       dataIndex: "start_time",
       ellipsis: true,
@@ -204,32 +217,32 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
       },
     },
     {
-      title: "巡检用时",
+      title: context.duration,
       key: "duration",
       dataIndex: "duration",
+      align: "center",
+      width: 60,
       render: (text) => {
         if (text && text !== "-") {
           let timer = moment.duration(text, "seconds");
 
           let hours = timer.hours();
-          let hoursResult = hours ? `${hours}小时` : "";
+          let hoursResult = hours ? hours + context.h : "";
 
           let minutes = timer.minutes();
-          let minutesResult = minutes % 60 ? `${minutes % 60}分钟` : "";
+          let minutesResult = minutes % 60 ? (minutes % 60) + context.m : "";
 
           let seconds = timer.seconds();
-          let secondsResult = seconds % 60 ? `${seconds % 60}秒` : "";
+          let secondsResult = seconds % 60 ? (seconds % 60) + context.s : "";
 
           return `${hoursResult} ${minutesResult} ${secondsResult}`;
         } else {
           return "-";
         }
       },
-      align: "center",
-      width: 60,
     },
     {
-      title: "推送结果",
+      title: context.push + context.ln + context.result,
       key: "send_email_result",
       dataIndex: "send_email_result",
       align: "center",
@@ -237,26 +250,46 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
       render: (text, record) => {
         switch (text) {
           case 1:
-            return <div>{renderDisc("normal", 7, -1)}成功</div>;
+            return (
+              <div>
+                {renderDisc("normal", 7, -1)}
+                {context.succeeded}
+              </div>
+            );
           case 2:
-            return <div>{renderDisc("warning", 7, -1)}推送中</div>;
+            return (
+              <div>
+                {renderDisc("warning", 7, -1)}
+                {context.pushing}
+              </div>
+            );
           case 0:
-            return <div>{renderDisc("critical", 7, -1)}失败</div>;
+            return (
+              <div>
+                {renderDisc("critical", 7, -1)}
+                {context.failed}
+              </div>
+            );
           case 3:
-            return <div>{renderDisc("warning", 7, -1)}未推送 </div>;
+            return (
+              <div>
+                {renderDisc("warning", 7, -1)}
+                {context.noPush}
+              </div>
+            );
           default:
             return "-";
         }
       },
     },
     {
-      title: "操作",
+      title: context.action,
       width: 60,
       key: "",
       dataIndex: "",
       fixed: "right",
       align: "center",
-      render: function renderFunc(text, record, index) {
+      render: (text, record, index) => {
         return (
           <div style={{ display: "flex", justifyContent: "space-around" }}>
             <div style={{ margin: "auto" }}>
@@ -265,22 +298,24 @@ const getColumnsConfig = (queryRequest, history, pushData) => {
                   <a
                     onClick={() => {
                       message.success(
-                        `正在下载巡检报告，双击文件夹中index.html查看报告`
+                        context.download + context.ln + context.succeeded
                       );
                       fetchDetailData(record.id);
                     }}
                   >
-                    导出
+                    {context.export}
                   </a>
                   <a
                     style={{ marginLeft: 10 }}
                     onClick={() => clickPush(record)}
                   >
-                    推送
+                    {context.push}
                   </a>
                 </>
               ) : (
-                <span style={{ color: "rgba(0, 0, 0, 0.25" }}>导出</span>
+                <span style={{ color: "rgba(0, 0, 0, 0.25" }}>
+                  {context.export}
+                </span>
               )}
             </div>
           </div>

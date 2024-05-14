@@ -4,6 +4,11 @@ from db_models.mixins import TimeStampMixin, DeleteMixin
 from .env import Env
 
 
+def default_crontab_detail():
+    return dict(day_of_month='*', day_of_week='*', hour="00", minute="00",
+                month_of_year='*')
+
+
 class Host(TimeStampMixin, DeleteMixin):
     """ 主机表 """
 
@@ -98,6 +103,9 @@ class Host(TimeStampMixin, DeleteMixin):
     ntpdate_install_status = models.CharField(
         "安装ntpdate状态", max_length=16, choices=NTPDATE_STATUS_CHOICES, default=NTPDATE_NOT_INSTALL
     )
+    crontab_detail = models.JSONField("定时任务详情", null=False, max_length=512,
+                                      default=default_crontab_detail,
+                                      )
 
     class Meta:
         """ 元数据 """

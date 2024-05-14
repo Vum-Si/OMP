@@ -2,6 +2,8 @@ import json
 import os
 import random
 import string
+import re
+from abc import ABC
 
 from django.db import transaction
 from rest_framework import serializers
@@ -9,6 +11,7 @@ from db_models.models import ToolExecuteMainHistory, ToolInfo, Host, Service, \
     ToolExecuteDetailHistory, UploadFileHistory
 from tool.tasks import exec_tools_main
 from utils.common.exceptions import GeneralError
+from utils.plugin.crypto import AESCryptor
 
 
 class ToolInfoSerializer(serializers.ModelSerializer):
@@ -79,6 +82,8 @@ class ToolDetailSerializer(serializers.ModelSerializer):
     def get_tool_args(self, obj):
         tool_args = []
         detail_args = obj.toolexecutedetailhistory_set.first().execute_args
+        if isinstance(detail_args, list):
+            return detail_args
         for args in obj.tool.script_args:
             value = detail_args.get(args.get('key'), "")
             if value:
@@ -212,6 +217,95 @@ class ValidFormAnswer:
         return self.questions
 
 
+class TestTaskSerializer(serializers.Serializer):
+    body_1 = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="测试表单",
+        required=True,
+        error_messages={"required": "填写需要测试的产品"}
+    )
+    body_2 = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="测试表单",
+        required=True,
+        error_messages={"required": "填写需要测试的产品"}
+    )
+    h_id = serializers.IntegerField(help_text="是否已读", required=False)
+
+    def create(self, validated_data):
+        """
+        {"name":"xxx",
+        "ip":"xxx",
+        "install_args":"xxx"}
+        """
+        # ToDo 暂定1h 重构进行分发
+        time_out = 3600
+        request = self.context.get("request")
+
+        body_2 = validated_data.get("body_2")
+        body_1 = validated_data.get("body_1")
+        ips = body_1[0].pop('ips')
+        host_info = Host.objects.filter(ip__in=ips).values('ip', 'username', 'port', 'password')
+        body_1_dc = body_1[0]
+
+        history = ToolExecuteMainHistory.objects.create(
+            task_name="自动测试任务",
+            operator=request.user.username,
+            form_answer=validated_data,
+            tool=ToolInfo.objects.all().first()
+        )
+        execute_details = []
+        execute_args = []
+        for c_k, c_v in body_1_dc.items():
+            # 执行参数显示1
+            execute_args.append(
+                {"name": c_k,
+                 "value": c_v
+                 }
+            )
+        res = []
+        for body_dc in body_2:
+            # 补全执行参数页面显示 2
+            execute_args.append(
+                {"name": body_dc.get("ip"),
+                 "value": ",".join(body_dc.get("productList", []))}
+            )
+            # 补全集群属性
+            body_dc.update(body_1_dc)
+            # 补全主机信息
+            for host in host_info:
+                if host.get("ip") == body_dc.get("ip"):
+                    aes_crypto = AESCryptor()
+                    host["password"] = aes_crypto.decode(host.get("password"))
+                    body_dc.update(host)
+            res.append({"name": "AutoTest", "ip": body_dc.get("ip"), "install_args": body_dc})
+
+        for pro_info in body_2:
+            target_detail = {
+                "target_ip": pro_info.get("ip"),
+                "main_history": history,
+                "time_out": time_out,
+                "run_user": request.user.username,
+                "execute_args": execute_args
+            }
+            execute_details.append(
+                ToolExecuteDetailHistory(**target_detail)
+            )
+        ToolExecuteDetailHistory.objects.bulk_create(execute_details)
+        exec_tools_main.delay(history.id, res)
+        validated_data.update(h_id=history.id)
+        return validated_data
+
+
+class TestTaskHostSerializer(serializers.Serializer):
+    body = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="配置参数",
+        required=True,
+        error_messages={"required": "需要填写配置参数"}
+    )
+
+
 class ToolFormAnswerSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True, default=0)
 
@@ -341,7 +435,7 @@ class ToolFormAnswerSerializer(serializers.Serializer):
                 file_name = execute_args.get('output')
                 if file_name:
                     random_str = ''.join(
-                        random.sample(string.digits+string.ascii_lowercase, 6))
+                        random.sample(string.digits + string.ascii_lowercase, 6))
                     file_name = f"{random_str}-{file_name}"
                     execute_args["output"] = os.path.join(
                         remote_folder,
@@ -373,3 +467,9 @@ class ToolExecuteHistoryListSerializer(serializers.ModelSerializer):
         model = ToolExecuteMainHistory
         fields = ("id", "tool_id", "task_name", "kind", "start_time",
                   "status", "duration")
+
+
+class TestResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ToolExecuteDetailHistory
+        fields = ("status", "execute_log")

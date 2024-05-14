@@ -15,42 +15,39 @@ const BatchInstallationModal = ({
   bIModalVisibility,
   setBIModalVisibility,
   dataSource,
+  deployListInfo,
   installTitle,
   initLoading,
+  context,
 }) => {
   const uniqueKey = useSelector((state) => state.appStore.uniqueKey);
-
   const reduxDispatch = useDispatch();
-
   const [loading, setLoading] = useState(false);
-
   const history = useHistory();
-
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-  // console.log(checkedList)
   //应用服务选择的版本号
   const versionInfo = useRef({});
+  const [deployTypeList, setDeployTypeList] = deployListInfo;
+  // 高可用是否开启
+  const [highAvailabilityCheck, setHighAvailabilityCheck] = useState(false);
 
   const columns = [
     {
-      title: "名称",
+      title: context.appName,
       key: "name",
       dataIndex: "name",
       align: "center",
       ellipsis: true,
-      width: 80,
-      render: (text, record) => {
-        return text;
-      },
+      width: 100,
     },
     {
-      title: "版本",
+      title: context.version,
       key: "version",
       dataIndex: "version",
       align: "center",
       ellipsis: true,
-      width: 120,
+      width: 100,
       render: (text, record) => {
         return (
           <Select
@@ -59,6 +56,8 @@ const BatchInstallationModal = ({
             style={{ width: 120 }}
             onSelect={(v) => {
               versionInfo.current[record.name] = v;
+              deployTypeList[record.name] = "default";
+              setDeployTypeList(deployTypeList);
             }}
           >
             {text.map((item) => {
@@ -72,10 +71,53 @@ const BatchInstallationModal = ({
         );
       },
     },
+    {
+      title: context.deployment + context.ln + context.type,
+      key: "deploy_list",
+      dataIndex: "deploy_list",
+      align: "center",
+      ellipsis: true,
+      width: 140,
+      render: (text, record) => {
+        const version = versionInfo.current[record.name] || record.version[0];
+        const deployArr = record.deploy_list[version];
+        if (deployArr.length === 0) {
+          return (
+            <span
+              style={{
+                fontSize: 14,
+                right: 120,
+              }}
+            >
+              {context.general}
+            </span>
+          );
+        }
+        return (
+          <Select
+            defaultValue={"default"}
+            style={{ width: 140, textAlign: "left" }}
+            value={deployTypeList[record.name]}
+            onSelect={(v) => {
+              deployTypeList[record.name] = v;
+              setDeployTypeList(deployTypeList);
+            }}
+          >
+            <Select.Option value="default" key="default">
+              {context.general}
+            </Select.Option>
+            {deployArr.map((item) => {
+              return (
+                <Select.Option value={item} key={item}>
+                  {item}
+                </Select.Option>
+              );
+            })}
+          </Select>
+        );
+      },
+    },
   ];
-
-  // 高可用是否开启
-  const [highAvailabilityCheck, setHighAvailabilityCheck] = useState(false);
 
   // 批量安装/服务安装选择确认请求
   const createInstallInfo = (install_product) => {
@@ -88,7 +130,6 @@ const BatchInstallationModal = ({
       },
     })
       .then((res) => {
-        //console.log(operateObj[operateAciton])
         handleResponse(res, (res) => {
           if (res.data && res.data.data) {
             reduxDispatch(getStep1ChangeAction(res.data.data));
@@ -112,7 +153,6 @@ const BatchInstallationModal = ({
       },
     })
       .then((res) => {
-        //console.log(operateObj[operateAciton])
         handleResponse(res, (res) => {
           if (res.data && res.data.data) {
             reduxDispatch(getStep1ChangeAction(res.data.data));
@@ -131,7 +171,7 @@ const BatchInstallationModal = ({
     // 选中全部
     setCheckedList(dataSource.filter((item) => item.is_continue));
   }, [dataSource]);
-  // console.log(checkedList)
+
   return (
     <Modal
       title={
@@ -141,10 +181,10 @@ const BatchInstallationModal = ({
           </span>
           <span>
             {installTitle == "服务"
-              ? "服务安装-选择版本"
+              ? context.install + context.ln + context.application
               : installTitle == "组件"
-              ? "组件安装-选择版本"
-              : "批量安装-选择应用服务"}
+              ? context.install + context.ln + context.component
+              : context.batch + context.ln + context.install}
           </span>
         </span>
       }
@@ -152,12 +192,9 @@ const BatchInstallationModal = ({
         setCheckedList([]);
         setHighAvailabilityCheck(false);
       }}
-      onCancel={() => {
-        setBIModalVisibility(false);
-      }}
+      onCancel={() => setBIModalVisibility(false)}
       visible={bIModalVisibility}
       footer={null}
-      //width={1000}
       loading={loading}
       bodyStyle={{
         paddingLeft: 30,
@@ -166,17 +203,15 @@ const BatchInstallationModal = ({
       destroyOnClose
     >
       <div>
+        {/* -- 表格 -- */}
         <div style={{ border: "1px solid rgb(235, 238, 242)" }}>
           <OmpTable
             size="small"
             scroll={{ y: 270 }}
             loading={loading || initLoading}
-            //scroll={{ x: 1900 }}
             columns={columns}
             dataSource={dataSource}
-            rowKey={(record) => {
-              return record.name;
-            }}
+            rowKey={(record) => record.name}
             checkedState={[checkedList, setCheckedList]}
             pagination={false}
             notSelectable={(record) => ({
@@ -188,6 +223,8 @@ const BatchInstallationModal = ({
             }}
           />
         </div>
+
+        {/* -- 高可用 -- */}
         <div
           style={{
             display: "flex",
@@ -197,22 +234,24 @@ const BatchInstallationModal = ({
           }}
         >
           <div style={{ display: "flex", alignItems: "center" }}>
-            高可用
+            {context.highAvailability}
             <Switch
               style={{ marginLeft: 10 }}
               checked={highAvailabilityCheck}
-              onChange={(e) => {
-                setHighAvailabilityCheck(e);
-              }}
+              onChange={(e) => setHighAvailabilityCheck(e)}
             />
           </div>
           <div style={{ display: "flex" }}>
             <div style={{ marginRight: 15 }}>
-              已选择 {checkedList.length} 个
+              {context.selected} {checkedList.length} {context.ge}
             </div>
-            <div>共 {dataSource.length} 个</div>
+            <div>
+              {context.total} {dataSource.length} {context.ge}
+            </div>
           </div>
         </div>
+
+        {/* -- 取消/确认 -- */}
         <div
           style={{ display: "flex", justifyContent: "center", marginTop: 30 }}
         >
@@ -223,7 +262,9 @@ const BatchInstallationModal = ({
               justifyContent: "space-between",
             }}
           >
-            <Button onClick={() => setBIModalVisibility(false)}>取消</Button>
+            <Button onClick={() => setBIModalVisibility(false)}>
+              {context.cancel}
+            </Button>
             <Button
               type="primary"
               style={{ marginLeft: 16 }}
@@ -236,6 +277,7 @@ const BatchInstallationModal = ({
                       name: item.name,
                       version:
                         versionInfo.current[item.name] || item.version[0],
+                      self_deploy_mode: deployTypeList[item.name],
                     };
                   });
                   createComponentInstallInfo(install_product);
@@ -245,14 +287,14 @@ const BatchInstallationModal = ({
                       name: item.name,
                       version:
                         versionInfo.current[item.name] || item.version[0],
+                      self_deploy_mode: deployTypeList[item.name],
                     };
                   });
                   createInstallInfo(install_product);
-                  // history.push("/application_management/app_store/installation")
                 }
               }}
             >
-              确认选择
+              {context.ok}
             </Button>
           </div>
         </div>

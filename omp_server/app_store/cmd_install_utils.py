@@ -60,6 +60,9 @@ class ReadDeploymentExcel(object):
                 row_data["row"] = i + 1
             if not row_data:
                 continue
+            data_set = set(row_data.values())
+            if len(data_set) == 2:
+                continue
             # 把字典加到列表中
             _res.append(row_data)
         return _res
@@ -118,6 +121,7 @@ class ReadDeploymentExcel(object):
                 item["init_host"] = True
             else:
                 item["init_host"] = False
+                item["run_user"] = item["username"]
             if "ntpd_server" in item and item["ntpd_server"] != "":
                 item["use_ntpd"] = True
             else:

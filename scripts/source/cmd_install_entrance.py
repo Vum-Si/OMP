@@ -108,6 +108,11 @@ class MainProcess(object):
         if not _flag:
             return False, _data
         self.host = _data["host"]
+        for line in _data["host"]:
+            if not line.get("run_user"):
+                line["run_user"] = line.get("username") \
+                    if line.get("username") != "root" else "commonuser"
+        self.host = _data["host"]
         self.service = _data["service"]
         return True, "成功解析表格数据"
 
@@ -276,8 +281,8 @@ class MainProcess(object):
                 self.print_log("***** 所有服务安装成功 *****")
                 break
             if break_flag and not MainInstallHistory.objects.filter(
-                operation_uuid=self.operation_uuid,
-                install_status=MainInstallHistory.INSTALL_STATUS_INSTALLING
+                    operation_uuid=self.operation_uuid,
+                    install_status=MainInstallHistory.INSTALL_STATUS_INSTALLING
             ).exists():
                 continue_flag = False
         if break_flag:

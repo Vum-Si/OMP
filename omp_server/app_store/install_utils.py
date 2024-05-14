@@ -39,6 +39,16 @@ from utils.plugin.salt_client import SaltClient
 DIR_KEY = "{data_path}"
 
 
+def get_pro_app(pro_name, pro_version):
+    pro_objs = ProductHub.objects.filter(pro_name, pro_version).order_by("-created")
+    pro_obj = pro_objs.first()
+    for obj in pro_objs:
+        if Product.objects.filter(product__pro_name=obj.pro_name):
+            pro_obj = obj
+            break
+    return pro_obj
+
+
 def make_lst_unique(lst, key_1, key_2):
     """
     去重列表内的字典
@@ -100,7 +110,7 @@ class DataJson(object):
         """
         self.operation_uuid = operation_uuid
 
-    def get_ser_install_args(self, obj):    # NOQA
+    def get_ser_install_args(self, obj):  # NOQA
         """
         获取服务的安装参数
         :param obj: Service
@@ -227,7 +237,7 @@ class SerDependenceParseUtils(object):
                 is_pack_exist = True
         return cluster_info, instance_info, is_pack_exist
 
-    def get_deploy_mode(self, obj):     # NOQA
+    def get_deploy_mode(self, obj):  # NOQA
         """
         解析服务的部署模式信息
         [
@@ -250,7 +260,7 @@ class SerDependenceParseUtils(object):
             ret_lst.extend(deploy_info["complex"])
         return ret_lst
 
-    def get_is_base_env(self, obj):     # NOQA
+    def get_is_base_env(self, obj):  # NOQA
         """
         确定当前服务是否为基础环境：如 jdk 等
         :param obj: 服务对象
@@ -359,7 +369,7 @@ class ProDependenceParseUtils(object):
         self.parse_version = parse_version
         self.unique_key = self.parse_name + self.parse_version
 
-    def get_pro_instances(self, obj):   # NOQA
+    def get_pro_instances(self, obj):  # NOQA
         """
         获取产品的实例信息，被依赖产品是否已经被安装
         :param obj: 应用实例对象
@@ -383,11 +393,7 @@ class ProDependenceParseUtils(object):
         unique_key_lst = list()
         for inner in dep:
             _name, _version = inner.get("name"), inner.get("version")
-            _pro = ProductHub.objects.filter(
-                pro_name=_name,
-                pro_version=_version,
-                is_release=True
-            ).order_by("created").last()
+            _pro = get_pro_app(_name, _version)
             # 定义服务&版本唯一标准，防止递归错误
             unique_key = str(_name) + str(_version)
             # 如果当前产品和需要被解析的源产品重叠，那么则跳过
@@ -455,7 +461,7 @@ class ServiceArgsSerializer(object):
         ser = SerDependenceParseUtils(obj.app_name, obj.app_version)
         return ser.run_ser()
 
-    def get_app_port(self, obj):    # NOQA
+    def get_app_port(self, obj):  # NOQA
         """
         获取app的端口
         :param obj: 服务对象
@@ -520,7 +526,7 @@ class ServiceArgsSerializer(object):
             return False, f"服务{obj.app_name}的安装包无法找到"
         return True, "success"
 
-    def get_process_continue(self, obj):    # NOQA
+    def get_process_continue(self, obj):  # NOQA
         """
         解析能否继续进行的标志接口
         :param obj: 服务对象
@@ -530,7 +536,7 @@ class ServiceArgsSerializer(object):
         flag, _ = self._process_continue_parse(obj)
         return flag
 
-    def get_process_message(self, obj):    # NOQA
+    def get_process_message(self, obj):  # NOQA
         """
         解析能否继续进行的信息接口
         :param obj: 服务对象
@@ -555,7 +561,7 @@ class ValidateExistService(object):
                 "ValidateExistService __init__ arg error: data")
         self.data = data
 
-    def check_cluster(self, dic):   # NOQA
+    def check_cluster(self, dic):  # NOQA
         """
         校验集群信息是否准确
         :param dic: 集群信息字典
@@ -570,7 +576,7 @@ class ValidateExistService(object):
         dic["check_msg"] = f"复用已存在集群{dic.get('id', 'UNKNOWN')}不存在"
         return dic
 
-    def check_single(self, dic):    # NOQA
+    def check_single(self, dic):  # NOQA
         """
         检查服务的合法性
         :param dic: 服务信息字典
@@ -616,7 +622,7 @@ class ValidateInstallService(object):
             )
         self.data = data
 
-    def check_service_port(self, app_port, ip):     # NOQA
+    def check_service_port(self, app_port, ip):  # NOQA
         """
         检查服务端口
         :param app_port: 服务端口列表
@@ -685,7 +691,7 @@ class ValidateInstallService(object):
                 el["check_msg"] = f"{_tobe_check_path} 在目标主机 {ip} 上已存在"
         return app_install_args
 
-    def check_single_service(self, dic):    # NOQA
+    def check_single_service(self, dic):  # NOQA
         """
         检查单个服务的安装信息
         :param dic: 服务安装信息
@@ -812,7 +818,7 @@ class CreateInstallPlan(object):
         self.install_type = install_data["install_type"]
         self.install_services = install_data["install_services"]
 
-    def get_app_obj_for_service(self, dic):     # NOQA
+    def get_app_obj_for_service(self, dic):  # NOQA
         """
         获取服务实例表中关联的app对象
         :param dic: 服务数据
@@ -823,7 +829,7 @@ class CreateInstallPlan(object):
             app_name=dic["name"], app_version=dic["version"]
         ).last()
 
-    def get_app_port_for_service(self, dic):    # NOQA
+    def get_app_port_for_service(self, dic):  # NOQA
         """
         获取服务实例上设置的端口信息
         :param dic: 服务数据
@@ -874,7 +880,7 @@ class CreateInstallPlan(object):
         # TODO 暂时使用默认环境
         return Env.objects.last()
 
-    def create_connect_info(self, dic):     # NOQA
+    def create_connect_info(self, dic):  # NOQA
         """
         创建或获取服务的用户名、密码信息
         :param dic: 服务数据
@@ -947,7 +953,7 @@ class CreateInstallPlan(object):
         _ser_obj.save()
         return _ser_obj
 
-    def create_product_instance(self, dic):     # NOQA
+    def create_product_instance(self, dic):  # NOQA
         """
         创建产品实例
         :param dic: 服务数据
@@ -963,7 +969,7 @@ class CreateInstallPlan(object):
             product=self.get_app_obj_for_service(dic).product
         )
 
-    def check_if_has_post_action(self, ser):    # NOQA
+    def check_if_has_post_action(self, ser):  # NOQA
         """
         检测是否需要执行安装后的动作
         :param ser: 服务对象

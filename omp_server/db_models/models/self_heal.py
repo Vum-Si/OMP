@@ -2,6 +2,23 @@ from django.db import models
 from django.core.validators import MaxValueValidator
 
 
+# class SelfHealingType(models.Model):
+#    REPAIR_CHOICES = [
+#        (0, "启动"),
+#        (1, "重新启动")
+#    ]
+# INSTANCE_TYPE = [
+#    (0, "主机"),
+#    (1, "服务")
+# ]
+# repair_tp = models.IntegerField("自愈动作类别", choices=REPAIR_CHOICES, default=0)
+#    instance_tp = models.IntegerField("实例类别", choices=REPAIR_CHOICES)
+
+#    class Meta:
+#        db_table = "omp_self_healing_type"
+#        verbose_name = verbose_name_plural = "自愈类别"
+
+
 class WaitSelfHealing(models.Model):
     # 0 等待自愈 1 自愈中 存在自愈中的服务不被允许再次触发自愈，保证自愈过程中只有一个自愈在进行。
     service_name = models.CharField("自愈服务名称", max_length=64, default="")
@@ -14,12 +31,11 @@ class WaitSelfHealing(models.Model):
 
 
 class SelfHealingSetting(models.Model):
-    """自愈策略设置表"""
     REPAIR_CHOICES = [
         (0, "启动"),
         (1, "重新启动")
     ]
-
+    """自愈策略设置表"""
     used = models.BooleanField("是否启用", default=False)
     max_healing_count = models.IntegerField("最多自愈操作次数", default=5, validators=[MaxValueValidator(20)])
     fresh_rate = models.IntegerField("周期内采集告警消息频次", default=10, validators=[MaxValueValidator(60)])

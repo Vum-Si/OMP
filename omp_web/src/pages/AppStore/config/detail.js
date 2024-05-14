@@ -1,20 +1,37 @@
-import img from "@/config/logo/logo.svg";
 import styles from "./index.module.less";
 import { LeftOutlined } from "@ant-design/icons";
-import { Button, message, Select, Spin, Table } from "antd";
+import { message, Select, Spin, Table } from "antd";
 import { useEffect, useState } from "react";
 import { fetchGet, fetchPost } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import { useHistory, useLocation } from "react-router-dom";
 import { handleResponse } from "@/utils/utils";
-import imgObj from "./img";
 import moment from "moment";
 import { getTabKeyChangeAction } from "../store/actionsCreators";
 import { useDispatch } from "react-redux";
 import { getStep1ChangeAction } from "./Installation/store/actionsCreators";
 import { getUniqueKeyChangeAction } from "../store/actionsCreators";
+import { locales } from "@/config/locales";
 
-const AppStoreDetail = () => {
+const englishMap = {
+  中间件: "middleware",
+  环境组件: "env",
+  数据库: "database",
+  消息队列: "queue",
+  分布式存储: "distributed storage",
+  时间序列数据库: "time-series DB",
+  配置中心: "configuration",
+  服务监控: "monitor",
+  任务调度: "task scheduling",
+  自研服务: "self developed",
+  缓存中间件: "cache",
+  反向代理: "reverse proxy",
+  注册与配置中心: "configuration",
+  监控客户端: "monitor client",
+  链路监控: "link monitor",
+};
+
+const AppStoreDetail = ({ locale }) => {
   const dispatch = useDispatch();
   const history = useHistory();
   const location = useLocation();
@@ -23,6 +40,14 @@ const AppStoreDetail = () => {
   let verson = arr[arr.length - 1];
   // true 是组件， false是服务
   let keyTab = location.pathname.includes("component");
+  const [loading, setLoading] = useState(false);
+  const [dataSource, setDataSource] = useState({});
+  const [versionValue, setVersionValue] = useState("");
+  // 定义全部实例信息
+  const [allInstancesInfo, setAllInstancesInfo] = useState([]);
+  // 是否查看全部版本
+  const [isAll, setIsAll] = useState(false);
+  const context = locales[locale].common;
 
   //定义命名
   let nameObj = keyTab
@@ -32,12 +57,12 @@ const AppStoreDetail = () => {
         version: "app_version",
         description: "app_description",
         instance_number: "instance_number",
+        package_name: "app_package_name",
         package_md5: "app_package_md5",
         type: "app_labels",
         user: "app_operation_user",
         dependence: "app_dependence",
         instances_info: "app_instances_info",
-        install_url: "/application_management/app_store/component_installation",
       }
     : {
         logo: "pro_logo",
@@ -45,32 +70,16 @@ const AppStoreDetail = () => {
         version: "pro_version",
         description: "pro_description",
         instance_number: "instance_number",
+        package_name: "pro_package_name",
         package_md5: "pro_package_md5",
         type: "pro_labels",
         user: "pro_operation_user",
         dependence: "pro_dependence",
         pro_services: "pro_services",
         instances_info: "pro_instances_info",
-        install_url:
-          "/application_management/app_store/application_installation",
       };
 
-  const [loading, setLoading] = useState(false);
-
-  const [dataSource, setDataSource] = useState({});
-
-  const [versionValue, setVersionValue] = useState("");
-
-  // 安装操作的loading
-  const [installLoading, setInstallLoading] = useState(false);
-
-  // 定义全部实例信息
-  const [allInstancesInfo, setAllInstancesInfo] = useState([]);
-
-  // 是否查看全部版本
-  const [isAll, setIsAll] = useState(false);
-
-  function fetchData() {
+  const fetchData = () => {
     setLoading(true);
     fetchGet(
       keyTab
@@ -122,89 +131,11 @@ const AppStoreDetail = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   let currentVersionDataSource = dataSource.versionObj
     ? dataSource.versionObj[versionValue]
     : {};
-
-  const install = () => {
-    setInstallLoading(true);
-    if (keyTab) {
-      fetchPost(apiRequest.appStore.createComponentInstallInfo, {
-        body: {
-          high_availability: true,
-          install_component: [
-            { name: dataSource[nameObj.name], version: versionValue },
-          ],
-        },
-      })
-        .then((res) => {
-          //console.log(operateObj[operateAciton])
-          handleResponse(res, (res) => {
-            if (res.data && res.data.data) {
-              dispatch(getStep1ChangeAction(res.data.data));
-              dispatch(getUniqueKeyChangeAction(res.data.unique_key));
-            }
-            history.push("/application_management/app_store/installation");
-          });
-        })
-        .catch((e) => console.log(e))
-        .finally(() => {
-          setInstallLoading(false);
-        });
-    } else {
-      fetchGet(apiRequest.appStore.queryBatchInstallationServiceList, {
-        params: {
-          product_name: dataSource[nameObj.name],
-        },
-      })
-        .then((res) => {
-          handleResponse(res, (res) => {
-            if (res.data && res.data.data) {
-              if (res.data.data.length == 1 && res.data.data[0].is_continue) {
-                dispatch(getUniqueKeyChangeAction(res.data.unique_key));
-                fetchPost(apiRequest.appStore.createInstallInfo, {
-                  body: {
-                    high_availability: true,
-                    install_product: [
-                      {
-                        name: dataSource[nameObj.name],
-                        version: versionValue,
-                      },
-                    ],
-                    unique_key: res.data.unique_key,
-                  },
-                })
-                  .then((res) => {
-                    //console.log(operateObj[operateAciton])
-                    handleResponse(res, (res) => {
-                      if (res.data && res.data.data) {
-                        dispatch(getStep1ChangeAction(res.data.data));
-                      }
-                      history.push(
-                        "/application_management/app_store/installation"
-                      );
-                    });
-                  })
-                  .catch((e) => console.log(e))
-                  .finally(() => {
-                    setInstallLoading(false);
-                  });
-              } else {
-                message.warning("该应用已经存在，不可重复安装");
-                setInstallLoading(false);
-              }
-              // console.log(res.data.data);
-              // setBIserviceList(res.data.data);
-            }
-          });
-        })
-        .catch((e) => console.log(e))
-        .finally(() => {});
-      // console.log("服务");
-    }
-  };
 
   let tableData = isAll
     ? allInstancesInfo
@@ -217,6 +148,7 @@ const AppStoreDetail = () => {
   return (
     <div className={styles.detailContainer}>
       <Spin spinning={loading}>
+        {/* -- 顶部名称/版本 -- */}
         <div className={styles.detailHeader}>
           <div>
             <LeftOutlined
@@ -236,21 +168,9 @@ const AppStoreDetail = () => {
             </span>
           </div>
           <div style={{ marginRight: 30 }}>
-            {/* <Button
-              style={{ marginRight: 20 }}
-              onClick={() => {
-                history?.push({
-                  pathname: `${nameObj.install_url}/${
-                    dataSource[nameObj.name]
-                  }`,
-                });
-              }}
-            >
-              安装
-            </Button> */}
-            版本:{" "}
+            {context.version + " : "}
             <Select
-              style={{ width: 160, marginLeft: 10 }}
+              style={{ marginLeft: 10 }}
               value={versionValue}
               onChange={(e) => {
                 setIsAll(false);
@@ -268,6 +188,8 @@ const AppStoreDetail = () => {
             </Select>
           </div>
         </div>
+
+        {/* -- logo -- */}
         <div className={styles.detailTitle}>
           <div
             style={{
@@ -279,7 +201,6 @@ const AppStoreDetail = () => {
               justifyContent: "center",
               alignItems: "center",
               overflow: "hidden",
-              //padding: 10,
             }}
           >
             {currentVersionDataSource[nameObj.logo] ? (
@@ -323,37 +244,27 @@ const AppStoreDetail = () => {
             <div className={styles.detailTitleDescribeText}>
               {currentVersionDataSource[nameObj.description]}
             </div>
-            <Button
-              loading={installLoading}
-              onClick={() => {
-                install();
-                // history?.push({
-                //   pathname: `${nameObj.install_url}/${
-                //     dataSource[nameObj.name]
-                //   }`,
-                // });
-              }}
-              // block
-              type="primary"
-              size="small"
-              style={{
-                position: "absolute",
-                bottom: 0,
-                paddingLeft: 20,
-                paddingRight: 20,
-              }}
-            >
-              安装
-            </Button>
           </div>
         </div>
+
+        {/* -- 类型/时间/md5/发布人 -- */}
         <div className={styles.detailContent}>
           <div className={styles.detailContentItem}>
-            <div className={styles.detailContentItemLabel}>类别:</div>
-            <div>{currentVersionDataSource[nameObj.type]?.join(",")}</div>
+            <div className={styles.detailContentItemLabel}>
+              {context.type + " : "}
+            </div>
+            <div>
+              {locale === "zh-CN"
+                ? currentVersionDataSource[nameObj.type]?.join(", ")
+                : currentVersionDataSource[nameObj.type]
+                    ?.map((e) => englishMap[e])
+                    .join(", ")}
+            </div>
           </div>
           <div className={styles.detailContentItem}>
-            <div className={styles.detailContentItemLabel}>发布时间:</div>
+            <div className={styles.detailContentItemLabel}>
+              {context.created + " : "}
+            </div>
             <div>
               {moment(currentVersionDataSource?.created).format(
                 "YYYY-MM-DD HH:mm:ss"
@@ -361,29 +272,40 @@ const AppStoreDetail = () => {
             </div>
           </div>
           <div className={styles.detailContentItem}>
-            <div className={styles.detailContentItemLabel}>MD5:</div>
+            <div className={styles.detailContentItemLabel}>
+              {context.package + " : "}
+            </div>
+            <div>{currentVersionDataSource[nameObj.package_name]}</div>
+          </div>
+          <div className={styles.detailContentItem}>
+            <div className={styles.detailContentItemLabel}>MD5 : </div>
             <div>{currentVersionDataSource[nameObj.package_md5]}</div>
           </div>
           <div className={styles.detailContentItem}>
-            <div className={styles.detailContentItemLabel}>发布人:</div>
+            <div className={styles.detailContentItemLabel}>
+              {context.operator + " : "}
+            </div>
             <div>{currentVersionDataSource[nameObj.user]}</div>
           </div>
         </div>
+
+        {/* -- 依赖信息 -- */}
         <div className={styles.detailDependence}>
-          <div>依赖信息</div>
-          {currentVersionDataSource[nameObj.dependence] ? (
+          <div>{context.application + context.ln + context.dependence}</div>
+          {JSON.parse(currentVersionDataSource[nameObj.dependence] || "[]")
+            ?.length > 0 ? (
             <div className={styles.detailDependenceTable}>
               <Table
                 size="middle"
                 columns={[
                   {
-                    title: "名称",
+                    title: context.application + context.name,
                     key: "name",
                     dataIndex: "name",
                     align: "center",
                   },
                   {
-                    title: "版本",
+                    title: context.version,
                     key: "version",
                     dataIndex: "version",
                     align: "center",
@@ -396,55 +318,57 @@ const AppStoreDetail = () => {
               />
             </div>
           ) : (
-            <p style={{ paddingTop: 10 }}>无</p>
+            <p style={{ paddingTop: 10, fontSize: 14, marginLeft: 20 }}>
+              {context.none}
+            </p>
           )}
         </div>
+
+        {/* -- 包含服务 -- */}
         {!keyTab && (
           <div className={styles.detailDependence}>
-            <div>包含服务</div>
+            <div>{context.including + context.ln + context.service}</div>
             {currentVersionDataSource.pro_services ? (
-              <div
-                className={styles.detailDependenceTable}
-                //style={{ width: 800 }}
-              >
+              <div className={styles.detailDependenceTable}>
                 <Table
                   size="middle"
                   columns={[
                     {
-                      title: "名称",
+                      title: context.service + context.ln + context.name,
                       key: "name",
                       dataIndex: "name",
                       align: "center",
                     },
                     {
-                      title: "版本",
+                      title: context.version,
                       key: "version",
                       dataIndex: "version",
                       align: "center",
-                      render: (text) => {
-                        return text || "-";
-                      },
+                      render: (text) => text || "-",
+                    },
+                    {
+                      title: context.package + context.ln + context.name,
+                      key: "package_name",
+                      dataIndex: "package_name",
+                      align: "center",
+                      render: (text) => text || "-",
                     },
                     {
                       title: "MD5",
                       key: "md5",
                       dataIndex: "md5",
                       align: "center",
-                      render: (text) => {
-                        return text || "-";
-                      },
+                      render: (text) => text || "-",
                     },
                     {
-                      title: "发布时间",
+                      title: context.created,
                       key: "created",
                       dataIndex: "created",
                       align: "center",
-                      render: (text) => {
-                        return text || "-";
-                      },
+                      render: (text) => text || "-",
                     },
                     {
-                      title: "安装",
+                      title: context.action,
                       key: "c",
                       dataIndex: "c",
                       align: "center",
@@ -458,15 +382,17 @@ const AppStoreDetail = () => {
                                 {
                                   body: {
                                     high_availability: false,
-                                    install_component: [{
-                                      name:record.name,
-                                      version:record.version
-                                    }],
+                                    install_component: [
+                                      {
+                                        name: record.name,
+                                        version: record.version,
+                                        self_deploy_mode: "",
+                                      },
+                                    ],
                                   },
                                 }
                               )
                                 .then((res) => {
-                                  //console.log(operateObj[operateAciton])
                                   handleResponse(res, (res) => {
                                     if (res.data && res.data.data) {
                                       dispatch(
@@ -489,7 +415,7 @@ const AppStoreDetail = () => {
                                 });
                             }}
                           >
-                            点击安装
+                            {context.install}
                           </a>
                         );
                       },
@@ -500,84 +426,85 @@ const AppStoreDetail = () => {
                 />
               </div>
             ) : (
-              <p style={{ paddingTop: 10 }}>无</p>
+              <p style={{ paddingTop: 10, fontSize: 14, marginLeft: 20 }}>
+                {context.none}
+              </p>
             )}
           </div>
         )}
+
+        {/* -- 实例信息 -- */}
         {keyTab ? (
           <div className={styles.detailDependence}>
             <div>
-              实例信息
+              {context.serviceInstance}
               <span style={{ paddingLeft: 20, fontSize: 14, color: "#1f8aee" }}>
                 {isAll ? (
                   <span
                     style={{ cursor: "pointer" }}
-                    onClick={() => {
-                      setIsAll(false);
-                    }}
+                    onClick={() => setIsAll(false)}
                   >
-                    查看当前版本
+                    {context.current + context.ln + context.version}
                   </span>
                 ) : (
                   <span
                     style={{ cursor: "pointer" }}
-                    onClick={() => {
-                      setIsAll(true);
-                    }}
+                    onClick={() => setIsAll(true)}
                   >
-                    查看全部版本
+                    {context.all + context.ln + context.version}
                   </span>
                 )}
               </span>
             </div>
             {tableData && tableData.length == 0 ? (
-              <p style={{ paddingTop: 10 }}>无</p>
+              <p style={{ paddingTop: 10, fontSize: 14, marginLeft: 20 }}>
+                {context.none}
+              </p>
             ) : (
-              <div
-                className={styles.detailDependenceTable}
-                //style={{ width: 800 }}
-              >
+              <div className={styles.detailDependenceTable}>
                 <Table
                   size="middle"
                   columns={[
                     {
-                      title: "实例名称",
+                      title: context.serviceInstance,
                       key: "instance_name",
                       dataIndex: "instance_name",
                       align: "center",
                     },
                     {
-                      title: "主机IP",
+                      title: context.ip,
                       key: "host_ip",
                       dataIndex: "host_ip",
                       align: "center",
                     },
                     {
-                      title: "端口",
+                      title: context.port,
                       key: "service_port",
                       dataIndex: "service_port",
                       align: "center",
                       render: (text) => {
-                        if (!text) {
+                        if (text.length === 0) {
                           return "-";
                         }
                         return text.map((i) => i.default).join(", ");
                       },
                     },
                     {
-                      title: "版本",
+                      title: context.version,
                       key: "app_version",
                       dataIndex: "app_version",
                       align: "center",
                     },
                     {
-                      title: "模式",
+                      title: context.clusterMode,
                       key: "mode",
                       dataIndex: "mode",
                       align: "center",
+                      render: (text) =>
+                        text === "单实例" ? context.single : context.cluster,
                     },
                     {
-                      title: "安装时间",
+                      title: context.created,
                       key: "created",
                       dataIndex: "created",
                       align: "center",
@@ -586,7 +513,6 @@ const AppStoreDetail = () => {
                       },
                     },
                   ]}
-                  //pagination={false}
                   dataSource={tableData}
                 />
               </div>
@@ -595,7 +521,7 @@ const AppStoreDetail = () => {
         ) : (
           <div className={styles.detailDependence}>
             <div>
-              实例信息
+              {context.serviceInstance}
               <span style={{ paddingLeft: 20, fontSize: 14, color: "#1f8aee" }}>
                 {isAll ? (
                   <span
@@ -604,7 +530,7 @@ const AppStoreDetail = () => {
                       setIsAll(false);
                     }}
                   >
-                    查看当前版本
+                    {context.current + context.ln + context.version}
                   </span>
                 ) : (
                   <span
@@ -613,65 +539,64 @@ const AppStoreDetail = () => {
                       setIsAll(true);
                     }}
                   >
-                    查看全部版本
+                    {context.all + context.ln + context.version}
                   </span>
                 )}
               </span>
             </div>
             {tableData && tableData.length == 0 ? (
-              <p style={{ paddingTop: 10 }}>无</p>
+              <p style={{ paddingTop: 10, fontSize: 14, marginLeft: 20 }}>
+                {context.none}
+              </p>
             ) : (
-              <div
-                className={styles.detailDependenceTable}
-                //style={{ width: "100%" }}
-              >
+              <div className={styles.detailDependenceTable}>
                 <Table
                   size="middle"
                   columns={[
                     {
-                      title: "实例名称",
+                      title: context.serviceInstance,
                       key: "instance_name",
                       dataIndex: "instance_name",
                       align: "center",
                     },
                     {
-                      title: "版本",
+                      title: context.version,
                       key: "version",
                       dataIndex: "version",
                       align: "center",
                     },
                     {
-                      title: "服务名称",
+                      title: context.service + context.ln + context.name,
                       key: "app_name",
                       dataIndex: "app_name",
                       align: "center",
                     },
                     {
-                      title: "服务版本",
+                      title: context.version,
                       key: "app_version",
                       dataIndex: "app_version",
                       align: "center",
                     },
                     {
-                      title: "主机IP",
+                      title: context.ip,
                       key: "host_ip",
                       dataIndex: "host_ip",
                       align: "center",
                     },
                     {
-                      title: "端口",
+                      title: context.port,
                       key: "service_port",
                       dataIndex: "service_port",
                       align: "center",
                       render: (text) => {
-                        if (!text) {
+                        if (text.length === 0) {
                           return "-";
                         }
                         return text.map((i) => i.default).join(",");
                       },
                     },
                     {
-                      title: "安装时间",
+                      title: context.created,
                       key: "created",
                       dataIndex: "created",
                       align: "center",
@@ -680,7 +605,6 @@ const AppStoreDetail = () => {
                       },
                     },
                   ]}
-                  //pagination={false}
                   dataSource={tableData}
                 />
               </div>

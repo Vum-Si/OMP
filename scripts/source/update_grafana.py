@@ -30,7 +30,7 @@ sys.path.append(os.path.join(PROJECT_DIR, "omp_server"))
 # 加载Django环境
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "omp_server.settings")
 django.setup()
-from utils.parse_config import PROMETHEUS_AUTH, GRAFANA_AUTH
+from utils.parse_config import GRAFANA_AUTH
 from utils.plugin.synch_grafana import synch_grafana_info
 
 
@@ -153,83 +153,6 @@ class Grafana(object):
             return True, "success"
         return False, f"Create omp user failed with error: {create_message}"
 
-    def create_data_source(self):
-        """
-        创建数据源
-        :return:
-        """
-        prometheus_content = {
-            "name": "Prometheus",
-            "type": "prometheus",
-            "url": f"{AGREE}://{self.prometheus_ip}:{self.prometheus_port}",
-            "access": "proxy",
-            "basicAuth": True,
-            "basicAuthUser": "omp",
-            "secureJsonData": {
-                "basicAuthPassword": PROMETHEUS_AUTH.get("plaintext_password")
-            }
-        }
-        loki_content = {
-            "name": "Loki",
-            "type": "loki",
-            "url": f"{AGREE}://{self.loki_ip}:{self.loki_port}",
-            "access": "proxy",
-            "basicAuth": False
-        }
-        # 创建prometheus数据源
-        pro_flag, pro_msg = self.post(
-            url=self.data_source_url,
-            data=prometheus_content,
-            auth=self.basic_auth
-        )
-        if not pro_flag:
-            return pro_flag, pro_msg
-        # 创建loki数据源
-        loki_flag, loki_msg = self.post(
-            url=self.data_source_url,
-            data=loki_content,
-            auth=self.basic_auth
-        )
-        if not loki_flag:
-            return loki_flag, loki_msg
-        return True, "success"
-
-    def update_one_dashboard(self, dashboard_content):
-        """
-        更新dashboard面板
-        :param dashboard_content: 字符串json数据
-        :return:
-        """
-        if not dashboard_content or not json.loads(dashboard_content):
-            return False, "content can not be null!"
-        dashboard_json = json.loads(dashboard_content)
-        if 'id' not in dashboard_json.get('dashboard').keys() or \
-                'uid' not in dashboard_json.get('dashboard').keys():
-            return False, "dashboard content error"
-        dashboard_json["dashboard"]["id"] = "null"
-        flag, res = self.post(
-            url=self.dashboard_url,
-            data=dashboard_json,
-            auth=self.basic_auth
-        )
-        if not flag:
-            return flag, res
-        return True, "success"
-
-    def update_dashboard(self):
-        """
-        读取grafana面板信息并更新
-        :return:
-        """
-        for item in os.listdir(GRAFANA_DASHBOARD_JSON):
-            if not item.endswith(".json"):
-                continue
-            file_path = os.path.join(GRAFANA_DASHBOARD_JSON, item)
-            with open(file_path, "r") as fp_obj:
-                _flag, _msg = self.update_one_dashboard(fp_obj.read())
-            if not _flag:
-                return _flag, _msg
-
     def update_user_profile(self):
         """
         更新用户设置
@@ -240,6 +163,9 @@ class Grafana(object):
             params=None,
             auth=self.basic_auth
         )
+        if not flag:
+            print(f"update_user_profile 更新用户配置失败")
+            return flag, res
         home_dashboard_id = res.get("dashboard", {}).get("id")
         if not home_dashboard_id:
             return False, "can not get home dashboard id"
@@ -266,12 +192,11 @@ class Grafana(object):
         """
         # name 必须是唯一值
         data = {"name": "jonA", "role": "Admin", "secondsToLive": None}
-        basic_auth = ("admin", "admin")
 
         res = self.post(
             url=self.login_key,
             data=data,
-            auth=basic_auth
+            auth=self.basic_auth
         )
         api_key = None
         if res[0]:
@@ -292,8 +217,6 @@ class Grafana(object):
         :return:
         """
         self.create_omp_user()
-        self.create_data_source()
-        self.update_dashboard()
         self.update_user_profile()
         self.grafana_auth()
 
@@ -317,5 +240,4 @@ if __name__ == '__main__':
     )
     obj.run()
     # 更新grafana的面板数据
-    time.sleep(30)
-    synch_grafana_info()
+    # synch_grafana_info()

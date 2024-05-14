@@ -3,7 +3,6 @@
 """
 import django_filters
 from django_filters.rest_framework import FilterSet
-
 from db_models.models import Service
 
 

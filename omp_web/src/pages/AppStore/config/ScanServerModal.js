@@ -10,24 +10,39 @@ import { fetchPost, fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import { handleResponse } from "@/utils/utils";
 
+const msgMap = {
+  "en-US": {
+    scanMsg: "Scanning server...",
+    noPkgMsg: "Scan completed, server has no installation package!",
+    uploadLeft: "Please upload the installation package to the",
+    uploadRight: "directory and rescan it",
+    pathMsg: "The path to save the published package",
+  },
+  "zh-CN": {
+    scanMsg: "正在扫描服务端...",
+    noPkgMsg: "扫描结束，服务端暂无安装包！",
+    uploadLeft: "请将安装包上传至",
+    uploadRight: "目录后重新扫描",
+    pathMsg: "发布完成的安装包存放路径",
+  },
+};
+
 const ScanServerModal = ({
   scanServerModalVisibility,
   setScanServerModalVisibility,
   refresh,
+  context,
+  locale,
 }) => {
   const [stepNum, setStepNum] = useState(0);
   const [loading, setLoading] = useState(false);
-
   const [dataSource, setDataSource] = useState();
-
   const isOpen = useRef(null);
-
   const timer = useRef(null);
-
   // 失败时的轮训次数标识
   const trainingInRotationNum = useRef(0);
 
-  function fetchData(data) {
+  const fetchData = (data) => {
     // 防止在弹窗关闭后还继续轮训
     if (!isOpen.current) {
       return;
@@ -66,14 +81,12 @@ const ScanServerModal = ({
           }, 5000);
         } else {
           setDataSource((dataS) => {
-            // /console.log(dataS);
             let arr = dataS?.package_detail?.map((item) => {
               return {
                 ...item,
                 status: 9,
               };
             });
-            //console.log(arr);
             return {
               ...dataS,
               package_detail: arr,
@@ -82,7 +95,7 @@ const ScanServerModal = ({
         }
       })
       .finally((e) => {});
-  }
+  };
 
   // 扫描服务端executeLocalPackageScan
   const executeLocalPackageScan = () => {
@@ -121,9 +134,12 @@ const ScanServerModal = ({
             <ScanOutlined />
           </span>
           <span>
-            {stepNum == 0 && "扫描服务端安装包"}
-            {stepNum == 1 && "校验服务端安装包"}
-            {stepNum == 2 && "发布服务端安装包"}
+            {stepNum === 0 &&
+              context.scan + context.ln + context.installPackage}
+            {stepNum === 1 &&
+              context.verify + context.ln + context.installPackage}
+            {stepNum === 2 &&
+              context.publish + context.ln + context.installPackage}
           </span>
         </span>
       }
@@ -133,9 +149,7 @@ const ScanServerModal = ({
         clearTimeout(timer.current);
         refresh();
       }}
-      onCancel={() => {
-        setScanServerModalVisibility(false);
-      }}
+      onCancel={() => setScanServerModalVisibility(false)}
       visible={scanServerModalVisibility}
       footer={null}
       width={1000}
@@ -146,25 +160,23 @@ const ScanServerModal = ({
       }}
       destroyOnClose
     >
-      <Steps
-        type="navigation"
-        size="small"
-        current={stepNum}
-        //onChange={this.onChange}
-      >
+      {/* -- 顶部步骤条 -- */}
+      <Steps type="navigation" size="small" current={stepNum}>
         <Steps.Step
-          title="扫描服务端安装包"
+          title={context.scan + context.ln + context.installPackage}
           icon={loading && <LoadingOutlined />}
         />
         <Steps.Step
-          title="安装包数据校验"
+          title={context.verify + context.ln + context.data}
           icon={dataSource?.stage_status == "checking" && <LoadingOutlined />}
         />
         <Steps.Step
-          title="发布"
+          title={context.publish}
           icon={dataSource?.stage_status == "publishing" && <LoadingOutlined />}
         />
       </Steps>
+
+      {/* -- step0 扫描 -- */}
       {stepNum == 0 && (
         <div style={{ paddingLeft: 30, paddingTop: 30 }}>
           <div
@@ -174,22 +186,24 @@ const ScanServerModal = ({
             }}
           >
             {loading ? (
-              <p style={{ textAlign: "center" }}>正在扫描服务端...</p>
+              <p style={{ textAlign: "center" }}>{msgMap[locale].scanMsg}</p>
             ) : (
               <p style={{ textAlign: "center" }}>
-                <p>扫描结束，服务端暂无安装包！</p>
+                <p>{msgMap[locale].noPkgMsg}</p>
                 <p>
-                  请将安装包上传至{" "}
+                  {msgMap[locale].uploadLeft + " "}
                   <span style={{ fontWeight: 500, color: "rgba(0,0,0,0.8)" }}>
                     omp/package_hub/back_end_verified/
                   </span>{" "}
-                  目录后重新扫描
+                  {msgMap[locale].uploadRight}
                 </p>
               </p>
             )}
           </div>
         </div>
       )}
+
+      {/* -- step1 校验 -- */}
       {stepNum == 1 && (
         <div style={{ paddingLeft: 30, paddingTop: 30 }}>
           <div
@@ -209,29 +223,32 @@ const ScanServerModal = ({
             }}
             columns={[
               {
-                title: "安装包名称",
+                title: context.package + context.name,
                 key: "name",
                 dataIndex: "name",
                 align: "center",
+                width: 120,
               },
               {
-                title: "状态",
+                title: context.status,
                 key: "status",
                 dataIndex: "status",
                 align: "center",
+                ellipsis: true,
+                width: 90,
                 render: (text) => {
                   switch (text) {
                     case 2:
-                      return "校验中";
+                      return context.verifying;
                       break;
                     case 1:
-                      return "校验失败";
+                      return context.failed;
                       break;
                     case 0:
-                      return "校验成功";
+                      return context.passed;
                       break;
                     case 9:
-                      return "网络错误";
+                      return context.network + context.ln + context.error;
                       break;
                     default:
                       break;
@@ -239,30 +256,16 @@ const ScanServerModal = ({
                 },
               },
               {
-                title: "说明",
+                title: context.description,
                 key: "message",
                 dataIndex: "message",
                 align: "center",
-                //width:120,
-                ellipsis: true,
+                width: 140,
                 render: (text) => {
-                  return (
-                    <Tooltip title={text} placement="top">
-                      <div
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {text ? text : "-"}
-                      </div>
-                    </Tooltip>
-                  );
+                  return text ? text : "-";
                 },
               },
             ]}
-            pagination={false}
             dataSource={dataSource?.package_detail?.map((item, idx) => {
               return {
                 ...item,
@@ -291,12 +294,14 @@ const ScanServerModal = ({
                   setScanServerModalVisibility(false);
                 }}
               >
-                完成
+                {context.ok}
               </Button>
             </div>
           )}
         </div>
       )}
+
+      {/* -- step2 发布 -- */}
       {stepNum == 2 && (
         <div style={{ paddingLeft: 30, paddingTop: 30 }}>
           <div
@@ -316,12 +321,12 @@ const ScanServerModal = ({
                     top: 1,
                   }}
                 />
-                发布完成
+                {context.publish + context.ln + context.completed}
               </p>
             )}
             <p style={{ textAlign: "center" }}>{dataSource?.message}</p>
             <p style={{ textAlign: "center" }}>
-              发布完成的安装包存放路径:{" "}
+              {msgMap[locale].pathMsg + " "}
               <span style={{ fontWeight: 500, color: "rgba(0,0,0,0.8)" }}>
                 omp/package_hub/verified/
               </span>{" "}
@@ -330,35 +335,34 @@ const ScanServerModal = ({
           <Table
             style={{ border: "1px solid #e3e3e3" }}
             size="middle"
-            //hideOnSinglePage
             pagination={{
               defaultPageSize: 5,
             }}
             columns={[
               {
-                title: "安装包名称",
+                title: context.package + context.name,
                 key: "name",
                 dataIndex: "name",
                 align: "center",
               },
               {
-                title: "状态",
+                title: context.status,
                 key: "status",
                 dataIndex: "status",
                 align: "center",
                 render: (text) => {
                   switch (text) {
                     case 3:
-                      return "发布成功";
+                      return context.succeeded;
                       break;
                     case 4:
-                      return "发布失败";
+                      return context.failed;
                       break;
                     case 5:
-                      return "发布中";
+                      return context.publishing;
                       break;
                     case 9:
-                      return "网络错误";
+                      return context.network + context.ln + context.error;
                       break;
                     default:
                       break;
@@ -366,7 +370,7 @@ const ScanServerModal = ({
                 },
               },
               {
-                title: "说明",
+                title: context.description,
                 key: "message",
                 dataIndex: "message",
                 align: "center",
@@ -388,7 +392,6 @@ const ScanServerModal = ({
                 },
               },
             ]}
-            pagination={false}
             dataSource={dataSource?.package_detail?.map((item, idx) => {
               return {
                 ...item,
@@ -416,7 +419,7 @@ const ScanServerModal = ({
                 setScanServerModalVisibility(false);
               }}
             >
-              完成
+              {context.ok}
             </Button>
           </div>
         </div>

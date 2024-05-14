@@ -26,19 +26,19 @@ import HasInstallService from "./component/HasInstallService";
 // 在执行onclick正常逻辑之前判断当前元素内是否全部子项都是不可选中状态，如果是直接return,不再执行正常逻辑（或者直接判断当前元素类名是否有disable相关）
 // 在执行onclick正常逻辑或者执行完关联with之后，查询其他元素内是否存在子元素全是不可选中状态的元素，将这种元素设置成不可选中状态
 
-const ServiceDistributionItem = ({ form, data, info, installService }) => {
+const ServiceDistributionItem = ({
+  form,
+  data,
+  info,
+  installService,
+  context,
+}) => {
   const [options, setOption] = useState([]);
-
   const [value, setValue] = useState([]);
-
   const allDataPool = useSelector((state) => state.installation.dataSource);
-
   const ipList = useSelector((state) => state.installation.ipList);
-
   const errorList = useSelector((state) => state.installation.errorList);
-
   const errorMsg = errorList.filter((i) => i.ip == info.ip)[0]?.error_msg;
-
   const reduxDispatch = useDispatch();
 
   // 对value进行处理(因为当把某一级菜单下对应的全部二级菜单选中后，value会合并成一个，只会存展示一级菜单)
@@ -121,14 +121,33 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
           // form.setFieldsValue({
           //   [`${info.ip}`]: formData[info.ip],
           // });
-
           setValue((value) => {
-            let strArr = [
+            let arr = [
               ...formData[info.ip],
               ...value,
               [productItem[0].label, w],
-            ].map((item) => JSON.stringify(item));
+            ];
+            let resArr = [];
+            arr.forEach((i) => {
+              if (i.length !== 1) {
+                resArr.push(i);
+              } else {
+                optionsCopy.forEach((e) => {
+                  if (e.label === i[0]) {
+                    e.children
+                      .map((c) => {
+                        return [e.label, c.label];
+                      })
+                      .forEach((c) => {
+                        resArr.push(c);
+                      });
+                  }
+                });
+              }
+            });
+            let strArr = resArr.map((item) => JSON.stringify(item));
             let delStrArr = Array.from(new Set([...strArr]));
+
             return [...delStrArr.map((item) => JSON.parse(item))];
           });
           // 数据池子中数量变更
@@ -205,8 +224,6 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
     } else {
       // 一级
       if (isCheck === true) {
-        // console.log("点击到了一级的选中");
-        // console.log(options, isCheck);
         // 拿到一级下的全部子项
         let checkedArr = options
           .filter((i) => {
@@ -218,6 +235,12 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
         // 去除其中带有with的
         checkedArr = checkedArr.filter((i) => {
           if (allDataPool[i] && allDataPool[i].with) {
+            for (let j = 0; j < value.length; j++) {
+              const element = value[j];
+              if (element[1] == i) {
+                return true;
+              }
+            }
             return false;
           }
           return true;
@@ -269,6 +292,9 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
         let v = value.filter((i) => {
           // 当这项包含with直接留在这里不动，with项的改变在与被with项
           if (allDataPool[i[1]] && allDataPool[i[1]].with) {
+            if (label === i[0]) {
+              return true;
+            }
             // 判断这项的with是否包涵在value
             let arr = value.filter((a) => {
               return a[1] == allDataPool[i[1]].with;
@@ -297,7 +323,7 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
         disableItem.push(i.value);
       }
     });
-    console.log(disableItem, value, "要禁用的项");
+    // console.log(disableItem, value, "要禁用的项")
     return disableItem;
   };
 
@@ -311,8 +337,6 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
           [...dom[0].childNodes].map((v) => {
             if (v && v.childNodes[1]) {
               if (disableItem.indexOf(v.childNodes[1].innerHTML) !== -1) {
-                // v.childNodes[0].removeEventListener("click")
-                // console.log(v.childNodes[0].getAttribute())
                 v.childNodes[0].onclick = (e) => {
                   e.stopPropagation();
                 };
@@ -335,8 +359,6 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
       if (dom && dom[0].childNodes) {
         [...dom[0].childNodes].map((v) => {
           if (v && v.childNodes[1]) {
-            // v.childNodes[0].removeEventListener("click")
-            // console.log(v.childNodes[0].getAttribute())
             v.childNodes[0].onclick = null;
             v.childNodes[0].classList.remove("ant-cascader-checkbox-disabled");
             v.style.cssText = "color: rgba(0, 0, 0, 0.65);font-weight:400;";
@@ -467,7 +489,7 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
               style={{ marginBottom: 0 }}
             >
               <Cascader
-                placeholder="请选择"
+                placeholder={context.select + context.ln + context.service}
                 style={{ width: 240, marginTop: 0, paddingLeft: 10 }}
                 options={options}
                 expandTrigger={"hover"}
@@ -477,56 +499,10 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
                   const { value, onClose, label } = e;
                   return (
                     <Tag closable={false}>
-                      {allDataPool[label] ? label : `${label}-集合`}
+                      {allDataPool[label] ? label : `${label}-${context.set}`}
                     </Tag>
                   );
                 }}
-                // tagRender={(e) => {
-                //   // console.log(e.onClose);
-                //   // console.log(e);
-                //   const { value, onClose, label } = e;
-                //   console.log(value);
-                //   if (value.includes("__RC_CASCADER_SPLIT__")) {
-                //     return (
-                //       <Tag
-                //         // closable
-                //         // onClose={(event) => {
-                //         //   onClose(event);
-                //         // }}
-                //       >
-                //         {label}
-                //       </Tag>
-                //     );
-                //   } else {
-                //     // 选中了一级菜单
-                //     console.log(value);
-                //     let checkedItem = options
-                //       .filter((i) => {
-                //         return i.label == value;
-                //       })[0]
-                //       .children.map((i) => {
-                //         return i.label;
-                //       });
-                //     console.log(checkedItem);
-                //     return (
-                //       <>
-                //         {checkedItem.map((item) => {
-                //           return (
-                //             <Tag
-                //               key={item}
-                //               // closable
-                //               // onClose={(event) => {
-                //               //   onClose(event);
-                //               // }}
-                //             >
-                //               {item}
-                //             </Tag>
-                //           );
-                //         })}
-                //       </>
-                //     );
-                //   }
-                // }}
                 onClick={(e) => {
                   // 会出现options的子项已经为空，但是一级还在的情况，在这里过滤
                   // setOption((op)=>{
@@ -564,8 +540,7 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
                       // 有其他通过with关联选中项的数据都要进行选中处理
                       handleWithData(label, withItem, true);
 
-                      handleValueAndForm(label);
-
+                      // handleValueAndForm(label);
                       let data = handleDataSourceData(label, -1);
 
                       // console.log(data);
@@ -779,17 +754,15 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
               //   });
               // }}
             >
-              选择服务数:{" "}
+              {context.selected + context.ln + context.service + " : "}
               {value.length == 0 ? (
-                <span>0个</span>
+                <span>0{context.ge}</span>
               ) : (
                 <Tooltip
                   mouseEnterDelay={0.3}
                   placement="right"
                   color="#fff"
-                  overlayStyle={{
-                    minWidth: 300,
-                  }}
+                  overlayStyle={{ minWidth: 300 }}
                   title={
                     <div
                       style={{
@@ -805,7 +778,7 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
                           paddingBottom: 5,
                         }}
                       >
-                        已选服务
+                        {context.selected + context.ln + context.service}
                       </div>
                       <div
                         style={{
@@ -827,17 +800,24 @@ const ServiceDistributionItem = ({ form, data, info, installService }) => {
                     </div>
                   }
                 >
-                  <a>{value.length}个</a>
+                  <a>
+                    {value.length}
+                    {context.ge}
+                  </a>
                 </Tooltip>
               )}
             </div>
             <div style={{ fontSize: 12 }}>
-              已安装服务数:{" "}
+              {context.installed + context.ln + context.service + " : "}
               {info.num == 0 ? (
-                <span>0个</span>
+                <span>0{context.ge}</span>
               ) : (
-                <HasInstallService ip={info.ip} installService={installService}>
-                  {info.num}个
+                <HasInstallService
+                  ip={info.ip}
+                  installService={installService}
+                  context={context}
+                >
+                  {info.num + context.ge}
                 </HasInstallService>
               )}
             </div>

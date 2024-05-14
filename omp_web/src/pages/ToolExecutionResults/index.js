@@ -1,11 +1,4 @@
-import {
-  OmpContentWrapper,
-  OmpTable,
-  OmpMessageModal,
-  OmpSelect,
-  OmpDatePicker,
-  OmpDrawer,
-} from "@/components";
+import { OmpContentWrapper } from "@/components";
 import { Button, Collapse, Tooltip, Table, Spin } from "antd";
 import { fetchGet, fetchPost } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
@@ -17,38 +10,51 @@ import {
 } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { useHistory, useLocation } from "react-router-dom";
-import {
-  handleResponse,
-  _idxInit,
-  refreshTime,
-  downloadFile,
-} from "@/utils/utils";
+import { handleResponse, _idxInit, downloadFile } from "@/utils/utils";
 import moment from "moment";
+import { locales } from "@/config/locales";
 
 const { Panel } = Collapse;
 
-const statusTextMap = [
-  "等待执行",
-  "执行中",
-  "执行成功",
-  "执行失败",
-  "任务超时",
-];
-
 const statusColorMap = ["#ffbf00", "#ffbf00", "#76ca68", "#f04134", "#f04134"];
+const msgMap = {
+  "en-US": {
+    reportMsg: "View complete report",
+    userMsg: "The platform user executing this task",
+    targetMsg:
+      "The target object type for utility operation can be a host or a specific service",
+    totalMsg: "The total number of objects executed this time",
+    userDetailMsg:
+      "The username used by the tool to execute on the target host",
+  },
+  "zh-CN": {
+    reportMsg: "查看完整报告",
+    userMsg: "执行本次任务的平台用户",
+    targetMsg: "实用工具操作的目标对象类型，可以是主机或者具体服务",
+    totalMsg: "本次执行对象的总计",
+    userDetailMsg: "工具在目标主机执行的用户名",
+  },
+};
 
-const ToolExecutionResults = () => {
+const ToolExecutionResults = ({ locale }) => {
   const history = useHistory();
   const locationArr = useLocation().pathname.split("/");
   const [loading, setLoading] = useState(false);
   const [info, setInfo] = useState({});
-
   // 当前选中的ip
   const [currentIp, setCurrentIp] = useState(null);
   // 当前选中的状态
   const [currentStatus, setCurrentStatus] = useState(null);
-
   const timer = useRef(null);
+  const context = locales[locale].common;
+
+  const statusTextMap = [
+    context.waiting,
+    context.executing,
+    context.succeeded,
+    context.failed,
+    context.task + context.ln + context.timeout,
+  ];
 
   const queryData = (init) => {
     init && setLoading(true);
@@ -61,9 +67,10 @@ const ToolExecutionResults = () => {
         handleResponse(res, (res) => {
           setInfo(res.data);
           if (res.data.tool_detail) {
-            currentIp == null && setCurrentIp(res.data.tool_detail[0].ip);
-            currentStatus == null &&
+            if (init === "init") {
+              setCurrentIp(res.data.tool_detail[0].ip);
               setCurrentStatus(res.data.tool_detail[0].status);
+            }
           }
 
           // 等待执行 和 执行中 要继续请求
@@ -88,17 +95,38 @@ const ToolExecutionResults = () => {
     return info.tool_detail?.filter((i) => i.status == status).length;
   };
 
+  // 下发执行脚本按钮
+  const executeAutoTask = () => {
+    setLoading(true);
+    fetchPost(apiRequest.utilitie.autoUtl, {
+      body: {
+        ip: info.tool_detail[0].ip,
+      },
+    })
+      .then((res) => {
+        handleResponse(res, (res) => {
+          window.open(res.data);
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
   useEffect(() => {
     queryData("init");
-    return ()=>{
-      timer.current && clearTimeout(timer.current)
-    }
+    return () => {
+      timer.current && clearTimeout(timer.current);
+    };
   }, []);
+
   return (
     <OmpContentWrapper
       wrapperStyle={{ padding: "10px 30px 30px 30px", backgroundColor: "#fff" }}
     >
       <Spin spinning={loading}>
+        {/* -- 顶部任务名/状态/返回 -- */}
         <div className={styles.resultTitle}>
           <div style={{ display: "flex" }}>
             {info.task_name || "-"}{" "}
@@ -109,10 +137,22 @@ const ToolExecutionResults = () => {
               {statusTextMap[info.status]}
             </span>
           </div>
-          <a style={{ fontSize: 14 }} onClick={() => history?.goBack()}>
-            返回
-          </a>
+          <div>
+            {info.task_name === "自动测试任务" &&
+              statusTextMap[info.status] === context.succeeded && (
+                <a
+                  style={{ fontSize: 14, marginRight: 18 }}
+                  onClick={() => executeAutoTask()}
+                >
+                  {msgMap[locale].reportMsg}
+                </a>
+              )}
+            <a style={{ fontSize: 14 }} onClick={() => history?.goBack()}>
+              {context.back}
+            </a>
+          </div>
         </div>
+
         <Collapse
           bordered={false}
           defaultActiveKey={["baseInfo", "executionInfo", "executionResult"]}
@@ -122,8 +162,9 @@ const ToolExecutionResults = () => {
             <CaretRightOutlined rotate={isActive ? 90 : 0} />
           )}
         >
+          {/* -- 基本信息 -- */}
           <Panel
-            header="基本信息"
+            header={context.basic + context.ln + context.info}
             key="baseInfo"
             className={styles.panelItem}
             style={{ paddingBottom: 1 }}
@@ -132,8 +173,8 @@ const ToolExecutionResults = () => {
               <div className={styles.baseTableFirstRow}>
                 <div className={styles.baseTableItem}>
                   <div className={styles.baseTableItemLabel}>
-                    操作用户{" "}
-                    <Tooltip title="执行本次任务的平台用户">
+                    {context.runUser}{" "}
+                    <Tooltip title={msgMap[locale].userMsg}>
                       <QuestionCircleOutlined
                         style={{
                           cursor: "pointer",
@@ -147,10 +188,11 @@ const ToolExecutionResults = () => {
                     {info.operator || "-"}
                   </div>
                 </div>
+
                 <div className={styles.baseTableItem}>
                   <div className={styles.baseTableItemLabel}>
-                    执行对象{" "}
-                    <Tooltip title="实用工具操作的目标对象类型，可以是主机或者具体服务">
+                    {context.target}{" "}
+                    <Tooltip title={msgMap[locale].targetMsg}>
                       <QuestionCircleOutlined
                         style={{
                           cursor: "pointer",
@@ -164,10 +206,11 @@ const ToolExecutionResults = () => {
                     {info.tool?.target_name || "-"}
                   </div>
                 </div>
+
                 <div className={styles.baseTableItem}>
                   <div className={styles.baseTableItemLabel}>
-                    目标数量{" "}
-                    <Tooltip title="本次执行对象的数量">
+                    {context.total}{" "}
+                    <Tooltip title={msgMap[locale].totalMsg}>
                       <QuestionCircleOutlined
                         style={{
                           cursor: "pointer",
@@ -181,13 +224,14 @@ const ToolExecutionResults = () => {
                     {info.count || "-"}
                   </div>
                 </div>
+
                 <div
                   className={styles.baseTableItem}
                   style={{ borderRight: "none" }}
                 >
                   <div className={styles.baseTableItemLabel}>
-                    执行用户
-                    <Tooltip title="工具在目标主机执行的用户名">
+                    {context.runUser}
+                    <Tooltip title={msgMap[locale].userDetailMsg}>
                       <QuestionCircleOutlined
                         style={{
                           cursor: "pointer",
@@ -203,10 +247,11 @@ const ToolExecutionResults = () => {
                   </div>
                 </div>
               </div>
+
               <div className={styles.baseTableSecondRow}>
                 <div className={styles.baseTableItem}>
                   <div className={styles.baseTableItemLabel}>
-                    超时时间 (s)
+                    {context.timeout}
                     <Tooltip title="工具在目标主机的执行的超时时间">
                       <QuestionCircleOutlined
                         style={{
@@ -218,19 +263,25 @@ const ToolExecutionResults = () => {
                     </Tooltip>
                   </div>
                   <div className={styles.baseTableItemContent}>
-                    {info.time_out || "-"}
+                    {info.time_out || "-"}s
                   </div>
                 </div>
+
                 <div className={styles.baseTableItem}>
-                  <div className={styles.baseTableItemLabel}>开始时间</div>
+                  <div className={styles.baseTableItemLabel}>
+                    {context.beginTime}
+                  </div>
                   <div className={styles.baseTableItemContent}>
                     {info.start_time
                       ? moment(info.start_time).format("YYYY-MM-DD HH:mm:ss")
                       : "-"}
                   </div>
                 </div>
+
                 <div className={styles.baseTableItem}>
-                  <div className={styles.baseTableItemLabel}>结束时间</div>
+                  <div className={styles.baseTableItemLabel}>
+                    {context.endTime}
+                  </div>
                   <div className={styles.baseTableItemContent}>
                     {" "}
                     {info.end_time
@@ -238,11 +289,14 @@ const ToolExecutionResults = () => {
                       : "-"}
                   </div>
                 </div>
+
                 <div
                   className={styles.baseTableItem}
                   style={{ borderRight: "none" }}
                 >
-                  <div className={styles.baseTableItemLabel}>总耗时</div>
+                  <div className={styles.baseTableItemLabel}>
+                    {context.duration}
+                  </div>
                   <div className={styles.baseTableItemContent}>
                     {info.duration || "-"}
                   </div>
@@ -250,8 +304,10 @@ const ToolExecutionResults = () => {
               </div>
             </div>
           </Panel>
+
+          {/* -- 参数信息 -- */}
           <Panel
-            header="执行参数信息"
+            header={context.parameter + context.ln + context.info}
             key="executionInfo"
             className={styles.panelItem}
             style={{ marginTop: 25 }}
@@ -261,7 +317,7 @@ const ToolExecutionResults = () => {
                 size="middle"
                 columns={[
                   {
-                    title: "参数名称",
+                    title: context.name,
                     key: "name",
                     dataIndex: "name",
                     align: "center",
@@ -269,12 +325,11 @@ const ToolExecutionResults = () => {
                     render: (text) => text || "-",
                   },
                   {
-                    title: "参数值",
+                    title: context.value,
                     key: "value",
                     dataIndex: "value",
                     width: 120,
                     align: "center",
-                    // render: (text) => (text ? argType[text] : "-"),
                   },
                 ]}
                 pagination={false}
@@ -282,8 +337,10 @@ const ToolExecutionResults = () => {
               />
             </div>
           </Panel>
+
+          {/* -- 执行结果 -- */}
           <Panel
-            header="执行结果"
+            header={context.execute + context.ln + context.result}
             key="executionResult"
             className={styles.panelItem}
             style={{ marginTop: 25 }}
@@ -302,6 +359,7 @@ const ToolExecutionResults = () => {
                   top: 1,
                 }}
               >
+                {/* -- 等待 -- */}
                 <div
                   style={{
                     flex: 1,
@@ -328,8 +386,10 @@ const ToolExecutionResults = () => {
                     }
                   }}
                 >
-                  待执行({tabRenderStatus(0)})
+                  {context.waiting}({tabRenderStatus(0)})
                 </div>
+
+                {/* -- 执行中 -- */}
                 <div
                   style={{
                     flex: 1,
@@ -356,8 +416,10 @@ const ToolExecutionResults = () => {
                     }
                   }}
                 >
-                  执行中({tabRenderStatus(1)})
+                  {context.executing}({tabRenderStatus(1)})
                 </div>
+
+                {/* -- 成功 -- */}
                 <div
                   style={{
                     flex: 1,
@@ -384,8 +446,10 @@ const ToolExecutionResults = () => {
                     }
                   }}
                 >
-                  执行成功({tabRenderStatus(2)})
+                  {context.succeeded}({tabRenderStatus(2)})
                 </div>
+
+                {/* -- 失败 -- */}
                 <div
                   style={{
                     flex: 1,
@@ -412,8 +476,10 @@ const ToolExecutionResults = () => {
                     }
                   }}
                 >
-                  执行失败({tabRenderStatus(3)})
+                  {context.failed}({tabRenderStatus(3)})
                 </div>
+
+                {/* -- 超时 -- */}
                 <div
                   style={{
                     flex: 1,
@@ -440,9 +506,10 @@ const ToolExecutionResults = () => {
                     }
                   }}
                 >
-                  任务超时({tabRenderStatus(4)})
+                  {context.timeout}({tabRenderStatus(4)})
                 </div>
               </div>
+
               <div
                 style={{
                   height: 400,
@@ -480,6 +547,8 @@ const ToolExecutionResults = () => {
                       );
                     })}
                 </div>
+
+                {/* -- 下载文件 -- */}
                 <div
                   style={{
                     flex: 1,
@@ -496,7 +565,9 @@ const ToolExecutionResults = () => {
                         downloadFile(`/${currentItem.url}`);
                       }}
                     >
-                      <span style={{ color: "#818181" }}>下载文件</span>
+                      <span style={{ color: "#818181" }}>
+                        {context.download + context.ln + context.file}
+                      </span>
                     </Button>
                   )}
                   <div

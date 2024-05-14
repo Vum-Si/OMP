@@ -1,5 +1,5 @@
 import axios from "axios";
-import { logout } from "./utils"
+import { logout } from "./utils";
 
 const getBaseUrl = (env) => {
   let base;
@@ -35,14 +35,13 @@ class NewAxios {
       (err) => {
         if (err.response) {
           // 响应错误码处理
-          console.log(err.response)
+          console.log(err.response);
           switch (err.response.status) {
-           
             case 403:
               // todo: handler server forbidden error
               break;
             case 401:
-              logout()
+              logout();
               // todo: handler server forbidden error
               break;
             // todo: handler other status code
@@ -79,13 +78,15 @@ class NewAxios {
 
 //为了保持和之前项目请求方式一样
 //export const fetchPost = new NewAxios()
-export const fetchPost = (url, params) =>
+export const fetchPost = (url, params, batch = false) =>
   new NewAxios().request({
     url: url,
     method: "POST",
-    data: {
-      ...params?.body,
-    },
+    data: batch
+      ? params.body
+      : {
+          ...params?.body,
+        },
   });
 
 export const fetchGet = (url, params) =>
@@ -97,28 +98,33 @@ export const fetchGet = (url, params) =>
     },
   });
 
-export const fetchPut = (url, params) =>
+export const fetchPut = (url, params, batch = false) =>
   new NewAxios().request({
-    url: url,
-    method: "PUT",
+    url: `${url}u/`,
+    method: "POST",
+    data: batch
+      ? params.body
+      : {
+          ...params?.body,
+        },
+  });
+
+export const fetchDelete = (url, params) =>
+  new NewAxios().request({
+    url: `${url}e/`,
+    method: "POST",
+    params: {
+      ...params?.params,
+    },
     data: {
       ...params?.body,
     },
   });
 
-export const fetchDelete = (url, params) =>
+export const fetchPatch = (url, params) =>
   new NewAxios().request({
-    url: url,
-    method: "Delete",
-    params: {
-      ...params?.params,
-    },
-  });
-
-  export const fetchPatch = (url, params) =>
-  new NewAxios().request({
-    url: url,
-    method: "Patch",
+    url: `${url}p/`,
+    method: "POST",
     data: {
       ...params?.body,
     },

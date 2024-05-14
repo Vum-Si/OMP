@@ -1,17 +1,6 @@
-import {
-  Button,
-  Modal,
-  Upload,
-  message,
-  Steps,
-  Tooltip,
-  Select,
-  Switch,
-  Input,
-  Table,
-} from "antd";
+import { Button, Modal, Tooltip, Input, Table } from "antd";
 import { useEffect, useRef, useState } from "react";
-import { CopyOutlined, SearchOutlined, ArrowUpOutlined } from "@ant-design/icons";
+import { SearchOutlined, ArrowUpOutlined } from "@ant-design/icons";
 //import BMF from "browser-md5-file";
 import { fetchPost, fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
@@ -21,29 +10,22 @@ import { useHistory } from "react-router-dom";
 const ServiceUpgradeModal = ({
   sUModalVisibility,
   setSUModalVisibility,
-  // dataSource,
-  installTitle,
   initLoading,
+  context,
 }) => {
   const [loading, setLoading] = useState(false);
-
   const [selectValue, setSelectValue] = useState();
-
   const [rows, setRows] = useState([]);
-
   const history = useHistory();
-
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-  // console.log(checkedList)
-  //应用服务选择的版本号
-  const versionInfo = useRef({});
-
   const lock = useRef(false);
+  const [dataSource, setDataSource] = useState([]);
+  const [allLength, setAllLength] = useState(0);
 
   const columns = [
     {
-      title: "名称",
+      title: context.service + context.ln + context.name,
       key: "instance_name",
       dataIndex: "instance_name",
       // align: "center",
@@ -58,14 +40,14 @@ const ServiceUpgradeModal = ({
       },
     },
     {
-      title: "当前版本",
+      title: context.current + context.ln + context.version,
       key: "version",
       dataIndex: "version",
       align: "center",
       ellipsis: true,
       width: 120,
       render: (text, record) => {
-        let v =  text || "-";
+        let v = text || "-";
         return (
           <Tooltip title={v}>
             <div style={{ paddingTop: 2 }}>{v}</div>
@@ -74,14 +56,14 @@ const ServiceUpgradeModal = ({
       },
     },
     {
-      title: "升级版本",
+      title: context.target + context.ln + context.version,
       key: "can_upgrade",
       dataIndex: "can_upgrade",
       align: "center",
       ellipsis: true,
       width: 120,
       render: (text, record) => {
-        let v =  text[0].app_version || "-";
+        let v = text[0].app_version || "-";
         return (
           <Tooltip title={v}>
             <div style={{ paddingTop: 2 }}>{v}</div>
@@ -91,12 +73,7 @@ const ServiceUpgradeModal = ({
     },
   ];
 
-  const [dataSource, setDataSource] = useState([]);
-  const [allLength, setAllLength] = useState(0)
-
   const queryDataList = (search) => {
-    // setRows([]);
-    // setCheckedList([]);
     setLoading(true);
     fetchGet(apiRequest.appStore.canUpgrade, {
       params: {
@@ -105,9 +82,9 @@ const ServiceUpgradeModal = ({
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          let result = formatResData(res.data.results)
-          if(!search || search == undefined){
-            setAllLength(result.map((i) => i.children).flat().length)
+          let result = formatResData(res.data.results);
+          if (!search || search == undefined) {
+            setAllLength(result.map((i) => i.children).flat().length);
           }
           setDataSource(result);
         });
@@ -119,7 +96,6 @@ const ServiceUpgradeModal = ({
   };
 
   const formatResData = (data = []) => {
-    console.log(data);
     // 遍历数据添加key以及判断父级数据的当前版本
     // （当其子项的当前版本全部一致时设置父级数据版本为此值）
     let result = data.map((item) => {
@@ -172,7 +148,7 @@ const ServiceUpgradeModal = ({
             history.push({
               pathname: "/application_management/app_store/service_upgrade",
               state: {
-                history: res.data.history
+                history: res.data.history,
               },
             });
           }
@@ -195,20 +171,18 @@ const ServiceUpgradeModal = ({
           <span style={{ position: "relative", left: "-10px" }}>
             <ArrowUpOutlined />
           </span>
-          <span>服务升级-选择应用服务</span>
+          <span>{context.service + context.ln + context.upgrade}</span>
         </span>
       }
       width={600}
       afterClose={() => {
         setRows([]);
         setCheckedList([]);
+        setSelectValue("");
       }}
-      onCancel={() => {
-        setSUModalVisibility(false);
-      }}
+      onCancel={() => setSUModalVisibility(false)}
       visible={sUModalVisibility}
       footer={null}
-      //width={1000}
       loading={loading}
       bodyStyle={{
         paddingLeft: 30,
@@ -217,22 +191,18 @@ const ServiceUpgradeModal = ({
       destroyOnClose
     >
       <div>
-        <div style={{ display: "flex", marginLeft: "290px", marginBottom: 15 }}>
-          <span
-            style={{
-              width: 70,
-              display: "flex",
-              alignItems: "center",
-              fontSize: 14,
-            }}
-          >
-            服务名称:
-          </span>
+        {/* -- 搜索框 -- */}
+        <div style={{ marginBottom: 10 }}>
           <Input
-            placeholder="请输入服务名称"
-            style={{ width: 180 }}
+            placeholder={
+              context.input +
+              context.ln +
+              context.service +
+              context.ln +
+              context.name
+            }
+            style={{ width: 250 }}
             allowClear
-            // size="small"
             value={selectValue}
             onChange={(e) => {
               setSelectValue(e.target.value);
@@ -240,12 +210,8 @@ const ServiceUpgradeModal = ({
                 queryDataList();
               }
             }}
-            onBlur={() => {
-              queryDataList(selectValue);
-            }}
-            onPressEnter={() => {
-              queryDataList(selectValue);
-            }}
+            onBlur={() => queryDataList(selectValue)}
+            onPressEnter={() => queryDataList(selectValue)}
             suffix={
               !selectValue && (
                 <SearchOutlined style={{ fontSize: 12, color: "#b6b6b6" }} />
@@ -253,19 +219,16 @@ const ServiceUpgradeModal = ({
             }
           />
         </div>
+
+        {/* -- 升级服务表格 -- */}
         <div style={{ border: "1px solid rgb(235, 238, 242)" }}>
           <Table
             size="small"
             scroll={{ y: 295 }}
             loading={loading || initLoading}
-            //scroll={{ x: 1900 }}
             columns={columns}
             dataSource={dataSource}
             pagination={false}
-            // notSelectable={(record) => ({
-            //   // is_continue的不能选中
-            //   disabled: !record.is_continue,
-            // })}
             rowSelection={{
               onChange: (selectedRowKeys, selectedRows, select, lll) => {
                 // 全选动作交给onchange事件
@@ -337,11 +300,15 @@ const ServiceUpgradeModal = ({
           <div style={{ display: "flex", alignItems: "center" }}></div>
           <div style={{ display: "flex" }}>
             <div style={{ marginRight: 15 }}>
-              已选择 {checkedList.length} 个
+              {context.selected} {checkedList.length} {context.ge}
             </div>
-            <div>共 {allLength} 个</div>
+            <div>
+              {context.total} {allLength} {context.ge}
+            </div>
           </div>
         </div>
+
+        {/* -- 取消/确认 -- */}
         <div
           style={{ display: "flex", justifyContent: "center", marginTop: 30 }}
         >
@@ -352,17 +319,17 @@ const ServiceUpgradeModal = ({
               justifyContent: "space-between",
             }}
           >
-            <Button onClick={() => setSUModalVisibility(false)}>取消</Button>
+            <Button onClick={() => setSUModalVisibility(false)}>
+              {context.cancel}
+            </Button>
             <Button
               type="primary"
               style={{ marginLeft: 16 }}
               loading={loading || initLoading}
               disabled={checkedList.length == 0}
-              onClick={() => {
-                doUpgrade(checkedList);
-              }}
+              onClick={() => doUpgrade(checkedList)}
             >
-              确认选择
+              {context.ok}
             </Button>
           </div>
         </div>

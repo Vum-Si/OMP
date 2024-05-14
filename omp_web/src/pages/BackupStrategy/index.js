@@ -5,33 +5,37 @@ import { handleResponse } from "@/utils/utils";
 import { fetchGet, fetchDelete, fetchPost, fetchPut } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import styles from "./index.module.less";
-import { ExclamationCircleOutlined } from "@ant-design/icons";
 import moment from "moment";
 import getColumnsConfig from "./config/columns";
 import { AddCustomModal, CustomModal } from "./CustomModal.js";
 import { AddStrategyModal } from "./StrategyModal";
-import { useHistory, useLocation } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const BackupStrategy = () => {
-  const location = useLocation();
+const msgMap = {
+  "en-US": {
+    deleteMsg: "Are you sure to delete this strategy?",
+    exeLeft: "Are you sure to execute the backup strategy for instance",
+    exeRight: "?",
+  },
+  "zh-CN": {
+    deleteMsg: "确认删除此策略吗？",
+    exeLeft: "确认对实例",
+    exeRight: "执行备份策略吗?",
+  },
+};
 
-  const history = useHistory();
-
+const BackupStrategy = ({ locale }) => {
   const [loading, setLoading] = useState(false);
-
   const [dataSource, setDataSource] = useState([]);
-
   // 自定义参数
   const [customModalVisibility, setCustomModalVisibility] = useState(false);
   const [customLoading, setCustomLoading] = useState(false);
   const [customData, setCustomData] = useState(false);
   const [initData, setinitData] = useState([]);
-
   // 增/改自定义参数共用
   const [customModalType, setCustomModalType] = useState("add");
   const [addModalVisibility, setAddModalVisibility] = useState(false);
   const [addLoading, setAddLoading] = useState(false);
-
   // 自定义参数表单数据
   const [row, setRow] = useState({});
   const [customModalForm] = Form.useForm();
@@ -41,36 +45,20 @@ const BackupStrategy = () => {
   const [updateRepeatName, setUpdateRepeatName] = useState("");
   const [deleteCustomVisibility, setDeleteCustomVisibility] = useState(false);
   const [deleteRepeatName, setDeleteRepeatName] = useState("");
-
   // 增/改备份策略共用
   const [strategyModalType, setStrategyModalType] = useState("add");
   const [strategyModalVisibility, setStrategyModalVisibility] = useState(false);
   const [strategyLoading, setStrategyLoading] = useState(false);
   const [keyArr, setKeyArr] = useState([]);
-
   // 备份策略表单
   const [strategyForm] = Form.useForm();
-
   // 备份组件全量数据
   const [canBackupIns, setCanBackupIns] = useState([]);
-
   // 删除策略
   const [deleteStrategyModal, setDeleteStrategyModal] = useState(false);
   // 执行策略
   const [executeVisible, setExecuteVisible] = useState(false);
   const [frequency, setFrequency] = useState("day");
-
-  // 星期汉字映射
-  let weekData = [
-    "星期一",
-    "星期二",
-    "星期三",
-    "星期四",
-    "星期五",
-    "星期六",
-    "星期日",
-  ];
-
   // 策略表单初始值
   const strategyFormInit = {
     retain_path: "/data/omp/data/backup/",
@@ -85,6 +73,45 @@ const BackupStrategy = () => {
     backup_instances: [],
     backup_custom: [],
   };
+
+  // 用于控制可备份服务实例类型，自定义参数
+  const [appName, setAppName] = useState(null);
+  const [customValue, setCustomValue] = useState(null);
+  // 不同服务类型创建是生成提示语
+  const [noteVisibility, setNoteVisibility] = useState(false);
+  const [noteText, setNoteText] = useState(null);
+  const context = locales[locale].common;
+  // 星期汉字映射
+  let weekData = [
+    {
+      name: context.monday,
+      value: "星期一",
+    },
+    {
+      name: context.tuesday,
+      value: "星期二",
+    },
+    {
+      name: context.wednesday,
+      value: "星期三",
+    },
+    {
+      name: context.thursday,
+      value: "星期四",
+    },
+    {
+      name: context.friday,
+      value: "星期五",
+    },
+    {
+      name: context.saturday,
+      value: "星期六",
+    },
+    {
+      name: context.sunday,
+      value: "星期日",
+    },
+  ];
 
   // 数据备份策略列表查询
   const fetchData = () => {
@@ -139,13 +166,13 @@ const BackupStrategy = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success("添加自定义参数成功");
+            message.success(context.add + context.ln + context.succeeded);
             customModalForm.setFieldsValue({
               field_k: "",
               field_v: "",
               notes: "",
             });
-            queryCustom();
+            // queryCustom();
             setAddModalVisibility(false);
           } else {
             message.warning(res.message);
@@ -193,7 +220,7 @@ const BackupStrategy = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success("修改自定义参数成功");
+            message.success(context.edit + context.ln + context.succeeded);
             customModalForm.setFieldsValue({
               field_k: "",
               field_v: "",
@@ -242,7 +269,7 @@ const BackupStrategy = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success("删除成功");
+            message.success(context.delete + context.ln + context.succeeded);
             queryCustom();
             fetchData();
             setDeleteCustomVisibility(false);
@@ -306,9 +333,13 @@ const BackupStrategy = () => {
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          if (res.code == 0) {
-            message.success("添加备份策略成功");
+          if (res.code === 0) {
+            message.success(context.add + context.ln + context.succeeded);
             strategyForm.setFieldsValue(strategyFormInit);
+            setKeyArr([]);
+            setAppName(null);
+            setNoteText(null);
+            setCustomValue(null);
             fetchData();
             setStrategyModalVisibility(false);
           } else {
@@ -330,9 +361,13 @@ const BackupStrategy = () => {
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          if (res.code == 0) {
-            message.success("修改备份策略成功");
+          if (res.code === 0) {
+            message.success(context.edit + context.ln + context.succeeded);
             strategyForm.setFieldsValue(strategyFormInit);
+            setKeyArr([]);
+            setAppName(null);
+            setNoteText(null);
+            setCustomValue(null);
             fetchData();
             setStrategyModalVisibility(false);
           } else {
@@ -353,7 +388,7 @@ const BackupStrategy = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success("删除成功");
+            message.success(context.delete + context.ln + context.succeeded);
             fetchData();
             setDeleteStrategyModal(false);
           } else {
@@ -378,7 +413,13 @@ const BackupStrategy = () => {
       .then((res) => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
-            message.success("任务下发成功");
+            message.success(
+              context.task +
+                context.ln +
+                context.execute +
+                context.ln +
+                context.succeeded
+            );
             setExecuteVisible(false);
           } else {
             message.warning(res.message);
@@ -398,17 +439,17 @@ const BackupStrategy = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部添加/自定义参数 -- */}
       <div style={{ display: "flex" }}>
         <Button
           style={{ marginRight: 10 }}
           type="primary"
           onClick={() => {
-            queryCustom();
             setStrategyModalType("add");
             setStrategyModalVisibility(true);
           }}
         >
-          添加策略
+          {context.add}
         </Button>
         <Button
           style={{ marginRight: 10 }}
@@ -418,15 +459,17 @@ const BackupStrategy = () => {
             queryCustom();
           }}
         >
-          自定义参数
+          {context.custom + context.ln + context.parameter}
         </Button>
 
         <div style={{ display: "flex", marginLeft: "auto" }}>
           <Button style={{ marginLeft: 10 }} onClick={() => fetchData()}>
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -443,20 +486,23 @@ const BackupStrategy = () => {
             setStrategyModalVisibility,
             setExecuteVisible,
             strategyForm,
-            queryCustom,
             setKeyArr,
             weekData,
-            setFrequency
+            setFrequency,
+            canBackupIns,
+            setAppName,
+            setNoteText,
+            setCustomValue,
+            context
           )}
           dataSource={dataSource}
-          pagination={{
-            pageSize: 10,
-          }}
+          pagination={{ pageSize: 10 }}
           rowKey={(record) => record.id}
           noScroll={true}
         />
       </div>
 
+      {/* -- 自定义参数 -- */}
       <CustomModal
         modalVisibility={customModalVisibility}
         setModalVisibility={setCustomModalVisibility}
@@ -469,7 +515,10 @@ const BackupStrategy = () => {
         deleteCustomInfo={deleteCustomInfo}
         modalForm={customModalForm}
         setRow={setRow}
+        context={context}
       />
+
+      {/* -- 添加/编辑自定义参数 -- */}
       <AddCustomModal
         customModalType={customModalType}
         addCustom={addCustom}
@@ -479,7 +528,10 @@ const BackupStrategy = () => {
         setAddModalVisibility={setAddModalVisibility}
         updateCustomInfo={updateCustomInfo}
         setUpdateCustomData={setUpdateCustomData}
+        context={context}
       />
+
+      {/* -- 添加/编辑策略 -- */}
       <AddStrategyModal
         strategyModalType={strategyModalType}
         addStrategy={addStrategy}
@@ -489,35 +541,56 @@ const BackupStrategy = () => {
         addModalVisibility={strategyModalVisibility}
         setAddModalVisibility={setStrategyModalVisibility}
         canBackupIns={canBackupIns}
-        initData={initData}
         strategyFormInit={strategyFormInit}
         keyArr={keyArr}
         setKeyArr={setKeyArr}
         weekData={weekData}
         frequency={frequency}
         setFrequency={setFrequency}
+        appName={appName}
+        setAppName={setAppName}
+        noteText={noteText}
+        setNoteText={setNoteText}
+        customValue={customValue}
+        setCustomValue={setCustomValue}
+        strategyForm={strategyForm}
+        setNoteVisibility={setNoteVisibility}
+        context={context}
+        locale={locale}
       />
+
+      {/* -- 服务备份注意 -- */}
+      <OmpMessageModal
+        visibleHandle={[noteVisibility, setNoteVisibility]}
+        context={context}
+        onFinish={() => {
+          setNoteVisibility(false);
+          if (strategyModalType === "add") {
+            addStrategy(strategyForm.getFieldsValue());
+          } else {
+            updateStrategy(strategyForm.getFieldsValue());
+          }
+        }}
+        zIndex={1004}
+      >
+        <div style={{ padding: "20px" }}>
+          <span style={{ fontWeight: 500, color: "red" }}>{appName}</span>{" "}
+          {context.service +
+            context.ln +
+            context.backup +
+            context.ln +
+            context.reminder +
+            " :"}
+          <br />
+          {noteText}
+        </div>
+      </OmpMessageModal>
 
       <OmpMessageModal
         visibleHandle={[updateCustomVisibility, setUpdateCustomVisibility]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={addLoading}
-        onFinish={() => {
-          updateCustom(updateCustomData);
-        }}
+        onFinish={() => updateCustom(updateCustomData)}
         zIndex={1004}
       >
         <div style={{ padding: "20px" }}>
@@ -533,20 +606,7 @@ const BackupStrategy = () => {
 
       <OmpMessageModal
         visibleHandle={[deleteCustomVisibility, setDeleteCustomVisibility]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={addLoading}
         onFinish={() => deleteCustom()}
         zIndex={1004}
@@ -566,59 +626,30 @@ const BackupStrategy = () => {
         </div>
       </OmpMessageModal>
 
+      {/* -- 删除策略 -- */}
       <OmpMessageModal
         visibleHandle={[deleteStrategyModal, setDeleteStrategyModal]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
-        onFinish={() => {
-          deleteStrategy();
-        }}
+        onFinish={() => deleteStrategy()}
       >
-        <div style={{ padding: "20px" }}>
-          确定 <span style={{ fontWeight: 500 }}>删除</span> 该策略吗？
-        </div>
+        <div style={{ padding: "20px" }}>{msgMap[locale].deleteMsg}</div>
       </OmpMessageModal>
 
+      {/* -- 编辑策略 -- */}
       <OmpMessageModal
         visibleHandle={[executeVisible, setExecuteVisible]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
-        onFinish={() => {
-          executeStrategy();
-        }}
+        onFinish={() => executeStrategy()}
       >
         <div style={{ padding: "20px" }}>
-          确认对实例{" "}
-          <span style={{ fontWeight: 500, color: "red" }}>
-            {strategyRow.backup_instances?.join(",")}
-          </span>{" "}
-          执行备份策略吗？
+          {msgMap[locale].exeLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {strategyRow.backup_instances?.join(",")}{" "}
+          </span>
+          {msgMap[locale].exeRight}
         </div>
       </OmpMessageModal>
     </OmpContentWrapper>

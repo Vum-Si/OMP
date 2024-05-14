@@ -31,7 +31,7 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "omp_server.settings")
 django.setup()
 
-from utils.parse_config import MONITOR_PORT, PROMETHEUS_AUTH, GRAFANA_AUTH
+from utils.parse_config import (MONITOR_PORT, PROMETHEUS_AUTH, GRAFANA_AUTH)
 
 
 def get_config_dic():
@@ -106,128 +106,6 @@ enable-threads = true
 preload=true
 lazy-apps=true
 """
-
-tengine_nginx_conf = """
-# user RUN_USER RUN_USER;
-
-error_log %s;
-pid %s;
-
-worker_processes  10;
-worker_rlimit_nofile 102400;
-
-events {
-    use epoll;
-    worker_connections 102400;
-}
-
-http {
-    include mime.types;
-    default_type application/octet-stream;
-
-    #access_log on;
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-    '$status $body_bytes_sent "$http_referer" '
-    '"$http_user_agent" "$http_x_forwarded_for"';
-    error_page 404 /404.html;
-
-    server_names_hash_bucket_size 128;
-    client_header_buffer_size 32k;
-    large_client_header_buffers 4 32k;
-    client_max_body_size 4000m;
-    sendfile on;
-    tcp_nopush on;
-    keepalive_timeout 30;
-    underscores_in_headers on;
-
-    # limit_req_zone $binary_remote_addr zone=one:3m rate=1r/s;
-    # imit_req_zone $binary_remote_addr $uri zone=two:3m rate=1r/s;
-
-    gzip on;
-    gzip_min_length 1k;
-    gzip_buffers 4 16k;
-    gzip_http_version 1.0;
-    gzip_comp_level 2;
-    gzip_types text/plain application/x-javascript text/css application/xml text/javascript application/javascript;
-    gzip_vary on;
-
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_redirect off;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $remote_addr;
-    proxy_temp_path %s;
-    proxy_cache_path %s levels=1:2 keys_zone=cache_one:128m inactive=30m max_size=256m;
-    proxy_read_timeout 1200;
-    proxy_hide_header X-Powered-By;
-    proxy_hide_header Server;
-    server_tokens off;
-    autoindex off;
-
-    log_format access '$remote_addr $remote_user [$time_local] "$request" $status '
-    'Upstream: $upstream_addr '
-    'ups_resp_time: $upstream_response_time '
-    'request_time: $request_time';
-
-    include pools/*.conf;
-    include vhost/*.conf;
-    include jkb/*.conf;
-}
-""" % (
-    os.path.join(PROJECT_FOLDER, "logs/tengine-error.log"),
-    os.path.join(PROJECT_FOLDER, "logs/tengine.pid"),
-    os.path.join(PROJECT_FOLDER, "component/tengine/temp"),
-    os.path.join(PROJECT_FOLDER, "component/tengine/cache")
-)
-
-tengine_vhost_content = """
-server {
-    listen ACCESS_PORT;
-    server_name LOCAL_IP;
-    location /download-inspection/ {
-        alias %s/data/inspection_file/;
-    }
-    location /download-backup/ {
-        alias %s/data/backup/;
-    }
-    location /tool/ {
-        alias %s/package_hub/tool/;
-    }
-    location /custom_scripts/ {
-        alias %s/package_hub/custom_scripts/;
-    }
-    location /download/ {
-        alias %s/tmp/;
-    }
-    location /api/ {
-        uwsgi_connect_timeout 600;
-        uwsgi_send_timeout 600;
-        uwsgi_read_timeout 600;
-        uwsgi_pass SOCKET;
-        include %s;
-    }
-    location /proxy/ {
-        uwsgi_pass SOCKET;
-        include %s;
-    }
-    location / {
-        root %s;
-        index index.html;
-        try_files $uri $uri/ /index.html;
-    }
-}
-""" % (
-    PROJECT_FOLDER,
-    PROJECT_FOLDER,
-    PROJECT_FOLDER,
-    PROJECT_FOLDER,
-    PROJECT_FOLDER,
-    os.path.join(PROJECT_FOLDER, "component/tengine/conf/uwsgi_params"),
-    os.path.join(PROJECT_FOLDER, "component/tengine/conf/uwsgi_params"),
-    os.path.join(PROJECT_FOLDER, "omp_web/dist"),
-)
 
 
 def check_port_access(port):
@@ -310,13 +188,156 @@ def update_uwsgi():
         fp.write(content)
 
 
-def update_nginx():
+def update_nginx(project_path=PROJECT_FOLDER):
     """
     更新tengine的配置文件
     :return:
     """
+    tengine_nginx_conf = """
+    user RUN_USER RUN_USER;
+
+    error_log %s;
+    pid %s;
+
+    worker_processes  10;
+    worker_rlimit_nofile 102400;
+
+    events {
+        use epoll;
+        worker_connections 102400;
+    }
+
+    http {
+        include mime.types;
+        default_type application/octet-stream;
+
+        #access_log on;
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+        '$status $body_bytes_sent "$http_referer" '
+        '"$http_user_agent" "$http_x_forwarded_for"';
+        error_page 404 /404.html;
+        
+        limit_req_zone $binary_remote_addr zone=api_limit:10m rate=1r/s;
+        server_names_hash_bucket_size 128;
+        client_header_buffer_size 32k;
+        large_client_header_buffers 4 32k;
+        client_max_body_size 4000m;
+        sendfile on;
+        tcp_nopush on;
+        keepalive_timeout 30;
+        underscores_in_headers on;
+
+        # limit_req_zone $binary_remote_addr zone=one:3m rate=1r/s;
+        # imit_req_zone $binary_remote_addr $uri zone=two:3m rate=1r/s;
+
+        gzip on;
+        gzip_min_length 1k;
+        gzip_buffers 4 16k;
+        gzip_http_version 1.0;
+        gzip_comp_level 2;
+        gzip_types text/plain application/x-javascript text/css application/xml text/javascript application/javascript;
+        gzip_vary on;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_redirect off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_temp_path %s;
+        proxy_cache_path %s levels=1:2 keys_zone=cache_one:128m inactive=30m max_size=256m;
+        proxy_read_timeout 1200;
+        proxy_hide_header X-Powered-By;
+        proxy_hide_header Server;
+        server_tokens off;
+        autoindex off;
+
+        log_format access '$remote_addr $remote_user [$time_local] "$request" $status '
+        'Upstream: $upstream_addr '
+        'ups_resp_time: $upstream_response_time '
+        'request_time: $request_time';
+
+        include pools/*.conf;
+        include vhost/*.conf;
+        include jkb/*.conf;
+    }
+    """ % (
+        os.path.join(project_path, "logs/tengine-error.log"),
+        os.path.join(project_path, "logs/tengine.pid"),
+        os.path.join(project_path, "component/tengine/temp"),
+        os.path.join(project_path, "component/tengine/cache")
+    )
+
+    tengine_vhost_content = """
+    server {
+        listen ACCESS_PORT;
+        server_name LOCAL_IP;
+        if ($request_method !~* GET|POST|HEAD) {
+              return 403;
+          }
+        location /download-inspection/ {
+            alias %s/data/inspection_file/;
+        }
+        location /download-backup/ {
+            alias %s/data/backup/;
+        }
+        location /tool/ {
+            alias %s/package_hub/tool/;
+        }
+        location /custom_scripts/ {
+            alias %s/package_hub/custom_scripts/;
+        }
+        location /download/ {
+            alias %s/tmp/;
+        }      
+        location /api/upgrade/do-upgrade {
+            limit_req zone=api_limit burst=1 nodelay;
+            uwsgi_connect_timeout 600;
+            uwsgi_send_timeout 600;
+            uwsgi_read_timeout 600;
+            uwsgi_pass 127.0.0.1:19003;
+            include %s/component/tengine/conf/uwsgi_params;
+        }
+        location /api/rollback/do-rollback {
+            limit_req zone=api_limit burst=1 nodelay;
+            uwsgi_connect_timeout 600;
+            uwsgi_send_timeout 600;
+            uwsgi_read_timeout 600;
+            uwsgi_pass 127.0.0.1:19003;
+            include %s/component/tengine/conf/uwsgi_params;
+        }                     
+        location /api/ {
+            uwsgi_connect_timeout 600;
+            uwsgi_send_timeout 600;
+            uwsgi_read_timeout 600;
+            uwsgi_pass SOCKET;
+            include %s;
+        }
+        location /proxy/ {
+            uwsgi_pass SOCKET;
+            include %s;
+        }
+        location / {
+            root %s;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+    }
+    """ % (
+        project_path,
+        project_path,
+        project_path,
+        project_path,
+        project_path,
+        project_path,
+        project_path,
+        os.path.join(project_path, "component/tengine/conf/uwsgi_params"),
+        os.path.join(project_path, "component/tengine/conf/uwsgi_params"),
+        os.path.join(project_path, "omp_web/dist"),
+    )
     nginx_conf_path = os.path.join(
-        PROJECT_FOLDER, "component/tengine/conf/nginx.conf")
+        project_path, "component/tengine/conf/nginx.conf")
     settings = get_config_dic()
     # run_user = settings.get("tengine", {}).get("run_user")
     run_user = settings.get("global_user", "commonuser")
@@ -327,7 +348,7 @@ def update_nginx():
     with open(nginx_conf_path, "w", encoding="utf8") as fp:
         fp.write(content)
     vhost_path = os.path.join(
-        PROJECT_FOLDER, "component/tengine/conf/vhost/omp.conf")
+        project_path, "component/tengine/conf/vhost/omp.conf")
     access_port = settings.get("tengine", {}).get("access_port")
     if not access_port:
         access_port = "18888"
@@ -397,7 +418,7 @@ def replace_placeholder(path, placeholder_list):
 
 def update_prometheus():
     """
-    更新uwsgi的配置文件
+    更新prometheus的配置文件
     :return:
     """
     prometheus_path = os.path.join(
@@ -464,13 +485,19 @@ def update_grafana():
     """
     grafana_path = os.path.join(PROJECT_FOLDER, "component/grafana")
     omp_grafana_log_path = os.path.join(PROJECT_LOG_PATH, "grafana")
+    grafana_datasource_yaml = os.path.join(grafana_path, "conf/provisioning/datasources/sample.yaml")
+    grafana_dashboard_yaml = os.path.join(grafana_path, "conf/provisioning/dashboards/sample.yaml")
 
     # 修改 conf/defaults.ini
     cdi_file = os.path.join(grafana_path, 'conf', 'defaults.ini')
     CW_GRAFANA_PORT = MONITOR_PORT.get("grafana", '19014')
     CW_GRAFANA_ADMIN_USER = GRAFANA_AUTH.get("grafana_admin_auth").get("username", "admin")
     CW_GRAFANA_ADMIN_PASSWORD = GRAFANA_AUTH.get("grafana_admin_auth").get("plaintext_password", "Yunweiguanli@OMP_123")
-
+    CW_LOKI_PORT = MONITOR_PORT.get("loki", 19012)
+    CW_PROMETHEUS_PORT = MONITOR_PORT.get("prometheus", 19011)
+    CW_PROMETHEUS_USERNAME = PROMETHEUS_AUTH.get("username", "omp")
+    CW_PROMETHEUS_PASSWORD = PROMETHEUS_AUTH.get("plaintext_password")
+    CW_GRAFANA_DASHBOARD = os.path.join(PROJECT_FOLDER, "package_hub/grafana_dashboard_json")
     cdi_placeholder_script = [
         {'CW-HTTP-PORT': CW_GRAFANA_PORT},
         {'OMP_GRAFANA_LOG_PATH': omp_grafana_log_path},
@@ -487,6 +514,21 @@ def update_grafana():
         os.makedirs(omp_grafana_log_path)
     sa_file = os.path.join(grafana_path, 'scripts', 'grafana')
     replace_placeholder(sa_file, sa_placeholder_script)
+
+    # 修改 conf/provisioning/datasources/sample.yaml
+    source_placeholder_script = [
+        {'CW_LOKI_PORT': CW_LOKI_PORT},
+        {'CW_PROMETHEUS_PORT': CW_PROMETHEUS_PORT},
+        {'CW_PROMETHEUS_USERNAME': CW_PROMETHEUS_USERNAME},
+        {'CW_PROMETHEUS_PASSWORD': CW_PROMETHEUS_PASSWORD},
+    ]
+    replace_placeholder(grafana_datasource_yaml, source_placeholder_script)
+
+    # 修改 conf/provisioning/dashboards/sample.yaml
+    dashboard_placeholder_script = [
+        {'CW_GRAFANA_DASHBOARD': CW_GRAFANA_DASHBOARD}
+    ]
+    replace_placeholder(grafana_dashboard_yaml, dashboard_placeholder_script)
 
 
 def update_alertmanager():
@@ -572,8 +614,7 @@ def update_loki():
 
     # 修改 scripts/loki
     sa_placeholder_script = [
-        {'OMP_LOKI_LOG_PATH': omp_loki_log_path},
-        {'LOKI_RETENTION_PERIOD': loki_retention_period}
+        {'OMP_LOKI_LOG_PATH': omp_loki_log_path}
     ]
     if not os.path.exists(omp_loki_log_path):
         os.makedirs(omp_loki_log_path)
@@ -589,20 +630,34 @@ def main(local_ip, run_user):
     :return:
     """
     print("Start Update Conf!")
-    update_local_ip_run_user(local_ip, run_user)
+    for key, value in DICT_SERVICE_TO_FUNC.items():
+        if key == "all":
+            continue
+        elif key == "run_user":
+            value(local_ip, run_user)
+        else:
+            value()
     # check_port_is_used()
-    update_salt_master()
-    update_uwsgi()
-    update_nginx()
-    update_prometheus()
-    update_grafana()
-    update_alertmanager()
-    update_loki()
-
     print("Finish Update Conf!")
 
+
+DICT_SERVICE_TO_FUNC = {
+    "all": main,
+    "run_user": update_local_ip_run_user,
+    "salt": update_salt_master,
+    "uwsgi": update_uwsgi,
+    "nginx": update_nginx,
+    "prometheus": update_prometheus,
+    "grafana": update_grafana,
+    "alertmanager": update_alertmanager,
+    "loki": update_loki,
+}
 
 if __name__ == '__main__':
     local_ip = sys.argv[1]
     run_user = sys.argv[2]
-    main(local_ip, run_user)
+    service = sys.argv[3].lower()
+    if service in ['all', 'run_user']:
+        DICT_SERVICE_TO_FUNC[service](local_ip, run_user)
+    else:
+        DICT_SERVICE_TO_FUNC[service]()

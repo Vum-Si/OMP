@@ -10,6 +10,7 @@ import os
 
 from utils.plugin.salt_client import SaltClient
 from db_models.models import Host
+from utils.parse_config import python_cmd_env
 
 
 class BasePostInstallUtils(object):
@@ -56,7 +57,7 @@ class BasePostInstallUtils(object):
         salt_obj = SaltClient()
         return salt_obj.cmd(
             target=target_ip,
-            command=f"python {install_path} --local_ip={target_ip} "
+            command=f"{python_cmd_env(target_json_path)} {install_path} --local_ip={target_ip} "
                     f"--data_json={target_json_path}",
             timeout=60
         )
@@ -78,7 +79,7 @@ class BasePostInstallUtils(object):
         salt_obj = SaltClient()
         return salt_obj.cmd(
             target=target_ip,
-            command=f"python {init_path} --local_ip={target_ip} "
+            command=f"{python_cmd_env(target_json_path)} {init_path} --local_ip={target_ip} "
                     f"--data_json={target_json_path}",
             timeout=60
         )

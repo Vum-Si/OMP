@@ -1,0 +1,30 @@
+global:
+  resolve_timeout: 5m
+  smtp_from: '${EMAIL_SEND}'
+  smtp_smarthost: '${SMTP_SMARTHOST}'
+  smtp_auth_username: '${EMAIL_SEND_USER}'
+  smtp_auth_password: '${EMAIL_SEND_PASSWORD}'
+  smtp_require_tls: false
+  smtp_hello: '${SMTP_HELLO}'
+
+templates:
+  - '${ALERTMANAGER_PATH}/templates/*tmpl'
+
+route:
+  group_by: ['instance','job','alertname']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: ${EMAIL_SEND_INTERVAL} # 相同警告信息的发送间隔
+  receiver: '${RECEIVER}'
+
+receivers:
+- name: '${RECEIVER}'
+  webhook_configs:
+  - url: '${WEBHOOK_URL}'
+    send_resolved: true
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['instance', 'job', 'alertname']

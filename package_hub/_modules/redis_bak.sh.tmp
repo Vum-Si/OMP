@@ -1,0 +1,200 @@
+#!/bin/bash
+
+CURRENT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+
+# 自定义变量
+operation=${operation}
+need_push=${need_push}
+backup_dir=${backup_dir}
+
+# OMP提取参数
+ip=${cw_o_ip}
+redis_install_dir=${cw_o_base_dir}
+redis_data_dir=${cw_o_data_dir}
+redis_host=${cw_o_ip}
+redis_port=${cw_o_service_port}
+redis_password=${cw_o_password}
+
+# 公共变量
+service_name="redis"
+BasePath=$(cd `dirname $0`; pwd)
+nowTime=$(date +%Y%m%d%H%M)
+count=0
+# 请求重试机制
+max_count=6
+
+
+# 设置redis-cli路径
+redis_cli="$redis_install_dir/bin/redis-cli"
+redis_server="$redis_install_dir/bin/redis-server"
+
+
+function request_omp() {
+  if [[ -z "$rq_body" ]]; then
+    if [[ -z "$1" ]]; then
+      echo "need request result"
+      exit 1
+    fi
+    # $1 结果(必填)  $2 消息  $3 omp抓取路径 要确定是一个单独的文件
+    rq_body="{\"result\":\"$1\",\"message\":\"$2\",\"remote_path\":\"$3\",\"ip\":\"$ip\",\"need_push\":\"$need_push\"}"
+  fi
+  RES=$(curl --location --request POST 'http://${cw_o_master_url}p/' --header 'Content-Type: application/json' --data "$rq_body"|grep "\"code\":0")
+  code=$?
+  # 存在返回证明有异常 或者状态码非0
+  if [[ -z "$RES" ]] || [[ $code != 0 ]];then
+    echo $RES
+    if [[ "$count" -lt "$max_count" ]];then
+      sleep 5
+      let count+=1
+      request_omp $1 $2 $3
+    fi
+    exit 1
+  else
+    exit 0
+  fi
+}
+
+function touch_zip() {
+  if [[ -z "$2" ]]; then
+    request_omp 1 "need backup path but not provided"
+  fi
+
+  back_length=$(echo $2 |sed 's#/# #g'|awk '{print NF}')
+  # 保护机制
+  if [[ "$back_length" -lt 2 ]];then
+    request_omp 1 "backup path is not available"
+  fi
+
+  tar_name=${service_name}-backup-${nowTime}.tar.gz
+  if [ -n "$3" ]; then
+      cd $2 && tar -zcf $tar_name $3
+      tar_path=$2/$tar_name
+  else
+      cd $BasePath && tar -zcf $tar_name -C $2 . --remove-files
+      tar_path=${BasePath}/${tar_name}
+  fi
+  request_omp $1 "success" $tar_path
+}
+
+
+# 备份Redis数据
+backup_redis() {
+  mkdir -p $backup_dir
+  # 检查redis-cli和redis-server文件是否存在于Redis安装目录中
+  if [ ! -f "$redis_cli" ] || [ ! -f "$redis_install_dir/bin/redis-server" ]; then
+    request_omp 1 "未找到 redis-cli，请检查Redis安装目录"
+    exit 1
+  fi
+  # 获取当前节点信息
+  instance_type=$($redis_cli -h "$redis_host" -p "$redis_port" -a "$redis_password" info | grep "role:" | awk -F':' '{print $2}' | tr -d '[:space:]')
+
+  # 检查 Redis 实例类型并执行相应操作
+  case "$instance_type" in
+  "master")
+    # 备份主节点数据
+    # 获取当前日期作为时间戳
+    timestamp=$(date +'%Y%m%d%H%M%S')
+
+    # 检查Redis数据库中的键数量
+    keys_count=$($redis_cli -h $redis_host -p $redis_port -a $redis_password dbsize)
+    if [ "$keys_count" -eq 0 ]; then
+      request_omp 0 "Redis中没有数据，无需执行备份操作"
+      exit 0
+    fi
+
+    # 获取当前日期作为备份文件名
+    backup_file="$backup_dir/redis_backup_$timestamp.rdb"
+
+    # 获取备份前的最后保存时间戳
+    last_save_before=$($redis_cli -h "$redis_host" -p "$redis_port" -a "$redis_password" lastsave)
+    echo "上一次备份成功的时间为""$last_save_before"
+
+    # 执行备份命令，如果之前没有执行过BGSAVE则尝试执行一次
+    $redis_cli -h $redis_host -p $redis_port -a $redis_password bgsave || true
+
+    # 等待备份完成，最多尝试10次，每次间隔1秒
+    max_attempts=20
+    attempts=0
+    while true; do
+      last_save_after=$($redis_cli -h "$redis_host" -p "$redis_port" -a "$redis_password" lastsave)
+      if [ "$last_save_before" != "$last_save_after" ]; then
+        break
+      fi
+      if [ $attempts -ge $max_attempts ]; then
+        request_omp 1 "备份超时，无法确认数据是否成功保存"
+        exit 1
+      fi
+      attempts=$((attempts + 1))
+      sleep 3
+    done
+
+    # 将备份文件移动到备份目录并以时间戳命名
+    mv "$redis_data_dir/dump.rdb" "$backup_file"
+
+    touch_zip 0 $backup_dir redis_backup_$timestamp.rdb
+    ;;
+  "slave" | "sentinel")
+    request_omp 1 "此节点为从节点或哨兵节点，无法执行备份操作，请在主节点上执行备份"
+    exit 1
+    ;;
+  "cluster")
+    request_omp 1 "此节点为 Redis Cluster，无法自动备份和恢复，请手动操作"
+    exit 1
+    ;;
+  *)
+    request_omp 1 "未知 Redis 实例类型"
+    exit 1
+    ;;
+  esac
+}
+
+# 恢复Redis数据
+restore_redis() {
+  # 检查备份目录是否存在备份文件
+  if [ ! -d "$backup_dir" ] || [ -z "$(ls -A "$backup_dir")" ]; then
+    request_omp 1 "备份目录为空或不存在备份文件: $backup_dir"
+    exit 1
+  fi
+
+  # 检查redis-cli和redis-server文件是否存在于Redis安装目录中
+  if [ ! -f "$redis_server" ]; then
+    request_omp 1 "未找到redis-server，请检查Redis安装目录"
+    exit 1
+  fi
+
+  # 按照日期排序备份文件，取最新的备份文件进行恢复
+  latest_backup=$(ls -t "$backup_dir" | head -n 1)
+  if [ ! -f "$backup_dir/$latest_backup" ]; then
+    request_omp 1 "找不到最新的备份文件: $backup_dir/$latest_backup"
+    exit 1
+  fi
+
+  # 执行恢复命令
+  "$redis_install_dir"/scripts/redis stop
+
+  # 等待Redis关闭
+  sleep 10
+
+  # 将最新的备份文件复制到Redis数据目录
+  cp "$backup_dir/$latest_backup" "$redis_data_dir/dump.rdb"
+
+  # 启动Redis
+  "$redis_install_dir"/scripts/redis start
+
+  request_omp 0 "Redis数据恢复完成，使用备份文件: $backup_dir/$latest_backup"
+}
+
+
+# 根据参数执行备份或恢复操作
+case "$operation" in
+"backup")
+  backup_redis
+  ;;
+"restore")
+  restore_redis
+  ;;
+*)
+  backup_redis
+  ;;
+esac
+

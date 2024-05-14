@@ -42,7 +42,10 @@ class BaseDownLoadTemplateView(GenericViewSet, ListModelMixin):
 
 
 class UploadFileAPIView(GenericViewSet, CreateModelMixin):
-
+    """
+        create:
+        上传文件
+    """
     post_description = "上传文件"
     queryset = UploadFileHistory.objects.all()
     serializer_class = UploadFileSerializer

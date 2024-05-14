@@ -1,24 +1,26 @@
 import logging
-import json
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 from rest_framework.viewsets import GenericViewSet
-from rest_framework.response import Response
-from rest_framework.mixins import CreateModelMixin, ListModelMixin, DestroyModelMixin, UpdateModelMixin
+from rest_framework.mixins import CreateModelMixin, ListModelMixin, \
+    DestroyModelMixin, UpdateModelMixin
 from services.self_heal_serializers import SelfHealingSettingSerializer, ListSelfHealingHistorySerializer, \
     UpdateSelfHealingHistorySerializer
 from services.self_heal_filter import SelfHealingTimeFilter, SelfHealingHistoryFilter
-from db_models.models import SelfHealingSetting, SelfHealingHistory
-from utils.common.paginations import PageNumberPager
+from db_models.models import SelfHealingHistory, SelfHealingSetting
 from services.self_healing import get_enable_health
+from utils.common.paginations import PageNumberPager
+from rest_framework.response import Response
 from rest_framework_bulk import BulkUpdateAPIView
 
 logger = logging.getLogger("server")
 
 
-class SelfHealingSettingView(GenericViewSet, ListModelMixin, CreateModelMixin, BulkUpdateAPIView, DestroyModelMixin,
-                             UpdateModelMixin):
+class SelfHealingSettingView(GenericViewSet, ListModelMixin,
+                             CreateModelMixin, BulkUpdateAPIView,
+                             DestroyModelMixin, UpdateModelMixin
+                             ):
     """自愈策略"""
     queryset = SelfHealingSetting.objects.all()
     serializer_class = SelfHealingSettingSerializer
@@ -49,7 +51,7 @@ class SelfHealingSettingView(GenericViewSet, ListModelMixin, CreateModelMixin, B
 
 class ListSelfHealingHistoryView(GenericViewSet, ListModelMixin):
     """自愈历史记录"""
-    queryset = SelfHealingHistory.objects.all().order_by("-alert_time", "-end_time")
+    queryset = SelfHealingHistory.objects.all().order_by("-end_time", "-alert_time")
     serializer_class = ListSelfHealingHistorySerializer
     pagination_class = PageNumberPager
     filter_backends = (

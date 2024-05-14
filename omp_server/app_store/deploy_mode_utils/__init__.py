@@ -23,6 +23,7 @@ SERVICE_MAP = {
     "zookeeper": OddNumUtils,
     "kafka": OddNumUtils,
     "nacos": OddNumUtils,
+    "mongodb": OddNumUtils,
     "tengine": TengineUtils,
     "rocketmq": RocketmqUtils
 }

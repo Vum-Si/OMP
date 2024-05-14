@@ -1,0 +1,75 @@
+#当基础组件无特殊要求时(单节点)则不填写
+component:
+  - name: zookeeper
+    count: 3
+  #如果是主主模式
+  # name: mysql count: 2 vip: 127.0.0.1(根据实际场景填写)
+  - name: mysql
+    count: 2
+  - name: flink
+    count: 3
+    deploy_mode: per-job
+  - name: hadoop
+    count: 3
+  - name: minio
+    count: 4
+  - name: rocketmq
+    count: 2
+  - name: prometheus
+    count: 2
+  - name: arangodb
+    count: 3
+  - name: kafka
+    count: 3
+  - name: zookeeper
+    count: 3
+  - name: redis
+    count: 3
+  - name: redisgraph
+    count: 3
+  - name: xxlJob
+    count: 3
+  - name: clickhouse
+    count: 3
+  - name: elasticsearch
+    count: 3
+  - name: nacos
+    count: 3
+  - name: victoriaMetrics
+    count: 3
+  - name: wkhtmltox
+    count: 2
+  - name: tengine
+    count: 1
+
+#此处不用调整，意为集群最小个数 限制为组件类别
+component_template:
+  minio: 4
+  hadoop: 3
+  zookeeper: 3
+  kafka: 3
+  victoriaMetrics: 3
+
+#非web的绑定关系,一般不需调整 要注意key的数量一定要大于等于v的数量 如wkhtmltox一定要大于等于apmDataservice数量
+# ToDo 考虑一个问题 一个服务apmdata要绑定在两个服务上 ,
+# wkht和 apmcomsumer 上所以需要先把consumer 绑定在wkht上 再把dataservice绑定在consumer上
+affinity:
+  wkhtmltox:
+    - apmDataService
+    - apmConsumer
+  tengine:
+    - lcapDevServer
+  clickhouse:
+    - dodpClickhouseAgent
+  hadoop:
+    - flink
+  prometheus:
+    - pushgateway
+
+default_mem: 1024
+redundant_mem: 0.2
+
+special_service:
+  apmAdmin: 1
+  lcapDevServer: 1
+  dodpClickhouseAgent: clickhouse

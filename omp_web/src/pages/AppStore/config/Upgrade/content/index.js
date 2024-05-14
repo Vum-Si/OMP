@@ -11,35 +11,33 @@ import { fetchPut } from "src/utils/request";
 import ServiceRollbackModal from "../../ServiceRollbackModal";
 
 const { Link } = Anchor;
-// 状态渲染规则
-const renderStatus = {
-  0: "等待升级",
-  1: "正在升级",
-  2: "升级成功",
-  3: "升级失败",
-  4: "正在注册",
-};
 
-const Content = () => {
+const Content = ({ context, locale }) => {
+  const renderStatus = {
+    0: context.waiting,
+    1: context.upgrading,
+    2: context.succeeded,
+    3: context.installFailed,
+    4: context.registering,
+  };
   const history = useHistory();
   const viewHeight = useSelector((state) => state.layouts.viewSize.height);
   // 在轮训时使用ref存值
   const openNameRef = useRef(null);
   const location = useLocation();
-  console.log(location?.state?.history);
-
+  if (!location?.state?.history) {
+    history.push({
+      pathname: "/application_management/install-record",
+    });
+  }
   const [loading, setLoading] = useState(true);
-
   const [retryLoading, setRetryLoading] = useState(false);
-
   const [data, setData] = useState({
     detail: {},
     upgrade_state: 0,
   });
-
   // 轮训的timer控制器
   const timer = useRef(null);
-
   const [vfModalVisibility, setVfModalVisibility] = useState(false);
   const [rowId, setRowId] = useState("");
 
@@ -72,7 +70,7 @@ const Content = () => {
   const retryUpgrade = () => {
     setRetryLoading(true);
     fetchPut(
-      `${apiRequest.appStore.queryUpgradeProcess}/${location?.state?.history}`
+      `${apiRequest.appStore.queryUpgradeProcess}/${location?.state?.history}/`
     )
       .then((res) => {
         handleResponse(res, (res) => {
@@ -97,18 +95,13 @@ const Content = () => {
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          paddingTop: 20,
-        }}
-      >
+      <div style={{ display: "flex", paddingTop: 20 }}>
+        {/* -- 左侧升级细节 -- */}
         <Spin spinning={loading}>
           <div
             id="Step4Wrapper"
             style={{
               flex: 1,
-              //backgroundColor: "#fff",
               height: viewHeight - 270,
               overflowY: "auto",
             }}
@@ -122,6 +115,8 @@ const Content = () => {
                     title={item.service_name}
                     data={item.upgrade_details}
                     idx={idx}
+                    context={context}
+                    locale={locale}
                   />
                 );
               })}
@@ -129,40 +124,67 @@ const Content = () => {
           </div>
         </Spin>
 
+        {/* -- 右侧状态栏 -- */}
         <div
           style={{
-            //height: 300,
             width: 200,
             backgroundColor: "#fff",
             marginLeft: 20,
-            height: viewHeight - 270,
-            overflowY: "auto",
             paddingTop: 10,
           }}
         >
           <div style={{ paddingLeft: 5 }}>
             <Anchor
-              style={{}}
               affix={false}
               getContainer={() => {
                 let con = document.getElementById("Step4Wrapper");
                 return con;
               }}
-              onClick={(e) => {
-                e.preventDefault();
+              onClick={(e) => e.preventDefault()}
+              style={{
+                height: viewHeight - 270,
+                overflowY: "auto",
               }}
             >
               {data?.upgrade_detail?.map((item, idx) => {
-                let hasError =
-                  item.upgrade_details.filter((a) => a.upgrade_state == 3)
-                    .length !== 0;
+                let ingArr = 0;
+                let successArr = 0;
+                let errArr = 0;
+                for (let i = 0; i < item.upgrade_details.length; i++) {
+                  const element = item.upgrade_details[i];
+                  switch (element.upgrade_state) {
+                    case 0:
+                      break;
+                    case 1:
+                      ingArr += 1;
+                      break;
+                    case 2:
+                      successArr += 1;
+                      break;
+                    case 3:
+                      errArr += 1;
+                      break;
+                    default:
+                      break;
+                  }
+                }
+                let colorRes = "#f0c242";
+                if (errArr !== 0) {
+                  colorRes = "#da4e48";
+                } else if (successArr === item.upgrade_details.length) {
+                  colorRes = "rgb(118,204,104)";
+                } else if (ingArr > 0) {
+                  colorRes = "rgba(0, 0, 0, 0.85)";
+                }
                 return (
                   <div style={{ padding: 5 }} key={idx}>
                     <Link
                       href={`#a${idx}`}
                       title={
-                        <span style={{ color: hasError && "rgb(218, 78, 72)" }}>
-                          {item.service_name}
+                        <span style={{ color: colorRes }}>
+                          {item.service_name === "升级前置操作"
+                            ? context.pre + context.ln + context.task
+                            : item.service_name}
                         </span>
                       }
                     />
@@ -173,6 +195,8 @@ const Content = () => {
           </div>
         </div>
       </div>
+
+      {/* -- 底部进度条 -- */}
       <div
         style={{
           position: "fixed",
@@ -204,58 +228,42 @@ const Content = () => {
             status={data.upgrade_state == 3 && "exception"}
           />
         </div>
-        <div style={{ paddingLeft: 60 }}>
+        <div style={{ paddingLeft: 40 }}>
           {data.upgrade_state == 3 && (
             <>
               <Button
                 loading={retryLoading}
-                style={{ marginLeft: 10 }}
+                style={{ marginLeft: 4 }}
                 type="primary"
                 //disabled={unassignedServices !== 0}
                 onClick={() => {
                   setRowId(location?.state?.history);
-                  // retryUpgrade();
-                  setVfModalVisibility(true)
+                  setVfModalVisibility(true);
                 }}
               >
-                回滚
+                {context.rollback}
               </Button>
               <Button
                 loading={retryLoading}
-                style={{ marginLeft: 10 }}
+                style={{ marginLeft: 4 }}
                 type="primary"
                 //disabled={unassignedServices !== 0}
-                onClick={() => {
-                  retryUpgrade();
-                }}
+                onClick={() => retryUpgrade()}
               >
-                重试
+                {context.retry}
               </Button>
             </>
           )}
-
-          <Button
-            style={{ marginLeft: 10 }}
-            type="primary"
-            //disabled={unassignedServices !== 0}
-            onClick={() => {
-              history.push({
-                pathname: "/application_management/install-record",
-                state: {
-                  tabKey: "upgrade",
-                },
-              });
-            }}
-          >
-            完成
-          </Button>
         </div>
       </div>
+
+      {/* -- 服务回滚 -- */}
       <ServiceRollbackModal
         sRModalVisibility={vfModalVisibility}
         setSRModalVisibility={setVfModalVisibility}
         initLoading={retryLoading}
         fixedParams={`?history_id=${rowId}`}
+        context={context}
       />
     </div>
   );

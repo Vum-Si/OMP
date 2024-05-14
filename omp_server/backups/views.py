@@ -30,17 +30,38 @@ class CanBackupInstancesView(GenericViewSet, ListModelMixin):
     """
     get_description = "读取可备份实例列表"
 
+    @staticmethod
+    def get_args(b_args, all_args):
+        arg_ls = []
+        for b_arg in b_args:
+            for arg in all_args:
+                if arg.get("field_k") == b_arg:
+                    arg_ls.append(arg)
+        return arg_ls
+
     def list(self, request, *args, **kwargs):
         # ToDo 找不出更合适的继承
         ser_data = Service.objects.filter(
-            service__app_name__in=BACKUP_SERVICE
-        ).filter(service_status=Service.SERVICE_STATUS_NORMAL).values_list("service_instance_name", flat=True)
-        # back_instance = BackupSetting.objects.all().values_list("backup_instances", flat=True)
-        # back_set = []
-        # for instance in back_instance:
-        #    back_set.extend(instance)
-        # ser_data = list(set(ser_data) - set(back_set))
-        return Response(data=list(ser_data))
+            service__app_name__in=list(BACKUP_SERVICE)
+        ).filter(service_status=Service.SERVICE_STATUS_NORMAL).values_list("service_instance_name", "service__app_name")
+        app_ser = {}
+        for i in ser_data:
+            app_ser.setdefault(i[1], []).append(i[0])
+
+        all_args = BackupCustom.objects.all().values("id", "field_k", "field_v")
+
+        data = []
+        for app, instance in app_ser.items():
+            b_args = BACKUP_SERVICE[app].get("args")
+            data.append(
+                {"app_name": app,
+                 "backup_custom": self.get_args(b_args, all_args),
+                 "backup_instances": instance,
+                 "note": BACKUP_SERVICE[app].get("remind", "")
+                 }
+            )
+
+        return Response(data=data)
 
 
 class BackupSettingView(GenericViewSet, ListModelMixin,
@@ -64,7 +85,7 @@ class BackupSettingView(GenericViewSet, ListModelMixin,
         if set_id:
             # 任务策略制定后触发一次备份任务
             if check_ing(BackupSetting.objects.filter(id=set_id).first()):
-                return Response(data={"code": 1, "message": f"当前策略存在正在备份的实例或id{set_id}不存在"})
+                return Response(data={"code": 1, "message": f"当前策略存在正在备份的实例或该服务已被删除"})
             backup_service.delay(task_id=set_id)
             return Response("任务下发成功")
         serializer = self.get_serializer(data=request.data)

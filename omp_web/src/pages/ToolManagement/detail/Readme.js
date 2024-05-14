@@ -18,9 +18,6 @@ const Readme = ({ text = "" }) => {
       return hljs.highlightAuto(code).value;
     },
   });
-
-  console.log(md);
-  console.log(markdown());
   return (
     <div
       dangerouslySetInnerHTML={{

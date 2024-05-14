@@ -174,6 +174,9 @@ class ApplicationHub(TimeStampMixin):
         "是否为基础环境", default=False, help_text="是否为基础环境")
     app_monitor = models.JSONField(
         "监控使用字段", null=True, blank=True, help_text="监控使用字段")
+    # 应用支持的部署模式列表字段
+    deploy_mode = models.JSONField(
+        "部署模式", null=True, blank=True, help_text="部署模式")
 
     class Meta:
         """元数据"""
@@ -201,6 +204,10 @@ class Product(TimeStampMixin):
     product = models.ForeignKey(
         ProductHub, null=True, blank=True,
         on_delete=models.SET_NULL, help_text="所属产品")
+    # 产品的部署类型，同产品下服务要求一致
+    deploy_mode = models.CharField(
+        "部署模式", max_length=128,
+        null=True, blank=True, help_text="部署模式")
 
     class Meta:
         """元数据"""

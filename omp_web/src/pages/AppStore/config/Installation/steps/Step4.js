@@ -1,83 +1,225 @@
-import { Button, Anchor, Spin, Progress } from "antd";
-import { useSelector } from "react-redux";
-import InstallInfoItem from "../component/InstallInfoItem";
-import { useEffect, useRef, useState } from "react";
-import { LoadingOutlined } from "@ant-design/icons";
+import { Button, Form, Checkbox, Input, Spin, message } from "antd";
+import { useEffect, useState } from "react";
+import { SearchOutlined, ExclamationOutlined } from "@ant-design/icons";
+import { useSelector, useDispatch } from "react-redux";
+import ServiceConfigItem from "../component/ServiceConfigItem";
+import { fetchGet, fetchPost } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
-import { fetchGet } from "@/utils/request";
 import { handleResponse } from "@/utils/utils";
-import { useHistory, useLocation } from "react-router-dom";
-import { fetchPost } from "src/utils/request";
+import {
+  getStep3IpDataChangeAction,
+  getStep3ErrorInfoChangeAction,
+  getStep3ServiceChangeAction,
+} from "../store/actionsCreators";
+import * as R from "ramda";
 
-const { Link } = Anchor;
-// 状态渲染规则
-const renderStatus = {
-  0: "等待安装",
-  1: "正在安装",
-  2: "安装成功",
-  3: "安装失败",
-  4: "正在注册",
+const msgMap = {
+  "en-US": {
+    userMsg: "Specify the service running user",
+    noRootMsg: "Input a non root user",
+  },
+  "zh-CN": {
+    userMsg: "指定本次安装服务运行用户",
+    noRootMsg: "请输入非root用户",
+  },
 };
 
-const Step4 = () => {
-  const history = useHistory();
-  const viewHeight = useSelector((state) => state.layouts.viewSize.height);
-  const [openName, setOpenName] = useState("");
-  // 在轮训时使用ref存值
-  const openNameRef = useRef(null);
-  const location = useLocation();
-  const defaultUniqueKey = location.state?.uniqueKey;
+const Step4 = ({ setStepNum, context, locale }) => {
+  const dispatch = useDispatch();
+  // unique_key: "21e041a9-c9a5-4734-9673-7ed932625d21"
+  // 服务的loading
+  const [loading, setLoading] = useState(false);
+  const [loadingIp, setLoadingIp] = useState(false);
   const uniqueKey = useSelector((state) => state.appStore.uniqueKey);
+  // redux中取数据
+  const reduxData = useSelector((state) => state.installation.step3Data);
+  const errInfo = useSelector((state) => state.installation.step3ErrorData);
+  const [checked, setChecked] = useState(false);
+  const [serviceConfigform] = Form.useForm();
+  const viewHeight = useSelector((state) => state.layouts.viewSize.height);
+  // 指定本次安装服务运行用户
+  const [runUser, setRunUser] = useState("");
+  // 筛选后的ip列表
+  const [currentIpList, setCurrentIpList] = useState([]);
+  // ip列表中的选中项
+  const [checkIp, setCheckIp] = useState("");
+  // ip 筛选value
+  const [searchIp, setSearchIp] = useState("");
+  // ip列表的数据源
+  const [ipList, setIpList] = useState([]);
 
-  const [loading, setLoading] = useState(true);
-
-  const [retryLoading, setRetryLoading] = useState(false);
-
-  // 主机 agent 状态标识
-  const [hostAgentFlag, setHostAgentFlag] = useState(false);
-  // 轮训控制器
-  const hostAgentTimer = useRef(null);
-  // start 按钮加载
-  const [startLoading, setStartLoading] = useState(false);
-
-  const [data, setData] = useState({
-    detail: {},
-    status: 0,
-  });
-
-  const [log, setLog] = useState("");
-
-  // 轮训的timer控制器
-  const timer = useRef(null);
-
-  const queryInstallProcess = () => {
-    !timer.current && setLoading(true);
-    fetchGet(apiRequest.appStore.queryInstallProcess, {
+  const queryIpList = () => {
+    setLoadingIp(true);
+    fetchGet(apiRequest.appStore.getInstallHostRange, {
       params: {
-        unique_key: defaultUniqueKey || uniqueKey,
+        unique_key: uniqueKey,
       },
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          setData(res.data);
-          if (
-            res.data.status == 0 ||
-            res.data.status == 1 ||
-            res.data.status == 4
-          ) {
-            // 状态为未安装或者安装中
-            if (openNameRef.current) {
-              let arr = openNameRef.current.split("=");
-              queryDetailInfo(defaultUniqueKey || uniqueKey, arr[1], arr[0]);
-            }
+          setIpList(res.data.data);
+          setCurrentIpList(res.data.data);
+          setCheckIp(res.data.data[0]);
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        setLoadingIp(false);
+      });
+  };
 
-            timer.current = setTimeout(() => {
-              queryInstallProcess();
-            }, 5000);
-          } else {
-            if (openNameRef.current) {
-              let arr = openNameRef.current.split("=");
-              queryDetailInfo(defaultUniqueKey || uniqueKey, arr[1], arr[0]);
+  const queryInstallArgsByIp = (ip) => {
+    // 如果redux中已经存了当前ip的数据就不再请求直接使用redux中的
+    if (reduxData[ip]) {
+      return;
+    }
+    setLoading(true);
+    fetchGet(apiRequest.appStore.getInstallArgsByIp, {
+      params: {
+        unique_key: uniqueKey,
+        ip: ip,
+      },
+    })
+      .then((res) => {
+        handleResponse(res, (res) => {
+          //setDataSource(res.data.data);
+          dispatch(
+            getStep3IpDataChangeAction({
+              [ip]: res.data.data,
+            })
+          );
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
+  // 提交前对数据进行处理
+  const dataProcessing = (data) => {
+    let obj = {};
+    ipList.map((ip) => {
+      obj[ip] = [];
+    });
+    //console.log(data);
+    return {
+      ...obj,
+      ...data,
+    };
+  };
+
+  // 有校验失败的信息生成errlist
+  const getErrorInfo = (data) => {
+    let result = {};
+    for (const ip in data) {
+      data[ip].map((service) => {
+        [...service.install_args, ...service.ports].map((serv) => {
+          if (serv.check_flag == false) {
+            if (!result[ip]) {
+              result[ip] = {};
+            }
+            if (result[ip][service.name]) {
+              result[ip][service.name][serv.key] = serv.error_msg;
+            } else {
+              result[ip][service.name] = {};
+              result[ip][service.name][serv.key] = serv.error_msg;
+            }
+          }
+        });
+      });
+    }
+    // console.log(result, "result");
+    return result;
+  };
+
+  // 非空校验
+  const nonNullCheck = (queryData) => {
+    let result = {};
+    //console.log(queryData);
+    let data = R.clone(queryData);
+    // 这一步校验是为了解决非当前页面form的必填校验不到的问题
+    // 当key == vip 跳过校验（非必填）
+    // 首先去除当前页面ip的相关数据校验
+    data[checkIp] = [];
+    // console.log(data)
+    for (const ip in data) {
+      data[ip].map((service) => {
+        [...service.install_args, ...service.ports].map((serv) => {
+          // console.log(serv);
+          // 特殊处理，去除vip非空校验
+          if (!serv.default && serv.key !== "vip") {
+            if (!result[ip]) {
+              result[ip] = {};
+            }
+            if (result[ip][service.name]) {
+              result[ip][service.name][serv.key] = `请输入${serv.name}`;
+            } else {
+              result[ip][service.name] = {};
+              result[ip][service.name][serv.key] = `请输入${serv.name}`;
+            }
+          }
+        });
+      });
+    }
+
+    return result;
+  };
+
+  const getCurrentData = (queryData) => {
+    let formData = serviceConfigform.getFieldValue();
+    for (const keyStr in formData) {
+      let keyArr = keyStr.split("=");
+      queryData[checkIp] = queryData[checkIp].map((item) => {
+        if (item.name == keyArr[0]) {
+          let obj = { ...item };
+          obj.install_args = obj.install_args.map((i) => {
+            if (i.key == keyArr[1]) {
+              i.default = formData[keyStr];
+            }
+            return i;
+          });
+          obj.ports = obj.ports.map((i) => {
+            if (i.key == keyArr[1]) {
+              i.default = formData[keyStr];
+            }
+            return i;
+          });
+          return obj;
+        }
+        return item;
+      });
+    }
+    return queryData;
+  };
+
+  // 开始安装操作命令下发
+  const createInstallPlan = (queryData) => {
+    // 这个queryData数据是用redux中来的，当前页面的数据是在页面销毁时才同步redux的
+    setLoading(true);
+    fetchPost(apiRequest.appStore.createInstallPlan, {
+      body: {
+        unique_key: uniqueKey,
+        run_user: runUser,
+        data: getCurrentData(queryData),
+      },
+    })
+      .then((res) => {
+        //console.log(operateObj[operateAciton])
+        handleResponse(res, (res) => {
+          if (res.data && res.data.data) {
+            if (res.data.is_continue) {
+              // 校验通过，跳转，请求服务分布数据并跳转
+              setStepNum(4);
+            } else {
+              res.data && res.data.error_msg
+                ? message.warn(res.data.error_msg)
+                : message.warn("校验未通过，请检查");
+              dispatch(
+                getStep3ErrorInfoChangeAction(getErrorInfo(res.data.data))
+              );
+
+              //reduxDispatch(getStep2ErrorLstChangeAction(res.data.error_lst));
             }
           }
         });
@@ -88,195 +230,230 @@ const Step4 = () => {
       });
   };
 
-  // 请求详细信息
-  const queryDetailInfo = (uniqueKey, ip, app_name) => {
-    fetchGet(apiRequest.appStore.showSingleServiceInstallLog, {
-      params: {
-        unique_key: uniqueKey,
-        app_name: app_name,
-        ip: ip,
-      },
-    })
-      .then((res) => {
-        handleResponse(res, (res) => {
-          setLog(res.data.log);
-        });
-      })
-      .catch((e) => console.log(e))
-      .finally(() => {
-        //setLoading(false);
-      });
-  };
-
-  const retryInstall = () => {
-    setRetryLoading(true);
-    setOpenName("");
-    openNameRef.current = "";
-    fetchPost(apiRequest.appStore.retryInstall, {
-      body: {
-        unique_key: defaultUniqueKey || uniqueKey,
-      },
-    })
-      .then((res) => {
-        handleResponse(res, (res) => {
-          if (res.code == 0) {
-            queryInstallProcess();
-          }
-        });
-      })
-      .catch((e) => console.log(e))
-      .finally(() => {
-        setRetryLoading(false);
-      });
-  };
-
-  // 查询主机 agent 状态
-  const queryHostAgent = () => {
-    // 构造 ip 集合
-    let ipSet = new Set();
-    Object.keys(data.detail).map((key, idx) => {
-      data.detail[key].forEach((e) => {
-        if (e.ip !== "postAction") {
-          ipSet.add(e.ip);
-        }
-      });
-    });
-    fetchPost(apiRequest.machineManagement.hostsAgentStatus, {
-      body: {
-        ip_list: Array.from(ipSet),
-      },
-    })
-      .then((res) => {
-        handleResponse(res, (res) => {
-          if (res.code === 0 && res.data) {
-            // 调用安装
-            retryInstall();
-            // 清除定时器
-            clearInterval(hostAgentTimer.current);
-            setStartLoading(false);
-          }
-        });
-      })
-      .catch((e) => console.log(e))
-      .finally(() => {});
-  };
-
-  // 开始安装
-  const startInstall = () => {
-    setStartLoading(true);
-    hostAgentTimer.current = setInterval(() => {
-      queryHostAgent();
-    }, 1000);
-  };
+  useEffect(() => {
+    if (checkIp) {
+      queryInstallArgsByIp(checkIp);
+    }
+  }, [checkIp]);
 
   useEffect(() => {
-    queryInstallProcess();
+    // 请求ip数据
+    // currentIpList
+    queryIpList();
     return () => {
-      // 页面销毁时清除延时器
-      clearTimeout(timer.current);
-      clearInterval(hostAgentTimer.current);
+      dispatch(getStep3ErrorInfoChangeAction({}));
+      dispatch(getStep3IpDataChangeAction());
     };
   }, []);
 
   return (
     <div>
+      {/* -- 指定安装用户 -- */}
       <div
         style={{
+          marginTop: 20,
+          backgroundColor: "#fff",
+          padding: 10,
+          paddingLeft: 30,
           display: "flex",
-          paddingTop: 20,
+          alignItems: "center",
         }}
       >
-        <Spin spinning={loading}>
-          <div
-            id="Step4Wrapper"
-            style={{
-              flex: 1,
-              //backgroundColor: "#fff",
-              height: viewHeight - 270,
-              overflowY: "auto",
+        <div>
+          <Checkbox
+            checked={checked}
+            onChange={(e) => {
+              if (!e.target.checked) {
+                setRunUser("");
+              }
+              setChecked(e.target.checked);
             }}
           >
-            <div style={{}}>
-              {Object.keys(data.detail).map((key, idx) => {
+            {msgMap[locale].userMsg}
+          </Checkbox>
+        </div>
+
+        <Input
+          disabled={!checked}
+          placeholder={msgMap[locale].noRootMsg}
+          style={{ width: 300 }}
+          value={runUser}
+          onChange={(e) => setRunUser(e.target.value)}
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 15,
+          backgroundColor: "#fff",
+          display: "flex",
+        }}
+      >
+        {/* -- 左侧 IP 搜索 -- */}
+        <div style={{ width: 240 }}>
+          <div style={{ padding: "15px 5px 10px 5px" }}>
+            <Input
+              allowClear
+              onBlur={() => {
+                if (searchIp) {
+                  let result = ipList.filter((i) => {
+                    return i.includes(searchIp);
+                  });
+                  setCurrentIpList(result);
+                  result.length > 0 && setCheckIp(result[0]);
+                } else {
+                  setCurrentIpList(ipList);
+                  setCheckIp(ipList[0]);
+                }
+              }}
+              value={searchIp}
+              onChange={(e) => {
+                setSearchIp(e.target.value);
+                if (!e.target.value) {
+                  setCurrentIpList(ipList);
+                  setCheckIp(ipList[0]);
+                }
+              }}
+              onPressEnter={() => {
+                if (searchIp) {
+                  let result = ipList.filter((i) => {
+                    return i.includes(searchIp);
+                  });
+                  setCurrentIpList(result);
+                  result.length > 0 && setCheckIp(result[0]);
+                } else {
+                  setCurrentIpList(ipList);
+                  setCheckIp(ipList[0]);
+                }
+              }}
+              placeholder={context.input + context.ln + context.ip}
+              suffix={
+                !searchIp && <SearchOutlined style={{ color: "#b6b6b6" }} />
+              }
+            />
+          </div>
+          <div style={{ overflowY: "auto" }}>
+            <div
+              style={{
+                cursor: "pointer",
+                borderRight: "0px",
+                height: viewHeight - 390,
+              }}
+            >
+              <Spin spinning={loadingIp}>
+                {currentIpList?.length == 0 ? (
+                  <div style={{ height: 100 }}></div>
+                ) : (
+                  <>
+                    {currentIpList?.map((item) => {
+                      return (
+                        <div
+                          key={item}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding: 5,
+                              paddingLeft: 30,
+                              cursor: "pointer",
+                              flex: 1,
+                              color: errInfo[item]
+                                ? "red"
+                                : checkIp == item
+                                ? "#4986f7"
+                                : "",
+                              backgroundColor: checkIp == item ? "#edf8fe" : "",
+                            }}
+                            onClick={() => {
+                              // 点击切换ip时再存redux，避免不必要的性能消耗
+                              let formData = serviceConfigform.getFieldValue();
+                              for (const key in formData) {
+                                let keyArr = key.split("=");
+                                reduxData[checkIp].map((item) => {
+                                  if (keyArr[0] == item.name) {
+                                    dispatch(
+                                      getStep3ServiceChangeAction(
+                                        checkIp,
+                                        item.name,
+                                        keyArr[1],
+                                        formData[key]
+                                      )
+                                    );
+                                  }
+                                });
+                              }
+                              setCheckIp(item);
+                            }}
+                          >
+                            {item}
+                          </div>
+                          {errInfo[item] && (
+                            <div
+                              style={{
+                                width: 30,
+                                padding: 5,
+                                paddingLeft: 0,
+                                backgroundColor:
+                                  checkIp == item ? "#edf8fe" : "",
+                                color: "red",
+                              }}
+                            >
+                              <ExclamationOutlined />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </Spin>
+            </div>
+          </div>
+        </div>
+
+        {/* -- 右侧服务配置信息 -- */}
+        <div
+          style={{
+            flex: 1,
+            borderLeft: "1px solid #d9d9d9",
+            height: viewHeight - 335,
+            overflowY: "auto",
+          }}
+        >
+          {!reduxData[checkIp] || reduxData[checkIp].length == 0 ? (
+            <Spin spinning={true} tip={context.loading + "..."}>
+              <div style={{ width: "100%", height: 300 }}></div>
+            </Spin>
+          ) : (
+            <Form
+              form={serviceConfigform}
+              name="config"
+              labelCol={{ span: 8 }}
+              wrapperCol={{ span: 40 }}
+            >
+              {reduxData[checkIp]?.map((item, idx) => {
                 return (
-                  <InstallInfoItem
-                    openName={openName}
-                    setOpenName={(n) => {
-                      setLog("");
-                      if (n) {
-                        let arr = n.split("=");
-                        queryDetailInfo(
-                          defaultUniqueKey || uniqueKey,
-                          arr[1],
-                          arr[0]
-                        );
-                      }
-                      // console.log(n);
-                      // queryDetailInfo(uniqueKey, arr[1], arr[0]);
-                      setOpenName(n);
-                      openNameRef.current = n;
-                    }}
-                    id={`a${key}`}
-                    key={key}
-                    title={key}
-                    data={data.detail[key]}
-                    log={log}
+                  <ServiceConfigItem
+                    ip={checkIp}
+                    key={item.name}
+                    data={item}
+                    form={serviceConfigform}
+                    loading={loading}
                     idx={idx}
+                    context={context}
+                    locale={locale}
                   />
                 );
               })}
-            </div>
-          </div>
-        </Spin>
-
-        <div
-          style={{
-            //height: 300,
-            width: 200,
-            backgroundColor: "#fff",
-            marginLeft: 20,
-            paddingTop: 10,
-          }}
-        >
-          <div style={{ paddingLeft: 5,
-            
-          }}>
-            <Anchor
-              style={{}}
-              affix={false}
-              getContainer={() => {
-                let con = document.getElementById("Step4Wrapper");
-                return con;
-              }}
-              style={{
-                height: viewHeight - 270,
-                overflowY: "auto",
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-              }}
-            >
-              {Object.keys(data.detail).map((key) => {
-                // console.log(data.detail[key]);
-                let hasError =
-                  data.detail[key].filter((a) => a.status == 3).length !== 0;
-                return (
-                  <div style={{ padding: 5 }}>
-                    <Link
-                      href={`#a${key}`}
-                      title={
-                        <span style={{ color: hasError && "rgb(218, 78, 72)" }}>
-                          {key}
-                        </span>
-                      }
-                    />
-                  </div>
-                );
-              })}
-            </Anchor>
-          </div>
+            </Form>
+          )}
         </div>
       </div>
+
+      {/* -- 底部主机数量 -- */}
       <div
         style={{
           position: "fixed",
@@ -292,57 +469,37 @@ const Step4 = () => {
           borderRadius: 2,
         }}
       >
-        <div style={{ paddingLeft: 20, display: "flex" }}>
-          <div style={{ width: 100 }}>
-            {renderStatus[data.status]}
-            {(data.status == 0 || data.status == 1 || data.status == 4) && (
-              <LoadingOutlined style={{ marginLeft: 10, fontWeight: 600 }} />
-            )}
-          </div>
+        <div style={{ paddingLeft: 20 }}>
+          {context.host + context.ln + context.total + " : "}
+          {ipList?.length}
+          {context.tai}
         </div>
-        <div style={{ width: "70%" }}>
-          <Progress
-            percent={data.percentage}
-            status={data.status == 3 && "exception"}
-          />
-        </div>
-        <div style={{ paddingLeft: 60 }}>
-          {data.status == 0 && (
-            <Button
-              loading={startLoading}
-              style={{ marginLeft: 10 }}
-              type="primary"
-              //disabled={unassignedServices !== 0}
-              onClick={() => {
-                startInstall();
-              }}
-            >
-              开始
-            </Button>
-          )}
-          {data.status == 3 && (
-            <Button
-              loading={retryLoading}
-              style={{ marginLeft: 10 }}
-              type="primary"
-              //disabled={unassignedServices !== 0}
-              onClick={() => {
-                retryInstall();
-              }}
-            >
-              重试
-            </Button>
-          )}
-
+        <div>
+          <Button type="primary" onClick={() => setStepNum(1)}>
+            {context.previous}
+          </Button>
           <Button
             style={{ marginLeft: 10 }}
             type="primary"
-            //disabled={unassignedServices !== 0}
+            loading={loading}
             onClick={() => {
-              history?.push("/application_management/install-record");
+              serviceConfigform.validateFields().then(
+                (e) => {
+                  let errData = nonNullCheck(reduxData);
+                  if (Object.keys(errData).length > 0) {
+                    message.warn("校验未通过，请检查");
+                    dispatch(getStep3ErrorInfoChangeAction(errData));
+                  } else {
+                    createInstallPlan(dataProcessing(reduxData));
+                  }
+                },
+                (e) => {
+                  message.warn("校验未通过，请检查");
+                }
+              );
             }}
           >
-            完成
+            {context.install}
           </Button>
         </div>
       </div>

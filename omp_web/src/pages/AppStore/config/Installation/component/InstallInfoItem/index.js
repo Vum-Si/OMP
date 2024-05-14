@@ -1,5 +1,4 @@
 import InstallDetail from "./component/InstallDetail";
-
 const InstallInfoItem = ({
   id,
   data,
@@ -8,15 +7,14 @@ const InstallInfoItem = ({
   setOpenName,
   log,
   idx,
+  context,
 }) => {
   return (
     <div
       id={id}
       style={{
-        //marginTop: 20,
         backgroundColor: "#fff",
         padding: 10,
-        //marginBottom: 15,
         marginTop: idx !== 0 && 15,
       }}
     >
@@ -40,7 +38,11 @@ const InstallInfoItem = ({
             paddingRight: 20,
           }}
         >
-          {title}
+          {title === "初始化安装流程"
+            ? context.install + context.ln + context.init
+            : title === "安装后续任务"
+            ? context.post + context.ln + context.task
+            : title}
         </div>
         <div style={{ height: 1, backgroundColor: "#b3b2b3", width: "100%" }} />
       </div>
@@ -49,7 +51,6 @@ const InstallInfoItem = ({
           paddingLeft: 20,
           marginTop: 10,
           paddingBottom: 5,
-          // paddingTop: 20,
         }}
       >
         {data.map((item) => {
@@ -62,6 +63,7 @@ const InstallInfoItem = ({
               status={item.status}
               ip={item.ip}
               log={log}
+              context={context}
             />
           );
         })}

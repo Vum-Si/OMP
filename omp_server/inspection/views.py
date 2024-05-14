@@ -131,9 +131,20 @@ class InspectionHistoryView(ListModelMixin, GenericViewSet, CreateModelMixin):
 class InspectionCrontabView(RetrieveModelMixin, ListModelMixin, GenericViewSet,
                             CreateModelMixin, UpdateModelMixin):
     """
-        list: 查询巡检任务列表
-        create: 创建一个新巡检任务
-        update: 更新一个现有巡检任务
+        list:
+        查询巡检任务列表
+
+        create:
+        创建一个新巡检任务
+
+        update:
+        更新一个现有巡检任务
+
+        partial_update:
+        更新一个现有巡检任务
+
+        read:
+        查询指定巡检任务
     """
     queryset = InspectionCrontab.objects.all()
     serializer_class = InspectionCrontabSerializer
@@ -235,7 +246,8 @@ class InspectionCrontabView(RetrieveModelMixin, ListModelMixin, GenericViewSet,
 
 class InspectionReportView(GenericViewSet, RetrieveModelMixin):
     """
-        list: 查询巡检报告列表
+        read:
+        查询巡检报告列表
     """
     queryset = InspectionReport.objects.all()
     serializer_class = InspectionReportSerializer

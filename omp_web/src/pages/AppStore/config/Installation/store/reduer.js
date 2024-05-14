@@ -22,6 +22,7 @@ const defaultState = {
   //    ...]
   //  }
   step3ErrorData: {},
+  clusterData: [],
 };
 
 function reducer(state = defaultState, action) {
@@ -38,11 +39,11 @@ function reducer(state = defaultState, action) {
     case actionTypes.CHANGE_STEP2ERRORLISTDATA:
       return { ...state, errorList: action.payload.errorList };
     case actionTypes.CHANGE_STEP3DATA:
-      if(!action.payload.ipData){
+      if (!action.payload.ipData) {
         return {
           ...state,
-          step3Data:{}
-        }
+          step3Data: {},
+        };
       }
       return {
         ...state,
@@ -95,6 +96,11 @@ function reducer(state = defaultState, action) {
         step3ErrorData: action.payload.err,
       };
 
+    case actionTypes.CHANGE_CLUSTERDATA:
+      return {
+        ...stateCopy,
+        clusterData: action.payload.clusterData,
+      };
     default:
       return state;
   }

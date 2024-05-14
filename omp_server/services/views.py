@@ -1,34 +1,45 @@
 import json
 import logging
 import os
+import time
+import datetime
 
 from django.conf import settings
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django_filters.rest_framework.backends import DjangoFilterBackend
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.mixins import (
     ListModelMixin, RetrieveModelMixin,
-    CreateModelMixin
+    CreateModelMixin, UpdateModelMixin
 )
 from rest_framework.response import Response
-from rest_framework.filters import OrderingFilter
-
-from db_models.models import Service, ApplicationHub, MainInstallHistory, Host
-from utils.parse_config import BASIC_ORDER
+from rest_framework.filters import OrderingFilter, SearchFilter
+from utils.parse_config import GATEWAY_DIC
+from db_models.models import Service, ApplicationHub, \
+    MainInstallHistory, Host, \
+    CollectLogRuleHistory, ClearLogRule
+from rest_framework_bulk import BulkDestroyAPIView, BulkUpdateAPIView
 from service_upgrade.update_data_json import DataJsonUpdate
 from services.permission import GetDataJsonAuthenticated
-from services.tasks import exec_action
+from services.tasks import create_job, exec_action, \
+    log_rule_collect, LogRuleExec
 from services.services_filters import ServiceFilter
 from services.services_serializers import (
     ServiceSerializer, ServiceDetailSerializer,
-    ServiceActionSerializer, ServiceDeleteSerializer,
-    ServiceStatusSerializer, AppListSerializer
+    ServiceActionSerializer,
+    ServiceStatusSerializer, AppListSerializer,
+    LogCollectSerializer, LogClearRuleSerializer,
+    HostCronRuleSerializer, GetSerUrlSerializer
 )
 from promemonitor.prometheus import Prometheus
 from promemonitor.grafana_url import explain_url
 from utils.common.exceptions import OperateError
 from utils.common.paginations import PageNumberPager
+from utils.common.filters import BulkDeleteFilter
+from utils.plugin.public_utils import check_env_cmd
+from services.utils import get_all_apps, check_repeat
+
 from operator import itemgetter
 from services.app_check import (
     ConfCheck, ManagerService
@@ -106,7 +117,9 @@ class ServiceListView(GenericViewSet, ListModelMixin):
                     key_name = f"{service_obj.get('ip')}_{service_obj.get('service_instance_name')}"
                     status = prometheus_dict.get(key_name, None)
                     service_obj["service_status"] = status_dict.get(status)
-
+        else:
+            for service_obj in serializer_data:
+                service_obj["service_status"] = "未监控"
         # 获取监控及日志的url
         serializer_data = explain_url(
             serializer_data, is_service=True)
@@ -152,35 +165,41 @@ class ServiceActionView(GenericViewSet, CreateModelMixin):
     serializer_class = ServiceActionSerializer
     post_description = "执行启动停止或卸载操作"
 
+    def check_param(self, many_data, service_objs, ids, action_ls):
+        service_status_map = {"4": Service.SERVICE_STATUS_DELETING,
+                              "2": Service.SERVICE_STATUS_STOPPING,
+                              "1": Service.SERVICE_STATUS_STARTING,
+                              "3": Service.SERVICE_STATUS_RESTARTING
+                              }
+        # action_ls = [str(actions.get("action", "5")) for actions in many_data]
+        if len(set(action_ls)) != 1 or action_ls[0] == "5":
+            raise OperateError("action动作不合法，或者不可同时执行多种类型")
+        service_objs.update(
+            service_status=service_status_map.get(action_ls[0]))
+        # 兼容原始代码，当启停数量小于5时直接使用异步任务
+        if len(service_objs) <= 5:
+            for i in many_data:
+                exec_action.delay(**i)
+        else:
+            create_job.delay(many_data, ids)
+
     def create(self, request, *args, **kwargs):
         many_data = self.request.data.get('data')
-        for data in many_data:
-            action = data.get("action")
-            instance = data.get("id")
-            operation_user = data.get("operation_user")
-            del_file = data.get("del_file", True)
-            service_obj = Service.objects.filter(id=instance).first()
-            need_split = ["hadoop"]
-            if service_obj and service_obj.service.app_name in need_split and action == 4:
-                delete_objs = Service.objects.filter(ip=service_obj.ip, service__app_name="hadoop")
-                status = service_obj.service_status
-                delete_objs.update(service_status=Service.SERVICE_STATUS_DELETING)
-                if status != Service.SERVICE_STATUS_DELETING \
-                        and delete_objs.first().id == service_obj.id:
-                    del_file = True
-                else:
-                    del_file = False
-            if action and instance and operation_user:
-                if action == 4:
-                    try:
-                        service_obj.service_status = Service.SERVICE_STATUS_DELETING
-                        service_obj.save()
-                    except Exception as e:
-                        logger.error(f"service实例id，不存在{instance}:{e}")
-                        return Response("执行异常")
-                exec_action.delay(action, instance, operation_user, del_file)
-            else:
-                raise OperateError("请输入action或id")
+        ids = [data.get("id", "-1") for data in many_data]
+        service_objs = Service.objects.filter(id__in=ids)
+        action_ls = [str(actions.get("action", "5")) for actions in many_data]
+        for status in service_objs.values_list("service_status", flat=True):
+            if status > 4 and "4" not in action_ls:
+                raise OperateError("服务状态异常，需解决异常后才可进行操作")
+        ip_list = list(set(service_objs.values_list("ip", flat=True)))
+        if many_data[0]["action"] != 4 or many_data[0].get("del_file"):
+            res = check_env_cmd(ip=ip_list, need_check_agent=True)
+            if isinstance(res, tuple):
+                raise OperateError(res[1])
+        if len(service_objs) != len(ids):
+            raise OperateError("未找到对应的service_id")
+        logger.info(f"调用服务操作接口参数:{many_data}")
+        self.check_param(many_data, service_objs, ids, action_ls)
         return Response("执行成功")
 
 
@@ -190,7 +209,7 @@ class ServiceDeleteView(GenericViewSet, CreateModelMixin):
         服务删除校验
     """
     queryset = Service.objects.all()
-    serializer_class = ServiceDeleteSerializer
+    serializer_class = ServiceActionSerializer
     post_description = "查看服务删除校验依赖"
 
     def create(self, request, *args, **kwargs):
@@ -297,6 +316,9 @@ class ServiceDataJsonView(APIView):
     permission_classes = (GetDataJsonAuthenticated,)
 
     def get(self, request):
+        """
+        获取服务数据(自动化测试接口)
+        """
         main_install = MainInstallHistory.objects.order_by("-id").first()
         if not main_install:
             raise Http404('No install history matches the given query.')
@@ -306,13 +328,35 @@ class ServiceDataJsonView(APIView):
         )
         if not os.path.exists(json_path):
             DataJsonUpdate(main_install.operation_uuid).create_json_file()
-        with open(json_path, "r") as f:
-            json_data = json.load(f)
-        return Response({"json_data": json_data})
+        try:
+            def read_file(filename, buf_size=8192):
+                with open(filename, "rb") as f:
+                    while True:
+                        content = f.read(buf_size)
+                        if content:
+                            yield content
+                        else:
+                            break
+
+            response = HttpResponse(read_file(json_path))
+            response["Content-Disposition"] = \
+                f"attachment;filename={main_install.operation_uuid}.json"
+        except FileNotFoundError:
+            logger.error(f"{json_path} not found")
+            raise OperateError("组件模板文件缺失")
+        return response
 
 
 class AppListView(GenericViewSet, ListModelMixin, CreateModelMixin):
-    queryset = ApplicationHub.objects.all().exclude(app_name__in=["hadoop", "doim"])
+    """
+        list:
+        应用列表查询
+
+        create:
+        列表合法性校验
+    """
+    queryset = ApplicationHub.objects.all().exclude(
+        app_name__in=["hadoop", "doim"])
     serializer_class = AppListSerializer
     get_description = "应用列表查询"
     post_description = "列表合法性校验"
@@ -320,65 +364,15 @@ class AppListView(GenericViewSet, ListModelMixin, CreateModelMixin):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        app_dc = {}
-        app_ls = []
-        for query in queryset:
-            if query.pro_info:
-                pro_name = query.pro_info["pro_name"]
-                pro_version = query.pro_info["pro_version"]
-                app_dc.setdefault(pro_name, {})
-                app_dc[pro_name].setdefault("version", [])
-                if pro_version not in app_dc[pro_name]["version"]:
-                    app_dc[pro_name]["version"].append(pro_version)
-                app_dc[pro_name].setdefault("child", {})
-                app_dc[pro_name]["child"].setdefault(pro_version, []).append(
-                    {"name": query.app_name, "version": query.app_version})
-            else:
-                app_dc.setdefault(query.app_name, {})
-                app_dc[query.app_name].setdefault("version", []).append(query.app_version)
-
-        basic_ls = [list() for _ in range(len(BASIC_ORDER))]
-        pro_ls = []
-        for name, info in app_dc.items():
-            tmp_dc = {
-                "name": name,
-                "version": info["version"]
-            }
-            if info.get("child"):
-                tmp_dc.update({"child": info.get("child")})
-                pro_ls.append(tmp_dc)
-            else:
-                for index, name_ls in BASIC_ORDER.items():
-                    if name in name_ls:
-                        basic_ls[index].append(tmp_dc)
-        for i in basic_ls:
-            app_ls.extend(i)
-        app_ls.extend(pro_ls)
+        app_ls = get_all_apps(queryset)
         return Response(app_ls)
-
-    def check_repeat(self, app_data):
-        """
-        查询重复
-        """
-        for info in app_data:
-            if len(info.get("version", [])) != 1:
-                info.setdefault("error", f"{info.get('name')}不允许纳管不同版本")
-                self.error = True
-            if info.get("child"):
-                app_names = []
-                for app_info in list(info["child"].values())[0]:
-                    app_name = app_info.get("name")
-                    if app_name not in app_names:
-                        app_names.append(app_name)
-                    else:
-                        info.setdefault("error", f"{info.get('name')}产品下{app_name}服务只允许选其中一个")
-                        self.error = True
 
     @staticmethod
     def check_dependence_one(dependence_dc, installed_ser_all):
         """
         检查单个服务依赖是否存在
         """
+        # ToDo 考虑正则情况
         lost_ser = []
         for dependence in dependence_dc:
             dependence_ser = f'{dependence.get("name")}:{dependence.get("version")}'
@@ -404,14 +398,16 @@ class AppListView(GenericViewSet, ListModelMixin, CreateModelMixin):
             if info.get("child") and list(info["child"].values())[0]:
                 for app in list(info["child"].values())[0]:
                     app_key = f"{app['name']}:{app['version']}"
-                    lost_ser = self.check_dependence_one(dependence_dc.get(app_key), installed_ser)
+                    lost_ser = self.check_dependence_one(
+                        dependence_dc.get(app_key), installed_ser)
                     lost_ser_set.update(set(lost_ser))
                     has_install_app_args = dict(zip(self.need_key, app_dc.get(app_key))) if app_dc.get(
                         app_key) else dict(zip(self.need_key, [""] * len(self.need_key)))
                     app.update(has_install_app_args)
             else:
                 app_key = f'{info.get("name", "")}:{info.get("version", ["0"])[0]}'
-                lost_ser = self.check_dependence_one(dependence_dc.get(app_key), installed_ser)
+                lost_ser = self.check_dependence_one(
+                    dependence_dc.get(app_key), installed_ser)
                 lost_ser_set.update(set(lost_ser))
                 has_install_app_args = dict(zip(self.need_key, app_dc.get(app_key))) if app_dc.get(
                     app_key) else dict(zip(self.need_key, [""] * len(self.need_key)))
@@ -444,7 +440,8 @@ class AppListView(GenericViewSet, ListModelMixin, CreateModelMixin):
                 app_install_port[port.get('key')] = port.get('default')
             for key in cls.need_key:
                 app_install_port.setdefault(key, "")
-            app_dc[f"{app[0]}:{app[1]}"] = itemgetter(*cls.need_key)(app_install_port)
+            app_dc[f"{app[0]}:{app[1]}"] = itemgetter(
+                *cls.need_key)(app_install_port)
             dependence_dc[f"{app[0]}:{app[1]}"] = cls.explain_json(app[4])
         return app_dc, dependence_dc
 
@@ -453,12 +450,13 @@ class AppListView(GenericViewSet, ListModelMixin, CreateModelMixin):
             setattr(self, "error", False)
         app_data = self.request.data.get("data", [])
         # 查询是否勾选想通服务多版本情况
-        self.check_repeat(app_data)
+        self.error = check_repeat(app_data)
         # 查询安装参数及依赖
         app_dc, dependence_dc = self.gets_app_list()
         # 检查依赖是否存在
         self.check_dependence(dependence_dc, app_dc, app_data)
-        res_dc = {"service": app_data, "is_continue": False if self.error else True}
+        res_dc = {"service": app_data,
+                  "is_continue": False if self.error else True}
         hosts_info = Host.objects.filter(
             host_agent=Host.AGENT_RUNNING).values_list("ip", "agent_dir")
         res_dc["ips"] = dict(hosts_info)
@@ -482,3 +480,180 @@ class AppConfCheckView(GenericViewSet, CreateModelMixin):
         else:
             app_data = ManagerService(app_data).run()
         return Response(app_data)
+
+
+class LogRuleCollectView(GenericViewSet, ListModelMixin, CreateModelMixin):
+    """
+        list:
+        日志清理规则扫描结果
+
+        create:
+        扫描日志清理规则
+    """
+    serializer_class = LogCollectSerializer
+
+    def get_queryset(self):
+        operation_uuid = self.request.query_params.get('operation_uuid')
+        if operation_uuid:
+            return CollectLogRuleHistory.objects.filter(operation_uuid=operation_uuid).order_by("status")
+        else:
+            raise OperateError(f"需要填写id")
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        status_ls = [i.get("status") for i in serializer.data]
+        result_flag = "complete"
+        if 2 in status_ls:
+            result_flag = "running"
+        return Response({"data": serializer.data,
+                         "result_flag": result_flag}
+                        )
+
+    def create(self, request, *args, **kwargs):
+        time_now = datetime.datetime.now()
+        time_str = time_now.strftime("%Y-%m-%d %H:%M:%S")
+        expire_time = (time_now + datetime.timedelta(hours=-1)).strftime("%Y-%m-%d %H:%M:%S")
+
+        if CollectLogRuleHistory.objects.filter(
+                status=CollectLogRuleHistory.IS_RUNNING,
+                created__gt=expire_time).count() != 0:
+            return Response(data={"code": 1, "message": "存在正在采集的任务"})
+        uuid = str(round(time.time() * 1000))
+        ip_ls = Host.objects.filter(
+            host_agent=Host.AGENT_RUNNING
+        ).values_list("ip", flat=True)
+        service_objs = Service.objects.filter(
+            ip__in=ip_ls, service__is_base_env=False)
+        if not service_objs:
+            return Response(data={"code": 1, "message": "无可扫描的服务，或当前服务所在的主机均不可用"})
+        task_args = {}
+        his_ls = []
+        for ser_obj in service_objs:
+            install_args = ser_obj.get_install_args
+            conf_dir = os.path.join(install_args["base_dir"], "conf/auto_log_clean.json")
+            task_args.setdefault(ser_obj.ip, dict()).update(
+                {ser_obj.service_instance_name: [conf_dir, install_args.get("log_dir", "")]}
+            )
+            his_ls.append(
+                CollectLogRuleHistory(
+                    service_instance_name=ser_obj.service_instance_name,
+                    operation_uuid=uuid,
+                    created=time_str
+                )
+            )
+        for host_obj in Host.objects.all():
+            conf_dir = os.path.join(host_obj.data_folder, "omp_salt_agent/conf/auto_log_clean.json")
+            task_args.setdefault(host_obj.ip, dict()).update(
+                {host_obj.instance_name: [conf_dir, os.path.join(host_obj.data_folder, "omp_packages")]}
+            )
+            his_ls.append(
+                CollectLogRuleHistory(
+                    service_instance_name=host_obj.instance_name,
+                    operation_uuid=uuid,
+                    created=time_str
+                )
+            )
+
+        CollectLogRuleHistory.objects.bulk_create(his_ls)
+        log_rule_collect.delay(uuid, task_args)
+        return Response({"operation_uuid": uuid})
+
+
+# 主机接口修改需要考虑是周期任务的执行
+class LogClearRuleView(GenericViewSet, BulkDestroyAPIView, ListModelMixin,
+                       CreateModelMixin, UpdateModelMixin):
+    """
+        list:
+        获取日志清理列表
+
+        create:
+        修改日志清理规则
+
+        update:
+        修改日志清理规则
+
+        partial_update:
+        修改日志清理规则一个或多个字段
+    """
+    queryset = ClearLogRule.objects.all()
+    serializer_class = LogClearRuleSerializer
+    filter_backends = (BulkDeleteFilter,)
+
+    def create(self, request, *args, **kwargs):
+        many_data = request.data
+        dict_dc = dict([(i["id"], i["switch"]) for i in many_data])
+        clear_objs = self.get_queryset().filter(id__in=list(dict_dc))
+        if clear_objs.count() != len(dict_dc):
+            raise OperateError("请求id不存在")
+        # 进行批量操作
+        exec_obj = LogRuleExec(clear_objs.values_list(
+            "id", "host__ip", "host__data_folder", "exec_dir", "exec_type", "exec_value", "exec_rule"
+        ), int(many_data[0]["switch"]))
+        if not exec_obj.change_clear_action():
+            raise OperateError("修改状态异常")
+        # 修改库
+        for obj in clear_objs:
+            obj.switch = dict_dc.pop(obj.id)
+            obj.save()
+        return Response("修改成功")
+
+    def allow_bulk_destroy(self, qs, filtered):
+        # 进行批量操作
+        exec_obj = LogRuleExec(filtered.values_list("id", "host__ip", "host__data_folder"), 0)
+        return exec_obj.change_clear_action()
+
+
+class HostCronView(GenericViewSet, ListModelMixin, BulkUpdateAPIView):
+    """
+    主机策略更新（删除）
+    主机策略初始化
+    """
+    queryset = Host.objects.all()
+    serializer_class = HostCronRuleSerializer
+
+
+class GetSerUrlView(GenericViewSet, ListModelMixin):
+    queryset = Service.objects.filter(service__app_name__in=list(GATEWAY_DIC))
+    serializer_class = GetSerUrlSerializer
+
+    @staticmethod
+    def service_port(port_text):
+        for i in json.loads(port_text):
+            if i.get("key") == "service_port":
+                return i.get("default")
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        app_info = {}
+        for info in serializer.data:
+            app_name = info.pop("app_name")
+            if not app_info.get(app_name):
+                info["ip"] = [info["ip"]]
+                app_info[app_name] = info
+            else:
+                app_info[app_name]["ip"].append(info["ip"])
+        for app, info in app_info.items():
+            app_count = len(info["ip"])
+            info["ip"] = info["ip"][0]
+            info.update(GATEWAY_DIC[app])
+            if app_count != 1:
+                info.update(GATEWAY_DIC[app].get("cluster", {}))
+            if not info.get("port"):
+                info["port"] = self.service_port(info.get("service_port"))
+            info.pop("service_port")
+            info.pop("cluster", "")
+
+        res_ls = []
+        for app, info in app_info.items():
+            ip = info["ip"]
+            if ip in list(app_info):
+                ip = app_info[ip]["ip"]
+            res_ls.append({
+                "app_name": app,
+                "username": info["username"],
+                "password": info["password"],
+                "url": f"http://{ip}:{info['port']}{info.get('url', '')}"
+            })
+        return Response(res_ls)

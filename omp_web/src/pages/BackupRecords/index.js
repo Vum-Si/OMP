@@ -5,25 +5,28 @@ import { handleResponse, _idxInit } from "@/utils/utils";
 import { fetchGet, fetchPost } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import getColumnsConfig from "./config/columns";
-import {
-  ExclamationCircleOutlined,
-} from "@ant-design/icons";
-import { useHistory, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const BackupRecords = () => {
+const msgMap = {
+  "en-US": {
+    deleteLeft: "Are you sure to delete a total of",
+    deleteRight: "records?",
+  },
+  "zh-CN": {
+    deleteLeft: "确认删除共计",
+    deleteRight: "条记录吗?",
+  },
+};
+
+const BackupRecords = ({ locale }) => {
   const location = useLocation();
-
-  const history = useHistory();
-
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -31,20 +34,19 @@ const BackupRecords = () => {
     ordering: "",
     searchParams: {},
   });
-
   // 定义row存数据
   const [row, setRow] = useState({});
-
   // 删除文件
   const [deleteModal, setDeleteModal] = useState(false);
   const [deleteOneModal, setDeleteOneModal] = useState(false);
+  const context = locales[locale].common;
 
   // 列表查询
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.dataBackup.queryBackupHistory, {
       params: {
@@ -72,7 +74,7 @@ const BackupRecords = () => {
         location.state = {};
         setLoading(false);
       });
-  }
+  };
 
   // 删除
   const deleteBackup = (deleteType = null) => {
@@ -88,7 +90,7 @@ const BackupRecords = () => {
             message.warning(res.data.message);
           }
           if (res.data.code == 0) {
-            message.success("删除文件成功");
+            message.success(context.delete + context.ln + context.succeeded);
             setCheckedList([]);
             setDeleteModal(false);
             setDeleteOneModal(false);
@@ -109,49 +111,15 @@ const BackupRecords = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部删除/刷新 -- */}
       <div style={{ display: "flex" }}>
-        {/* <Button
-          style={{ marginRight: 15 }}
-          type="primary"
-          disabled={checkedList.length == 0}
-          onClick={() => {
-            checkedList.map((item, idx) => {
-              setTimeout(() => {
-                if (item.file_name || item.result === 1) {
-                  // if (item.file_size == 0) {
-                  //   message.warning("要下载的文件不存在");
-                  //   setDownLoadModal(false);
-                  //   queryListData(pagination);
-                  //   return;
-                  // }
-                  let a = document.createElement("a");
-                  a.setAttribute("id", `${idx}-downA`);
-                  document.body.appendChild(a);
-                  let dom = document.getElementById(`${idx}-downA`);
-                  dom.href = `/download-backup/${item.file_name}`;
-                  dom.click();
-                  setTimeout(() => {
-                    document.body.removeChild(dom);
-                  }, 1000);
-                } else {
-                  message.warning("该任务文件不支持下载");
-                }
-              }, idx * 500);
-              //}
-            });
-          }}
-        >
-          下载
-        </Button> */}
         <Button
           style={{ marginRight: 15 }}
           disabled={checkedList.length == 0}
           type="primary"
-          onClick={() => {
-            setDeleteModal(true);
-          }}
+          onClick={() => setDeleteModal(true)}
         >
-          删除
+          {context.delete}
         </Button>
 
         <div style={{ display: "flex", marginLeft: "auto" }}>
@@ -165,10 +133,12 @@ const BackupRecords = () => {
               });
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -186,7 +156,7 @@ const BackupRecords = () => {
               fetchData(e, pagination.searchParams, ordering);
             }, 200);
           }}
-          columns={getColumnsConfig(setRow, setDeleteOneModal)}
+          columns={getColumnsConfig(setRow, setDeleteOneModal, context)}
           notSelectable={(record) => ({
             // 执行中不能选中
             disabled: record.result === 2,
@@ -204,13 +174,15 @@ const BackupRecords = () => {
                   lineHeight: 2.8,
                 }}
               >
-                <p>已选中 {checkedList.length} 条</p>
+                <p>
+                  {context.selected} {checkedList.length} {context.tiao}
+                </p>
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -221,58 +193,34 @@ const BackupRecords = () => {
         />
       </div>
 
+      {/* -- 删除记录多条 -- */}
       <OmpMessageModal
         visibleHandle={[deleteModal, setDeleteModal]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={deleteLoading}
-        onFinish={() => {
-          deleteBackup();
-        }}
+        onFinish={() => deleteBackup()}
       >
         <div style={{ padding: "20px" }}>
-          确定{" "}
-          <span style={{ fontWeight: 500 }}>删除 {checkedList.length} </span> 条{" "}
-          <span style={{ fontWeight: 500 }}>备份记录</span> 吗？
+          {msgMap[locale].deleteLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {checkedList.length}{" "}
+          </span>
+          {msgMap[locale].deleteRight}
         </div>
       </OmpMessageModal>
 
+      {/* -- 删除记录一条 -- */}
       <OmpMessageModal
         visibleHandle={[deleteOneModal, setDeleteOneModal]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={deleteLoading}
-        onFinish={() => {
-          deleteBackup("only");
-        }}
+        onFinish={() => deleteBackup("only")}
       >
         <div style={{ padding: "20px" }}>
-          确定 <span style={{ fontWeight: 500 }}>删除</span> 当前{" "}
-          <span style={{ fontWeight: 500 }}>备份记录</span> 吗？
+          {msgMap[locale].deleteLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>{" 1 "}</span>
+          {msgMap[locale].deleteRight}
         </div>
       </OmpMessageModal>
     </OmpContentWrapper>

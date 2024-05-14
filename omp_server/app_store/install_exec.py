@@ -13,8 +13,6 @@ import re
 from concurrent.futures import (
     ThreadPoolExecutor, as_completed
 )
-# from django.db.models import F
-from django.conf import settings
 
 from app_store.high_availability_utils import HIGH_AVAILABILITY_UTILS
 from db_models.models import (
@@ -24,10 +22,9 @@ from db_models.models import (
 )
 from utils.plugin.salt_client import SaltClient
 from utils.parse_config import BASIC_ORDER
-from utils.parse_config import THREAD_POOL_MAX_WORKERS
+from utils.parse_config import THREAD_POOL_MAX_WORKERS, python_cmd_env
 from utils.common.exceptions import GeneralError
 from omp_server.settings import PROJECT_DIR
-from app_store.post_install_utils import POST_INSTALL_SERVICE
 from app_store.service_splitting import service_splitting
 
 UNZIP_CONCURRENT_ONE_HOST = 3
@@ -40,7 +37,7 @@ class InstallServiceExecutor:
     """ 安装服务执行器 """
     ACTION_LS = ("send", "unzip", "install", "init", "start")
 
-    def __init__(self, main_id, username, timeout=300):
+    def __init__(self, main_id, username, timeout=300, action=None):
         self.main_id = main_id
         self.username = username
         self.timeout = timeout
@@ -48,6 +45,9 @@ class InstallServiceExecutor:
         self.is_error = False
         # 控制安装过程中单主机上的安装包解压并发数 TODO 暂时使用阻塞等待方式进行处理！！
         self.unzip_concurrent_controller = dict()
+        # 所有启动成功的服务
+        self.success_service_name_ls = []
+        self.action = action if action else self.ACTION_LS
 
     def parse_origin_data(self, json_source_path):
         """
@@ -70,25 +70,28 @@ class InstallServiceExecutor:
                 if el.get("key") == "run_user" and el.get("default"):
                     ip_user_map[item["ip"]].append(el.get("default"))
                     break
+        # hosts = set(Host.objects.all().values_list('ip', flat=True)) - set(ip_user_map.keys())
+        # for host in hosts:
+        #    ip_user_map[host] = list()
         return ip_user_map
 
     def set_hostname_analysis(self, ips_data, ip, salt_client):
-        test_write_host_func = "cat /tmp/init_host.py | grep write_hostname"
-        flag, msg = salt_client.cmd(
+        # test_write_host_func = "cat /tmp/init_host.py | grep write_hostname"
+        # flag, msg = salt_client.cmd(
+        #    target=ip,
+        #    command=test_write_host_func,
+        #    timeout=60
+        # )
+        # logger.info(f"测试主机[{ip}]init_host.py脚本write_host功能，结果 {msg}")
+        # if not flag or "write_hostname" not in msg:
+        is_success, message = salt_client.cp_file(
             target=ip,
-            command=test_write_host_func,
-            timeout=60
+            source_path="_modules/init_host.py",
+            target_path="/tmp/init_host.py"
         )
-        logger.info(f"测试主机[{ip}]init_host.py脚本write_host功能，结果 {msg}")
-        if not flag or "write_hostname" not in msg:
-            is_success, message = salt_client.cp_file(
-                target=ip,
-                source_path="_modules/init_host.py",
-                target_path="/tmp/init_host.py"
-            )
-            logger.info(f"主机[{ip}]发送init_host.py脚本成功！")
-            if not is_success:
-                return f"{self.now_time()} 执行主机名解析失败！请手动添加集群主机名解析！\n"
+        logger.info(f"主机[{ip}]发送init_host.py脚本成功！")
+        if not is_success:
+            return f"{self.now_time()} 执行主机名解析失败！请手动添加集群主机名解析！\n"
         host_data = []
         for k, v in ips_data.items():
             if not v.get("host_name"):
@@ -98,14 +101,15 @@ class InstallServiceExecutor:
             host_data.append({"ip": k, "hostname": v.get("host_name")})
         hosts_data = json.dumps(host_data, separators=(',', ':'))
         # 直接用sudo执行，报错即进行警告
-        write_host = f"sudo python /tmp/init_host.py write_hostname '{hosts_data}'"
+        json_path = os.path.join(Host.objects.get(ip=ip).data_folder, "omp_packages/test.json")
+        write_host = f"{python_cmd_env(json_path, sudo=True)} /tmp/init_host.py write_hostname '{hosts_data}'"
         flag, msg = salt_client.cmd(
             target=ip,
             command=write_host,
             timeout=60
         )
         if not flag:
-            return f"{self.now_time()} 执行主机名解析失败！请手动添加集群主机名解析！\n"
+            return f"{self.now_time()} 执行主机名解析失败！请手动添加集群主机名解析！{hosts_data}\n"
         return f"{self.now_time()} 执行主机名解析成功！\n"
 
     def _execute_pre_install(
@@ -148,6 +152,30 @@ class InstallServiceExecutor:
             pre_install_obj.install_flag = 3
             pre_install_obj.save()
             raise GeneralError(f"发送 json 文件失败: {message}")
+
+        scripts_path = os.path.join(
+            ips_data[key].get("data_folder", "/data"),
+            "omp_salt_agent/scripts/check_env.py")
+        python_env = os.path.join(
+            ips_data[key].get("data_folder", "/data"),
+            "omp_salt_agent/env/bin/python3.8")
+        _cmd = f"{python_env} {scripts_path} --local_ip {key} --data_json {json_target_path}"
+        flag, msg = salt_client.cmd(
+            target=key,
+            command=_cmd,
+            timeout=60
+        )
+        logger.info(f"为主机 [{key}] 检查环境 {msg}")
+        if not flag:
+            pre_install_obj.install_log += \
+                f"{self.now_time()} 检查环境失败: {msg}\n"
+            pre_install_obj.install_flag = 3
+            pre_install_obj.save()
+            raise GeneralError(f"为主机 [{key}] 检查环境失败")
+        else:
+            pre_install_obj.install_log += msg
+            pre_install_obj.save()
+
         for el in set(value):
             _cmd = f"id {el} || useradd -s /bin/bash {el}"
             pre_install_obj.install_log += \
@@ -175,31 +203,37 @@ class InstallServiceExecutor:
             f"{self.now_time()} 升级openssl version参数位:[doim_queryset] == {doim_queryset};[key]={key}; [doim_ips]={doim_ips}\n"
         pre_install_obj.save()
         if doim_queryset and key in doim_ips:
+            # if "root" not in value:
             # 1.run_user 必须为root
-            if "root" not in value:
-                pre_install_obj.install_log += \
-                    f"{self.now_time()} 安装doim执行失败，用户[{value}]为非root\n"
-                pre_install_obj.install_flag = 3
-                pre_install_obj.save()
-                raise GeneralError(
-                    f"主机 [{key}] 的run_user[{value}]为非root，不支持doim安装")
+            # pre_install_obj.install_log += \
+            #    f"{self.now_time()} 安装doim执行失败，用户[{value}]为非root\n"
+            # pre_install_obj.install_flag = 3
+            # pre_install_obj.save()
+            # raise GeneralError(
+            #    f"主机 [{key}] 的run_user[{value}]为非root，不支持doim安装")
             # 2.获取openssl版本号
             openssl_version_cmd = "openssl version"
             ssl_version = self.get_openssl_version_from_cmd(ip=key, salt_client=salt_client,
                                                             cmd_str=openssl_version_cmd)
             if ssl_version < OPENSSL_VERSION_LEVEL:
-                pre_install_obj.install_log += f"{self.now_time()} 当前系统的openssl version 为{ssl_version}; 开始升级openssl version\n"
-                pre_install_obj.save()
-                upgrade_flag, upgrade_msg = self.upgrade_openssl(
-                    ip=key, salt_client=salt_client)
-                if not upgrade_flag:
-                    pre_install_obj.install_log += \
-                        f"{self.now_time()} 升级openssl version执行失败: {upgrade_msg}\n"
-                    pre_install_obj.install_flag = 3
+                if salt_client.is_sudo(key):
+                    pre_install_obj.install_log += f"{self.now_time()} " \
+                                                   f"当前系统的openssl version 为{ssl_version}; 开始升级openssl version\n"
                     pre_install_obj.save()
-                    raise GeneralError(f"为主机 [{key}] 升级openssl version执行失败!")
-                pre_install_obj.install_log += f"{self.now_time()} 当前系统的openssl version成功升级\n"
-                pre_install_obj.save()
+                    upgrade_flag, upgrade_msg = self.upgrade_openssl(
+                        ip=key, salt_client=salt_client, sudo=True)
+                    if not upgrade_flag:
+                        pre_install_obj.install_log += \
+                            f"{self.now_time()} 升级openssl version执行失败: {upgrade_msg}\n"
+                        pre_install_obj.install_flag = 3
+                        pre_install_obj.save()
+                        raise GeneralError(
+                            f"为主机 [{key}] 升级openssl version执行失败!")
+                    pre_install_obj.install_log += f"{self.now_time()} 当前系统的openssl version成功升级\n"
+                    pre_install_obj.save()
+                else:
+                    pre_install_obj.install_log += \
+                        f"{self.now_time()} 当前用户无sudo权限跳过openssl升级\n"
 
         pre_install_obj.install_log += \
             f"{self.now_time()} 前置安装操作完成\n"
@@ -209,7 +243,7 @@ class InstallServiceExecutor:
     def create_user_and_send_json(self, main_obj):
         """
         下发json文件并创建run_user用户
-        :return:
+        :retur
         """
         # 获取 json 文件路径
         salt_client = SaltClient()
@@ -223,7 +257,6 @@ class InstallServiceExecutor:
                 )
             )
         }
-
         ip_user_map = self.parse_origin_data(json_source_path)
         for key, value in ip_user_map.items():
             pre_install_obj = PreInstallHistory.objects.filter(
@@ -441,6 +474,11 @@ class InstallServiceExecutor:
         # edit by jon.liu service_controllers 为json字段，无需json.loads
         service_controllers_dict = detail_obj.service.service_controllers
 
+        if "init" not in self.action:
+            detail_obj.install_msg += \
+                f"{self.now_time()} 开始配置替换刷新"
+            detail_obj.save()
+
         # 更新状态为 '安装中'，记录日志
         logger.info(f"Install Begin -> [{service_name}]")
         detail_obj.install_flag = 1
@@ -461,7 +499,7 @@ class InstallServiceExecutor:
                 target_host.data_folder, "omp_packages",
                 f"{detail_obj.main_install_history.operation_uuid}.json")
 
-            cmd_str = f"python {install_script_path} --local_ip {target_ip} " \
+            cmd_str = f"{python_cmd_env(json_path)} {install_script_path} --local_ip {target_ip} " \
                       f"--data_json {json_path}"
             # doim定制化安装
             if app_name.lower() == DOIM_APP_NAME:
@@ -469,7 +507,7 @@ class InstallServiceExecutor:
                 app_dir, script_name = os.path.split(install_script_path)
                 doim_install_script_path = os.path.join(app_dir, 'install.sh')
                 install_dir, _service_name = os.path.split(app_dir)
-                cmd_str = f"sed -i -e \"s#InstallRoot=.*#InstallRoot={install_dir}/DOIM #g\" -e \"s#char=.*#char=\"y\"#g\" {doim_install_script_path}; python {install_script_path} --local_ip {target_ip} " \
+                cmd_str = f"sed -i -e \"s#InstallRoot=.*#InstallRoot={install_dir}/DOIM #g\" -e \"s#char=.*#char=\"y\"#g\" {doim_install_script_path}; {python_cmd_env(json_path)} {install_script_path} --local_ip {target_ip} " \
                           f"--data_json {json_path}"
 
             # 执行安装
@@ -485,6 +523,11 @@ class InstallServiceExecutor:
                     f"{self.now_time()} 安装脚本执行成功，脚本输出如下:\n" \
                     f"{message}\n"
                 detail_obj.save()
+            if "init" not in self.action:
+                # 服务状态更新为 '正常'
+                detail_obj.service.service_status = \
+                    Service.SERVICE_STATUS_NORMAL
+                detail_obj.service.save()
         except Exception as err:
             logger.error(f"Install Failed -> [{service_name}]: {err}")
             detail_obj.install_flag = 3
@@ -545,7 +588,7 @@ class InstallServiceExecutor:
                 target_host.data_folder, "omp_packages",
                 f"{detail_obj.main_install_history.operation_uuid}.json")
 
-            cmd_str = f"python {init_script_path} --local_ip {target_ip} " \
+            cmd_str = f"{python_cmd_env(json_path)} {init_script_path} --local_ip {target_ip} " \
                       f"--data_json {json_path}"
             # 执行初始化
             is_success, message = salt_client.cmd(
@@ -607,7 +650,8 @@ class InstallServiceExecutor:
         try:
             # 获取服务启动脚本绝对路径
             start_script_path = service_controllers_dict.get("start", "")
-            if start_script_path == "":
+            if start_script_path == "" or (
+                    'doim.sh' in start_script_path and not salt_client.is_sudo(target_ip)):
                 logger.info(f"Start Un Do -> [{service_name}]")
                 detail_obj.start_flag = 2
                 detail_obj.start_msg += \
@@ -627,6 +671,17 @@ class InstallServiceExecutor:
             cmd_str = f"bash {start_script_path}"
 
             # 执行启动
+            # if "init" not in self.action:
+            #    detail_obj.install_msg += \
+            #        f"{self.now_time()} 开始配置替换重启"
+            #    detail_obj.save()
+            #    salt_client.cmd(
+            #        target=target_ip,
+            #        command=cmd_str.replace(" start", " stop"),
+            #        timeout=self.timeout,
+            #        real_timeout=self.timeout
+            #    )
+
             is_success, message = salt_client.cmd(
                 target=target_ip,
                 command=cmd_str,
@@ -634,12 +689,12 @@ class InstallServiceExecutor:
                 real_timeout=self.timeout
             )
             if not is_success:
-                raise GeneralError(message)
+                raise Exception(message)
             result_str = message.upper()
             if "FAILED" in result_str or \
                     "NO RUNNING" in result_str or \
                     "NOT RUNNING" in result_str:
-                raise GeneralError(message)
+                raise Exception(result_str)
             # 执行成功且 message 有值，则补充至服务日志中
             if is_success and bool(message):
                 detail_obj.install_msg += \
@@ -664,6 +719,7 @@ class InstallServiceExecutor:
             return False, err
         # 安装成功
         logger.info(f"Start Success -> [{service_name}]")
+        self.success_service_name_ls.append(service_name)
         detail_obj.start_flag = 2
         detail_obj.start_msg += f"{self.now_time()} {service_name} 成功启动服务\n"
         detail_obj.save()
@@ -734,7 +790,7 @@ class InstallServiceExecutor:
         detail_obj.service.save()
         # 针对单个服务执行循环("send", "unzip", "install", "init", "start")
         # 跳过单个服务的已经成功的单个步骤不再重复执行
-        for action in self.ACTION_LS:
+        for action in self.action:
             if getattr(detail_obj, f"{action}_flag") == 2:
                 continue
             _flag, _msg = getattr(self, action)(detail_obj)
@@ -811,19 +867,26 @@ class InstallServiceExecutor:
             el for el in queryset
             if el.service.service.app_type == ApplicationHub.APP_TYPE_SERVICE
         ]
+        # 2023-08-03
+        self_ser_dc = {}
+        for el in _ser:
+            level = int(el.service.service.extend_fields.get("level", 0))
+            self_ser_dc.setdefault(level, []).append(el)
+        for _ in sorted(self_ser_dc.items(), key=lambda x: x[0]):
+            execute_lst.append(_[1])
         # 自研服务level级别为0的服务，仅依赖于基础组件，无其他依赖
-        execute_lst.append(
-            [
-                el for el in _ser if
-                str(el.service.service.extend_fields.get("level")) == "0"]
-        )
+        # execute_lst.append(
+        #    [
+        #        el for el in _ser if
+        #        str(el.service.service.extend_fields.get("level")) == "0"]
+        # )
         # 自研服务level级别为1或其他的服务
         # 可依赖基础组件，也可依赖其他自研服务，文件级别位置依赖
-        execute_lst.append(
-            [
-                el for el in _ser if
-                str(el.service.service.extend_fields.get("level")) != "0"]
-        )
+        # execute_lst.append(
+        #    [
+        #        el for el in _ser if
+        #        str(el.service.service.extend_fields.get("level")) != "0"]
+        # )
         return execute_lst
 
     def execute_post_action_main(self, main_obj):
@@ -949,7 +1012,7 @@ class InstallServiceExecutor:
         return ssl_version
 
     @staticmethod
-    def upgrade_openssl(ip, salt_client):
+    def upgrade_openssl(ip, salt_client, sudo=False):
         # 1.发送openssl升级包
         source_package_path = "openssl_upgrade/openssl-1.0.2k.tar.gz"
         dst_path = "/tmp/upgrade_openssl"
@@ -974,7 +1037,8 @@ class InstallServiceExecutor:
         cmd_flag, cmd_msg = salt_client.cmd(
             target=ip,
             command=cmd_str,
-            timeout=60
+            timeout=60,
+            is_sudo=sudo
         )
         if not cmd_flag:
             return False, cmd_msg
@@ -990,7 +1054,6 @@ class InstallServiceExecutor:
         main_obj.install_status = \
             MainInstallHistory.INSTALL_STATUS_INSTALLING
         main_obj.save()
-
         # 执行安装前的操作
         pre_install_flag = self.execute_pre_install(main_obj=main_obj)
         if not pre_install_flag:
@@ -1071,6 +1134,14 @@ class InstallServiceExecutor:
         main_obj.install_status = \
             MainInstallHistory.INSTALL_STATUS_SUCCESS
         main_obj.save()
+        # 各个子流程成功，服务状态置为正常
+        queryset.update(
+            install_step_status=DetailInstallHistory.INSTALL_STATUS_SUCCESS
+        )
+        Service.objects.filter(
+            service_instance_name__in=self.success_service_name_ls
+        ).update(service_status=Service.SERVICE_STATUS_NORMAL)
+
         # doim安装成功后，相关操作
         doim_ids = list(
             DetailInstallHistory.objects.filter(

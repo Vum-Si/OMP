@@ -221,10 +221,9 @@ class ValidToolTar:
         if os.path.exists(os.path.join(new_package_folder, 'logo.svg')):
             self.tool_info["logo"] = f"{tool_folder}/logo.svg"
         ToolInfo(output=output, **self.tool_info).save()
-        self.rm_tool_package()
 
-    def rm_tool_package(self):
-        local_cmd(f"/bin/rm -rf {self.tmp_package}")
+    def rm_tool_package(self, path):
+        local_cmd(f"/bin/rm -rf {path}")
 
     def __call__(self, *args, **kwargs):
         package_name = self.tar_file.split("-")[0]
@@ -242,18 +241,18 @@ class ValidToolTar:
             f"mkdir -p {tar_folder} && tar -mxf {file_path} -C {tar_folder}"
         )
         if _code:
-            self.rm_tool_package()
+            self.rm_tool_package(tar_folder)
             return _out
         self.folder_path = os.path.join(tar_folder, package_name)
         if not os.path.isfile(
                 os.path.join(self.folder_path, f"{package_name}.yaml")
         ):
-            self.rm_tool_package()
+            self.rm_tool_package(tar_folder)
             return f"{self.tar_file}中必须包含文件{package_name}.yaml！"
         try:
             self.verify_yaml_info(package_name)
         except Exception as e:
-            self.rm_tool_package()
+            self.rm_tool_package(tar_folder)
             return str(e)
         if os.path.isfile(os.path.join(self.folder_path, "README.md")):
             self.read_read_me()

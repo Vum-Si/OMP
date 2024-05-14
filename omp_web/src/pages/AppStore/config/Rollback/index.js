@@ -5,10 +5,11 @@ import styles from "./index.module.less";
 
 import { LeftOutlined } from "@ant-design/icons";
 import Content from "./content/index.js";
-// 安装页面
-const Rollback = () => {
-  // const dispatch = useDispatch();
+import { locales } from "@/config/locales";
+
+const Rollback = ({ locale }) => {
   const history = useHistory();
+  const context = locales[locale].common;
 
   return (
     <div>
@@ -36,11 +37,11 @@ const Rollback = () => {
               });
             }}
           />
-          服务回滚
+          {context.rollback}
         </div>
         <div />
       </div>
-      <Content />
+      <Content context={context} locale={locale}/>
     </div>
   );
 };

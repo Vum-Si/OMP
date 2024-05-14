@@ -14,25 +14,12 @@ import * as R from "ramda";
 import { useEffect, useState } from "react";
 //import data from "./data.json";
 import { useHistory, useLocation } from "react-router-dom";
+import { locales } from "@/config/locales";
 import { fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 const { Panel } = Collapse;
 
-const reportColumnConfig = [
-  { ...columnsConfig.report_service_name, className: "_bigfontSize" },
-  { ...columnsConfig.report_host_ip, className: "_bigfontSize" },
-  { ...columnsConfig.report_service_port, className: "_bigfontSize" },
-  { ...columnsConfig.report_service_status, className: "_bigfontSize" },
-  { ...columnsConfig.report_cpu_usage, className: "_bigfontSize" },
-  { ...columnsConfig.report_mem_usage, className: "_bigfontSize" },
-  { ...columnsConfig.report_run_time, className: "_bigfontSize" },
-  { ...columnsConfig.report_log_level, className: "_bigfontSize" },
-  // { ...columnsConfig.report_cluster_name, className: styles._bigfontSize },
-];
-
-export default function PatrolInspectionDetail() {
-  const title = "巡检报告";
-
+const PatrolInspectionDetail = ({ locale }) => {
   const location = useLocation();
   const history = useHistory();
 
@@ -42,15 +29,66 @@ export default function PatrolInspectionDetail() {
   const id = arr[arr.length - 1];
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [drawerText, setDrawerText] = useState("");
-
-  const [expandKey, setExpandKey] = useState([]);
-
   const [data, setData] = useState({});
-
   const [loading, setLoading] = useState(false);
-
   // 是否为主机巡检
   const [isHost, setIsHost] = useState(false);
+  const context = locales[locale].common;
+  const title = context.inspection + context.ln + context.report;
+
+  const reportColumnConfig = [
+    {
+      ...columnsConfig.report_service_name,
+      className: "_bigfontSize",
+      title: context.service + context.ln + context.name,
+    },
+    {
+      ...columnsConfig.report_host_ip,
+      className: "_bigfontSize",
+      title: context.ip,
+    },
+    {
+      ...columnsConfig.report_service_port,
+      className: "_bigfontSize",
+      title: context.port,
+    },
+    {
+      ...columnsConfig.report_service_status,
+      className: "_bigfontSize",
+      title: context.status,
+    },
+    {
+      ...columnsConfig.report_cpu_usage,
+      className: "_bigfontSize",
+      title: context.cpu,
+    },
+    {
+      ...columnsConfig.report_mem_usage,
+      className: "_bigfontSize",
+      title: context.memory,
+    },
+    {
+      ...columnsConfig.report_run_time,
+      className: "_bigfontSize",
+      title: context.runtime,
+      render: (text) => {
+        if (text === "" || text === null || text === undefined) {
+          return "-";
+        }
+        return text
+          .replace("秒", context.s)
+          .replace("分钟", context.m)
+          .replace("小时", context.h)
+          .replace("天", context.d);
+      },
+    },
+    // {
+    //   ...columnsConfig.report_log_level,
+    //   className: "_bigfontSize",
+    //   title: context.level,
+    // },
+    // { ...columnsConfig.report_cluster_name, className: styles._bigfontSize },
+  ];
 
   const fetchDetailData = (id) => {
     setLoading(true);
@@ -76,12 +114,13 @@ export default function PatrolInspectionDetail() {
   }, []);
 
   if (!data) {
-    return <div>数据暂无</div>;
+    return <div>{context.noData}</div>;
   }
 
   return (
     <div id="reportContent" className={"reportContent"}>
       <div className={"reportTitle"}>
+        {/* -- 巡检报告标题 -- */}
         <div
           style={{
             width: "100%",
@@ -92,6 +131,8 @@ export default function PatrolInspectionDetail() {
         >
           {title}
         </div>
+
+        {/* -- 返回/下载 -- */}
         <div>
           <div
             className={"goBackElement"}
@@ -101,22 +142,23 @@ export default function PatrolInspectionDetail() {
               history.push("/status-patrol/patrol-inspection-record")
             }
           >
-            返回
+            {context.back}
           </div>
           <div
             id={"invisible"}
             onClick={() => {
               message.success(
-                `正在下载巡检报告，双击文件夹中index.html查看报告`
+                context.download + context.ln + context.succeeded
               );
               // download();
               downloadFile(`/download-inspection/${data.file_name}`);
             }}
           >
-            导出
+            {context.export}
           </div>
         </div>
       </div>
+
       <div>
         <Collapse
           bordered={false}
@@ -130,31 +172,48 @@ export default function PatrolInspectionDetail() {
             "service",
           ]}
           style={{ marginTop: 10 }}
-          //   expandIcon={({ isActive }) => (
-          //     <Icon type="caret-right" rotate={isActive ? 90 : 0} />
-          //   )}
         >
-          <Panel header="概述信息" key="overview" className={"panelItem"}>
+          {/* -- 基本信息 -- */}
+          <Panel
+            header={context.basic + context.ln + context.info}
+            key="overview"
+            className={"panelItem"}
+          >
             <div className={"overviewItemWrapper"}>
-              <OverviewItem data={data.summary?.task_info} type={"task_info"} />
-              <OverviewItem data={data.summary?.time_info} type={"time_info"} />
+              <OverviewItem
+                data={data.summary?.task_info}
+                type={"task_info"}
+                context={context}
+              />
+              <OverviewItem
+                data={data.summary?.time_info}
+                type={"time_info"}
+                context={context}
+              />
               <OverviewItem
                 data={data.summary?.scan_info}
                 type={"scan_info"}
                 isHost={isHost}
+                context={context}
               />
               <OverviewItem
                 data={data.summary?.scan_result}
                 type={"scan_result"}
+                context={context}
               />
             </div>
           </Panel>
 
-          {/* risks存在，且内部数据任一不为空才显示风险指标一栏 */}
+          {/* -- 异常指标 -- */}
           {data.risks &&
             (!R.isEmpty(data.risks.host_list) ||
               !R.isEmpty(data.risks.service_list)) && (
-              <Panel header="风险指标" key="risk" className={"panelItem"}>
+              <Panel
+                header={context.exception + context.ln + context.indicator}
+                key="risk"
+                className={"panelItem"}
+              >
+                {/* -- 主机异常 -- */}
                 {data.risks.host_list.length > 0 && (
                   <Table
                     style={{ marginTop: 20 }}
@@ -166,28 +225,32 @@ export default function PatrolInspectionDetail() {
                       {
                         ...columnsConfig.report_idx,
                         className: "_bigfontSize",
+                        title: context.row,
                       },
                       {
                         ...columnsConfig.report_host_ip,
                         className: "_bigfontSize",
+                        title: context.ip,
                       },
                       {
                         ...columnsConfig.report_system,
                         className: "_bigfontSize",
+                        title: context.system,
                       },
                       {
                         ...columnsConfig.report_risk_level,
                         className: "_bigfontSize",
+                        title: context.level,
                       },
                       {
                         ...columnsConfig.report_risk_describe,
                         className: "_bigfontSize",
+                        title: context.description,
                         render: (text) => {
                           return (
                             <span
                               style={{ cursor: "pointer" }}
                               onClick={() => {
-                                console.log(text);
                                 setDrawerText(text);
                                 setDrawerVisible(true);
                               }}
@@ -199,13 +262,16 @@ export default function PatrolInspectionDetail() {
                       },
                       {
                         ...columnsConfig.report_resolve_info,
+                        title: context.solution,
                         className: "_bigfontSize",
                       },
                     ]}
-                    title={() => "主机指标"}
+                    title={() => context.host + context.ln + context.indicator}
                     dataSource={data.risks.host_list}
                   />
                 )}
+
+                {/* -- 服务异常 -- */}
                 {data.risks.service_list.length > 0 && (
                   <Table
                     bordered={true}
@@ -217,26 +283,32 @@ export default function PatrolInspectionDetail() {
                       {
                         ...columnsConfig.report_idx,
                         className: "_bigfontSize",
+                        title: context.row,
                       },
                       {
                         ...columnsConfig.report_service_name,
                         className: "_bigfontSize",
+                        title: context.service + context.ln + context.name,
                       },
                       {
                         ...columnsConfig.report_host_ip,
                         className: "_bigfontSize",
+                        title: context.ip,
                       },
                       {
                         ...columnsConfig.report_service_port,
                         className: "_bigfontSize",
+                        title: context.port,
                       },
                       {
                         ...columnsConfig.report_risk_level,
                         className: "_bigfontSize",
+                        title: context.level,
                       },
                       {
                         ...columnsConfig.report_risk_describe,
                         className: "_bigfontSize",
+                        title: context.description,
                         render: (text) => {
                           return (
                             <span
@@ -255,17 +327,25 @@ export default function PatrolInspectionDetail() {
                       {
                         ...columnsConfig.report_resolve_info,
                         className: "_bigfontSize",
+                        title: context.solution,
                       },
                     ]}
-                    title={() => "服务指标"}
+                    title={() =>
+                      context.service + context.ln + context.indicator
+                    }
                     dataSource={data.risks.service_list}
                   />
                 )}
               </Panel>
             )}
 
+          {/* -- 服务状态概览 -- */}
           {!R.either(R.isNil, R.isEmpty)(data?.service_topology) && (
-            <Panel header="服务平面图" key="map" className={"panelItem"}>
+            <Panel
+              header={context.service + context.ln + context.statusOverview}
+              key="map"
+              className={"panelItem"}
+            >
               <div
                 style={{ display: "flex", flexFlow: "row wrap", margin: 10 }}
               >
@@ -283,60 +363,82 @@ export default function PatrolInspectionDetail() {
             </Panel>
           )}
 
+          {/* -- 主机列表 -- */}
           {!R.either(R.isNil, R.isEmpty)(data.detail_dict?.host) && (
-            <Panel header="主机列表" key="host" className={"panelItem"}>
+            <Panel
+              header={context.host + context.ln + context.list}
+              key="host"
+              className={"panelItem"}
+            >
               <Table
-                //rowClassName={()=>{return styles.didingyi;}}
                 bordered={true}
                 size={"small"}
                 style={{ marginTop: 20 }}
                 scroll={{ x: 1100 }}
                 pagination={false}
                 rowKey={(record, index) => record.id}
-                // defaultExpandAllRows
                 columns={[
                   {
                     ...columnsConfig.report_idx,
                     className: "_bigfontSize",
+                    title: context.row,
                   },
                   {
                     ...columnsConfig.report_host_ip,
                     className: "_bigfontSize",
+                    title: context.ip,
                   },
                   {
                     ...columnsConfig.report_release_version,
                     className: "_bigfontSize",
+                    title: context.version,
                   },
                   {
                     ...columnsConfig.report_host_massage,
                     className: "_bigfontSize",
+                    title: context.message,
                   },
                   {
                     ...columnsConfig.report_cpu_usage,
                     className: "_bigfontSize",
+                    title: context.cpu,
                   },
                   {
                     ...columnsConfig.report_mem_usage,
                     className: "_bigfontSize",
+                    title: context.memory,
                   },
                   {
                     ...columnsConfig.report_disk_usage_root,
                     className: "_bigfontSize",
+                    title: context.rootFolder,
                   },
                   {
                     ...columnsConfig.report_disk_usage_data,
                     className: "_bigfontSize",
+                    title: context.dataFolder,
                   },
                   {
                     ...columnsConfig.report_run_time,
                     className: "_bigfontSize",
+                    title: context.runtime,
+                    render: (text) => {
+                      if (text === "" || text === null || text === undefined) {
+                        return "-";
+                      }
+                      return text
+                        .replace("秒", context.s)
+                        .replace("分钟", context.m)
+                        .replace("小时", context.h)
+                        .replace("天", context.d);
+                    },
                   },
                   {
                     ...columnsConfig.report_sys_load,
                     className: "_bigfontSize",
+                    title: context.systemLoad,
                   },
                 ]}
-                //expandedRowKeys={expandKey}
                 expandedRowRender={(...arg) => {
                   arg[0].basic = arg[0].basic.filter(
                     (item) => item.name !== "cluster_ip"
@@ -346,7 +448,9 @@ export default function PatrolInspectionDetail() {
                     drawerVisible,
                     setDrawerVisible,
                     drawerText,
-                    setDrawerText
+                    setDrawerText,
+                    context,
+                    locale
                   );
                 }}
                 // onExpand={(expanded, record) => {
@@ -359,8 +463,13 @@ export default function PatrolInspectionDetail() {
             </Panel>
           )}
 
+          {/* -- 数据库列表 -- */}
           {!R.either(R.isNil, R.isEmpty)(data.detail_dict?.database) && (
-            <Panel header="数据库列表" key="database" className={"panelItem"}>
+            <Panel
+              header={context.database + context.ln + context.list}
+              key="database"
+              className={"panelItem"}
+            >
               <Table
                 size={"small"}
                 bordered={true}
@@ -378,7 +487,9 @@ export default function PatrolInspectionDetail() {
                     drawerVisible,
                     setDrawerVisible,
                     drawerText,
-                    setDrawerText
+                    setDrawerText,
+                    context,
+                    locale
                   );
                 }}
                 dataSource={data.detail_dict.database}
@@ -387,7 +498,11 @@ export default function PatrolInspectionDetail() {
           )}
 
           {!R.either(R.isNil, R.isEmpty)(data.detail_dict?.component) && (
-            <Panel header="组件列表" key="component" className={"panelItem"}>
+            <Panel
+              header={context.component + context.ln + context.list}
+              key="component"
+              className={"panelItem"}
+            >
               <Table
                 size={"small"}
                 bordered={true}
@@ -405,7 +520,9 @@ export default function PatrolInspectionDetail() {
                     drawerVisible,
                     setDrawerVisible,
                     drawerText,
-                    setDrawerText
+                    setDrawerText,
+                    context,
+                    locale
                   );
                 }}
                 dataSource={data.detail_dict.component}
@@ -414,14 +531,17 @@ export default function PatrolInspectionDetail() {
           )}
 
           {!R.either(R.isNil, R.isEmpty)(data.detail_dict?.service) && (
-            <Panel header="服务列表" key="service" className={"panelItem"}>
+            <Panel
+              header={context.service + context.ln + context.list}
+              key="service"
+              className={"panelItem"}
+            >
               <Table
                 size={"small"}
                 bordered={true}
                 style={{ marginTop: 20 }}
                 pagination={false}
                 rowKey={(record, index) => record.id}
-                // defaultExpandAllRows
                 columns={reportColumnConfig}
                 expandedRowRender={(...arg) => {
                   arg[0].basic = arg[0].basic.filter(
@@ -432,7 +552,9 @@ export default function PatrolInspectionDetail() {
                     drawerVisible,
                     setDrawerVisible,
                     drawerText,
-                    setDrawerText
+                    setDrawerText,
+                    context,
+                    locale
                   );
                 }}
                 dataSource={data.detail_dict.service}
@@ -442,7 +564,7 @@ export default function PatrolInspectionDetail() {
         </Collapse>
       </div>
       <Drawer
-        title="进程日志"
+        title={context.process + context.ln + context.log}
         placement="right"
         closable={false}
         onClose={() => setDrawerVisible(false)}
@@ -454,9 +576,11 @@ export default function PatrolInspectionDetail() {
       </Drawer>
     </div>
   );
-}
+};
 
-function formatTime(text = 0) {
+export default PatrolInspectionDetail;
+
+const formatTime = (text = 0, context) => {
   let duration = text;
   const second = Math.round(Number(text)),
     days = Math.floor(second / 86400),
@@ -465,52 +589,93 @@ function formatTime(text = 0) {
     seconds = Math.floor(((second % 86400) % 3600) % 60);
 
   if (days > 0) {
-    duration = days + "天" + hours + "小时" + minutes + "分" + seconds + "秒";
+    duration =
+      days +
+      context.d +
+      hours +
+      context.h +
+      minutes +
+      context.m +
+      seconds +
+      context.s;
   } else if (hours > 0) {
-    duration = hours + "小时" + minutes + "分" + seconds + "秒";
+    duration = hours + context.h + minutes + context.m + seconds + context.s;
   } else if (minutes > 0) {
-    duration = minutes + "分" + seconds + "秒";
+    duration = minutes + context.m + seconds + context.s;
   } else if (seconds > 0) {
-    duration = seconds + "秒";
+    duration = seconds + context.s;
   }
 
   return duration;
-}
+};
 
 // 概览信息
-function OverviewItem({ data, type, isHost = false }) {
+const OverviewItem = ({ data, type, isHost = false, context }) => {
   switch (type) {
     case "task_info":
       return (
         <div className={"overviewItem"}>
-          <div>任务信息</div>
+          <div>{context.task + context.ln + context.info}</div>
           <div>
-            <div>任务名称：{data?.task_name}</div>
-            <div>操作人员：{data?.operator}</div>
-            <div>任务状态：{data?.task_status === 2 ? "已完成" : "失败"}</div>
+            <div>
+              {context.name + " : "}
+              {data?.task_name
+                .replace("深度巡检", context.deep)
+                .replace("主机巡检", context.host)
+                .replace("组件巡检", context.component)}
+            </div>
+            <div>
+              {context.operator + " : "}
+              {data?.operator}
+            </div>
+            <div>
+              {context.status + " : "}
+              {data?.task_status === 2 ? context.succeeded : context.failed}
+            </div>
           </div>
         </div>
       );
     case "time_info":
       return (
         <div className={"overviewItem"}>
-          <div>时间统计</div>
+          <div>{context.time + context.ln + context.info}</div>
           <div>
-            <div>开始时间：{data?.start_time}</div>
-            <div>结束时间：{data?.end_time}</div>
-            <div>任务耗时：{formatTime(data?.cost)}</div>
+            <div>
+              {context.beginTime + " : "}
+              {data?.start_time}
+            </div>
+            <div>
+              {context.endTime + " : "}
+              {data?.end_time}
+            </div>
+            <div>
+              {context.duration + " : "}
+              {formatTime(data?.cost, context)}
+            </div>
           </div>
         </div>
       );
     case "scan_info":
       return (
         <div className={"overviewItem"}>
-          <div>扫描统计</div>
+          <div>{context.scan + context.ln + context.info}</div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <div>
-              {data?.host >= 0 && <div>主机个数：{data.host}台</div>}
+              {data?.host >= 0 && (
+                <div>
+                  {context.host + context.ln + context.total + " : "}
+                  {data.host}
+                  {context.tai}
+                </div>
+              )}
               {/* {data?.component >= 0 && <div>组件个数：{data.component}个</div>} */}
-              {data?.service >= 0 && <div>服务个数：{data.service}个</div>}
+              {data?.service >= 0 && (
+                <div>
+                  {context.service + context.ln + context.total + " : "}
+                  {data.service}
+                  {context.ge}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -518,21 +683,27 @@ function OverviewItem({ data, type, isHost = false }) {
     case "scan_result":
       return (
         <div className={"overviewItem"}>
-          <div>分析结果</div>
+          <div>{context.result}</div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <div>
-              <div>总指标数：{data?.all_target_num}</div>
-              <div>异常指标：{data?.abnormal_target}</div>
+              <div>
+                {context.indicator + context.ln + context.total + " : "}
+                {data?.all_target_num}
+              </div>
+              <div>
+                {context.exception + context.ln + context.total + " : "}
+                {data?.abnormal_target}
+              </div>
               {/* <div>健康度：{data.healthy}</div> */}
             </div>
           </div>
         </div>
       );
   }
-}
+};
 
 //平面图
-function PlanChart({ title, list, data }) {
+const PlanChart = ({ title, list, data }) => {
   return (
     <div className={"planChartWrapper"}>
       <div className={"planChartTitle"}>
@@ -550,11 +721,11 @@ function PlanChart({ title, list, data }) {
       </div>
     </div>
   );
-}
+};
 
 // Table渲染的子项
 // 注：此处需要针对特殊属性渲染额外效果，故将已在table渲染过的属性单独拿出来
-function RenderExpandedContent(
+const RenderExpandedContent = (
   {
     basic,
     host_ip,
@@ -574,17 +745,20 @@ function RenderExpandedContent(
     ...specialProps
   },
   ...arg
-) {
-  const { topic_partition, kafka_offsets, topic_size } = specialProps;
-
-  let [drawerVisible, setDrawerVisible, drawerText, setDrawerText] =
-    arg.slice(-4);
+) => {
+  let [
+    drawerVisible,
+    setDrawerVisible,
+    drawerText,
+    setDrawerText,
+    context,
+    locale,
+  ] = arg.slice(-6);
 
   const formattedData = Object.entries(specialProps).filter((item) =>
     Array.isArray(item[1])
   );
 
-  /* eslint-disable */
   let deal_host_memory_top_columns = [
     {
       title: "TOP",
@@ -602,7 +776,7 @@ function RenderExpandedContent(
       className: "_bigfontSize",
     },
     {
-      title: "使用率",
+      title: context.usage,
       dataIndex: "P_RATE",
       //ellipsis: true,
       align: "center",
@@ -610,7 +784,7 @@ function RenderExpandedContent(
       className: "_bigfontSize",
     },
     {
-      title: "进程",
+      title: context.process,
       dataIndex: "P_CMD",
       ellipsis: true,
       className: "_bigfontSize",
@@ -629,57 +803,54 @@ function RenderExpandedContent(
       },
     },
   ];
-  /* eslint-disable */
+
   const contentMap = {
     // 主机列表
     port_connectivity: {
       columns: host_port_connectivity_columns,
       dataSource: specialProps.port_connectivity,
-      title: "端口连通性",
+      title: context.portconnectivity,
     },
     memory_top: {
       columns: deal_host_memory_top_columns,
       dataSource: specialProps.memory_top,
-      title: "内存使用率Top10进程",
+      title: context.memory + context.ln + context.usage + " TOP 10",
     },
     cpu_top: {
       columns: deal_host_memory_top_columns,
       dataSource: specialProps.cpu_top,
-      title: "cpu使用率Top10进程",
+      title: context.cpu + context.ln + context.usage + " TOP 10",
     },
     kernel_parameters: {
       columns: [],
       dataSource: specialProps.kernel_parameters,
-      title: "内核参数",
+      title: context.kernel + context.ln + context.param,
     },
     //  服务列表
     topic_partition: {
       columns: kafka_partition_columns,
       dataSource: specialProps.topic_partition,
-      title: "分区信息",
+      title: context.partition + context.ln + context.info,
     },
     kafka_offsets: {
       columns: kafka_offsets_columns,
       dataSource: specialProps.kafka_offsets,
-      title: "消费位移信息",
+      title: context.consumerDisplacement,
     },
     topic_size: {
       columns: kafka_topic_size_columns,
       dataSource: specialProps.topic_size,
-      title: "Topic消息大小",
+      title: "Topic " + context.size,
     },
   };
 
   return (
     <div className={"expandedRowWrapper"}>
-      {Array.isArray(basic) && <BasicCard basic={basic} />}
+      {Array.isArray(basic) && <BasicCard basic={basic} locale={locale} />}
       {formattedData.length > 0 && (
         <Collapse
           defaultActiveKey={R.keys(specialProps)}
           style={{ marginTop: 10 }}
-          //   expandIcon={({ isActive }) => (
-          //     <Icon type="caret-right" rotate={isActive ? 90 : 0} />
-          //   )}
         >
           {formattedData.map((item, idx) => {
             // 根据当前渲染项，找到对应的content配置数据
@@ -713,13 +884,13 @@ function RenderExpandedContent(
               );
             } else {
               //   todo 其他数据项
-              console.log("未配置的数据项", item);
+              console.log(context.noData, item);
             }
           })}
         </Collapse>
       )}
       <Drawer
-        title="进程日志"
+        title={context.process + context.ln + context.log}
         placement="right"
         closable={false}
         onClose={() => setDrawerVisible(false)}
@@ -731,20 +902,22 @@ function RenderExpandedContent(
       </Drawer>
     </div>
   );
-}
+};
 
 // 卡片面板
-function BasicCard({ basic }) {
+const BasicCard = ({ basic, locale }) => {
   return (
     <Card>
       <div className={"basicCardWrapper"}>
         {basic.map((item, idx) => (
           <div key={idx} className={"basicCardItem"}>
-            <span style={{ color: "#333" }}>{item.name_cn}: </span>
+            <span style={{ color: "#333" }}>
+              {locale === "zh-CN" ? item.name_cn : item.name}:{" "}
+            </span>
             <span>{formatTableRenderData(JSON.stringify(item.value))}</span>
           </div>
         ))}
       </div>
     </Card>
   );
-}
+};

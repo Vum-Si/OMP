@@ -1,21 +1,18 @@
 import { Tooltip, Spin } from "antd";
 
-const HasInstallService = ({ children, ip, installService }) => {
-  
+const HasInstallService = ({ children, ip, installService, context }) => {
   return (
     <Tooltip
       mouseEnterDelay={0.3}
       placement="right"
       color="#fff"
-      overlayStyle={{
-        minWidth:300
-      }}
+      overlayStyle={{ minWidth: 300 }}
       title={
         <div
           style={{
             color: "rgba(0, 0, 0, 0.85)",
             padding: 5,
-            height: 330
+            height: 330,
           }}
         >
           <div
@@ -25,25 +22,20 @@ const HasInstallService = ({ children, ip, installService }) => {
               paddingBottom: 5,
             }}
           >
-            已选安装服务
+            {context.installed + context.ln + context.service}
           </div>
           <Spin spinning={!installService}>
-            <div
-              style={{
-                overflowY: "auto",
-                height: 300,
-              }}
-            >
-            {installService[ip]?.map((item) => {
-              return (
-                <div
-                  style={{ paddingTop: 5, fontSize: 14 }}
-                  key={item.service_instance_name}
-                >
-                  {item.service_instance_name}
-                </div>
-              );
-            })}
+            <div style={{ overflowY: "auto", height: 300 }}>
+              {installService[ip]?.map((item) => {
+                return (
+                  <div
+                    style={{ paddingTop: 5, fontSize: 14 }}
+                    key={item.service_instance_name}
+                  >
+                    {item.service_instance_name}
+                  </div>
+                );
+              })}
             </div>
           </Spin>
         </div>

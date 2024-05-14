@@ -4,23 +4,10 @@ import traceback
 
 import pytz
 from omp_server.settings import TIME_ZONE
-from db_models.models import Host, Service, ApplicationHub
-from promemonitor.grafana_url import explain_url
+from db_models.models import Host, Service
+from promemonitor.grafana_url import explain_url, get_item_type
 
 logger = logging.getLogger('server')
-
-
-def get_service_type(ip, service_name):
-    """
-    获取服务的中文名称以及服务分类
-    :param ip: ip
-    :param service_name: 服务名称
-    :type service_name str
-    :return: product_cn_name, service_type
-    """
-    product_cn_name = service_name
-    service_type = ip
-    return product_cn_name, service_type
 
 
 def get_monitor_url(ele):
@@ -102,14 +89,6 @@ class AlertAnalysis:
     def _get(items, key):
         return items.get(key, "DEFAULT_DATA")
 
-    # @property
-    # def is_resolved(self):
-    #     return self.item.get("status") == 'resolved'
-
-    # @property
-    # def is_alert(self):
-    #     return self._get(self.labels, "severity") in ["critical", "warning"]
-
     def node_exporter(self):
         return dict(
             alert_type="host",
@@ -121,43 +100,16 @@ class AlertAnalysis:
 
     def exporter(self):
         alert_host_ip = self._get(self.labels, "instance")
-        alert_service = self._get(self.labels, "job")
-        alert_service_name = alert_service.replace("Exporter", "").strip()
-        alert_service_type, alert_service_en_type = get_service_type(
-            alert_host_ip, alert_service_name)
-        app_name_str = self._get(self.labels, "app") if self._get(self.labels, "app") else \
-            self._get(self.labels, "job").split("Exporter")[0]
-        if not app_name_str:
-            _alert_type = "service"
-        component_list = Service.objects.filter(
-            service__app_type=ApplicationHub.APP_TYPE_COMPONENT).filter(
-            service__is_base_env=False)
-        if list(filter(
-            lambda x: x.service.app_name == app_name_str, list(
-                component_list))):
-            _alert_type = "component"
-        else:
-            _alert_type = "service"
+        alert_service_name = self.labels.get('app') if self.labels.get(
+            'app') else self.labels.get("job", "").split("Exporter")[0]
+        alert_service_type = get_item_type(alert_service_name)
         return dict(
-            alert_type=_alert_type,
-            alert_host_ip=self._get(self.labels, "instance"),
+            alert_type="service",
+            alert_host_ip=alert_host_ip,
             alert_service_name=alert_service_name,
             alert_service_type=alert_service_type,
-            alert_service_en_type=alert_service_en_type
+            alert_service_en_type=alert_service_name
         )
-
-    # def other(self):
-    #     alert_host_ip = self._get(self.labels, "ip")
-    #     alert_service_name = self._get(self.labels, "app").strip()
-    #     alert_service_type, alert_service_en_type = get_service_type(
-    #         alert_host_ip, alert_service_name)
-    #     return dict(
-    #         alert_type="service",
-    #         alert_host_ip=alert_host_ip,
-    #         alert_service_name=alert_service_name,
-    #         alert_service_type=alert_service_type,
-    #         alert_service_en_type=alert_service_en_type
-    #     )
 
     def get_alert_time(self):
         start_time = self.item.get("startsAt", "")
@@ -169,17 +121,14 @@ class AlertAnalysis:
         old_alert_type = self._get(self.labels, "job")
         if old_alert_type == "nodeExporter":
             kwargs = self.node_exporter()
-        elif "Exporter" in old_alert_type:
-            kwargs = self.exporter()
         else:
-            # kwargs = self.other()
             kwargs = self.exporter()  # TODO 有other场景出现再换
         kwargs["status"] = self.item.get("status", "firing")
         kwargs["alert_level"] = self._get(self.labels, "severity")
         kwargs["alertname"] = self._get(self.labels, "alertname")
         kwargs["fingerprint"] = self.fingerprint
         kwargs.update(alert_time=self.get_alert_time())
-        if kwargs["alert_type"] == "service" or kwargs["alert_type"] == "component":
+        if kwargs["alert_type"] == "service":
             kwargs["monitor"] = get_monitor_url(
                 [{
                     "ip": kwargs.get("alert_host_ip"),
@@ -255,12 +204,12 @@ class AlertAnalysis:
             alert_info["env_id"] = host.env_id
             alert_info["alert_instance_name"] = host.instance_name
         else:
+            service_instance_name = self.labels.get("instance_name")
             ser = Service.objects.filter(
                 service__app_name=alert_info["alert_service_name"],
                 ip=alert_info["alert_host_ip"]
-            ).first()
-            # host = Host.objects.filter(
-            #     ip=alert_info["alert_host_ip"]).first()
+            ).first() or Service.objects.filter(service_instance_name=service_instance_name,
+                                                ip=alert_info["alert_host_ip"]).last()
             if not ser:
                 return {}
             alert_info["env_id"] = ser.env_id

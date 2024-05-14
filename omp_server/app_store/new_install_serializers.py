@@ -13,10 +13,12 @@
 import uuid
 import json
 import logging
+import re
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import Serializer
+from app_store.new_install_utils import CheckAttr
 
 from db_models.models import (
     ProductHub,
@@ -118,13 +120,15 @@ class CreateInstallInfoSerializer(BaseInstallSerializer):
             _el_name = el["name"]
             _el_version = el["version"]
             # 如果当次安装已包含了依赖应用则跳过
+            # 匹配规则，实际版本信息
             if _el_name in all_dic and \
-                    _el_version == all_dic[_el_name]:
+                    re.match(_el_version, all_dic[_el_name]):
+                # _el_version == all_dic[_el_name]:
                 continue
             # 如果当前系统中存在已安装应用则跳过
             if Product.objects.filter(
                     product__pro_name=_el_name,
-                    product__pro_version=_el_version
+                    product__pro_version__regex=_el_version
             ).exists():
                 continue
             # 以上都不满足那么需要阻断安装程序
@@ -145,9 +149,10 @@ class CreateInstallInfoSerializer(BaseInstallSerializer):
         for item in install_product:
             _name = item.get("name")
             _version = item.get("version")
+            # 查时间最新的版本
             pro_obj = ProductHub.objects.filter(
                 pro_name=_name,
-                pro_version=_version,
+                pro_version__regex=_version,
                 is_release=True
             ).last()
             if not pro_obj:
@@ -174,7 +179,8 @@ class CreateInstallInfoSerializer(BaseInstallSerializer):
                 pro_name=item.get("name"),
                 pro_version=item.get("version"),
                 high_availability=high_availability,
-                unique_key=unique_key
+                unique_key=unique_key,
+                deploy_mode=item.get("self_deploy_mode", None)
             ).run()
             _basic.append(_pro_info)
 
@@ -184,9 +190,20 @@ class CreateInstallInfoSerializer(BaseInstallSerializer):
         _dependence = list()
         # 将带有with标识的服务进行处理
         with_ser_lst = list()
+        # 将服务部署类型的服务进行处理
+        deploy_ser_lst = list()
         for _pro in _basic:
             _re_services_list = list()
             for item in _pro.get("services_list"):
+                # 获取部署类型
+                deploy_mode = None if item["self_deploy_mode"] == "default" \
+                    else item["self_deploy_mode"]
+                if deploy_mode:
+                    deploy_ser_lst.append({
+                        "name": item.get("name"),
+                        "version": item.get("version"),
+                        "deploy_mode": deploy_mode
+                    })
                 # 版本严格校验
                 _recheck_service.update({
                     item.get("name", "") + "-" + item.get("version", ""): True
@@ -194,7 +211,8 @@ class CreateInstallInfoSerializer(BaseInstallSerializer):
                 _dep = SerDependenceParseUtils(
                     parse_name=item.get("name"),
                     parse_version=item.get("version"),
-                    high_availability=high_availability
+                    high_availability=high_availability,
+                    deploy_mode=deploy_mode
                 ).run_ser()
                 _dependence.extend(_dep)
                 if "with_flag" in item:
@@ -205,7 +223,12 @@ class CreateInstallInfoSerializer(BaseInstallSerializer):
 
         # 将带有with标识的服务存放至redis数据中
         BaseRedisData(
-            unique_key=unique_key).step_set_with_ser(data=with_ser_lst)
+            unique_key=unique_key
+        ).step_set_with_ser(data=with_ser_lst)
+        # 将含有部署类型的服务放至 redis 中
+        BaseRedisData(
+            unique_key=unique_key
+        ).step_set_deploy_mode_ser(data=deploy_ser_lst)
 
         # 使用make_lst_unique方法将服务依赖列表去重处理
         _dependence = make_lst_unique(
@@ -222,11 +245,21 @@ class CreateInstallInfoSerializer(BaseInstallSerializer):
         # 判断最终用户可否进行下一步的标记
         is_continue = True
         for item in _basic:
-            if "error_msg" in item and item["error_msg"]:
+            # if "error_msg" in item and item["error_msg"]:
+            #     is_continue = False
+            #     break
+            if "error_msg" not in item or not item["error_msg"]:
+                continue
+            if "安装包不存在" in item["error_msg"] and \
+                    len(item.get("exist_instance", [])) == 0:
                 is_continue = False
-                break
         for item in _recheck_dependence:
-            if "error_msg" in item and item["error_msg"]:
+            # if "error_msg" in item and item["error_msg"]:
+            #     is_continue = False
+            if "error_msg" not in item or not item["error_msg"]:
+                continue
+            if "安装包不存在" in item["error_msg"] and \
+                    len(item.get("exist_instance", [])) == 0:
                 is_continue = False
         validated_data["data"] = {
             "basic": _basic,
@@ -350,8 +383,8 @@ class CheckInstallInfoSerializer(BaseInstallSerializer):
         for item in validated_data["data"].get("basic", []):
             for el in item.get("services_list"):
                 if el.get("name") not in install or \
-                    el.get("version") != install[el.get("name")][
-                        "version"]:
+                        el.get("version") != install[el.get("name")][
+                    "version"]:
                     el["error_msg"] = f"无法追踪此服务: {el.get('name')}"
                     is_continue = False
         for item in validated_data["data"].get("use_exist", []):
@@ -770,12 +803,12 @@ class CreateInstallPlanSerializer(BaseInstallSerializer):
                         ServiceArgsPortUtils(
                             ip=ip, data_folder=data_folder, run_user=run_user,
                             host_user_map=host_user_map
-                    ).remake_install_args(obj=_app)
+                        ).remake_install_args(obj=_app)
                     _dic["ports"] = \
                         ServiceArgsPortUtils(
                             ip=ip, data_folder=data_folder, run_user=run_user,
                             host_user_map=host_user_map
-                    ).get_app_port(obj=_app)
+                        ).get_app_port(obj=_app)
                     _dic["instance_name"] = \
                         item + "-" + "-".join(ip.split(".")[-2:])
                     _dic["cluster_name"] = cluster_name_map.get(item)
@@ -795,6 +828,28 @@ class CreateInstallPlanSerializer(BaseInstallSerializer):
                 if "error_msg" in el and el["error_msg"]:
                     return False, el["error_msg"]
         return True, ""
+
+    @staticmethod
+    def compare_args_and_check(old_args, new_args):
+        for old in old_args:
+            for new in new_args:
+                if new.get('key') == old.get('key'):
+                    old['default'] = new['default']
+            res, msg = CheckAttr(old).run()
+            if not res:
+                raise ValidationError(
+                    f"配置:{old}值配置异常:详情{msg}"
+                )
+
+    def cluster_args_overwrite(self, unique_key, all_install_service_lst):
+        cluster_args = BaseRedisData(
+            unique_key).get_4_set_service_cluster_args()
+        overwrite_args = {_["app_name"]: _["install_args"] for _ in cluster_args}
+        for app in all_install_service_lst:
+            overwrite_arg = overwrite_args.get(app['name'])
+            if overwrite_arg:
+                self.compare_args_and_check(app["install_args"], overwrite_arg)
+        return all_install_service_lst
 
     def create(self, validated_data):
         """
@@ -846,6 +901,7 @@ class CreateInstallPlanSerializer(BaseInstallSerializer):
             cluster_name_map=cluster_name_map,
             host_user_map=host_user_map
         )
+        all_install_service_lst = self.cluster_args_overwrite(unique_key, all_install_service_lst)
 
         # 解决base_env服务的安装
         base_env_ser_lst = BaseEnvServiceUtils(
@@ -871,7 +927,7 @@ class CreateInstallPlanSerializer(BaseInstallSerializer):
                 host_user_map=host_user_map,
                 run_user=run_user
             ).run()
-            all_install_service_lst.extend(_keep_alive_lst)
+            # all_install_service_lst.extend(_keep_alive_lst)
         # TODO 依赖关系绑定
         all_install_service_lst = ValidateInstallServicePortArgs(
             data=all_install_service_lst
@@ -930,6 +986,7 @@ class CreateComponentInstallInfoSerializer(Serializer):
             {
                 "name": "jenkinsNB",
                 "version": "2.303.2"
+                "self_deploy_mode": ""
             }
         ],
         "unique_key": "abf7d622-6fc8-4a04-ad4c-49b57298ecdf"
@@ -997,11 +1054,31 @@ class CreateComponentInstallInfoSerializer(Serializer):
             _dependence.append(_info)
         # 将带有with标识的服务进行处理
         with_ser_lst = list()
+        # 将服务部署类型的服务进行处理
+        deploy_ser_lst = list()
         for item in install_component:
+            if item["self_deploy_mode"] == "":
+                deploy_mode = None
+                pro_queryset = Product.objects.filter(
+                    product__applicationhub__app_name=item["name"],
+                    product__applicationhub__app_version=item["version"]
+                )
+                if pro_queryset.exists():
+                    deploy_mode = pro_queryset.last().deploy_mode
+            else:
+                deploy_mode = None if item["self_deploy_mode"] == "default" \
+                    else item["self_deploy_mode"]
+            if deploy_mode:
+                deploy_ser_lst.append({
+                    "name": item.get("name"),
+                    "version": item.get("version"),
+                    "deploy_mode": deploy_mode
+                })
             _dep = SerDependenceParseUtils(
                 parse_name=item.get("name"),
                 parse_version=item.get("version"),
-                high_availability=high_availability
+                high_availability=high_availability,
+                deploy_mode=deploy_mode
             ).run_ser()
             _dependence.extend(_dep)
             if "with_flag" in item:
@@ -1009,7 +1086,12 @@ class CreateComponentInstallInfoSerializer(Serializer):
 
         # 将带有with标识的服务存放至redis数据中
         BaseRedisData(
-            unique_key=unique_key).step_set_with_ser(data=with_ser_lst)
+            unique_key=unique_key
+        ).step_set_with_ser(data=with_ser_lst)
+        # 将含有部署类型的服务放至 redis 中
+        BaseRedisData(
+            unique_key=unique_key
+        ).step_set_deploy_mode_ser(data=deploy_ser_lst)
 
         # 使用make_lst_unique方法将服务依赖列表去重处理
         _dependence = make_lst_unique(

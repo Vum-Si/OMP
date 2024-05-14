@@ -26,10 +26,10 @@ class Mysql(object):
             logger.info(f"{mysql_vip_flag}; {item}")
             if item.get("name") == "mysql":
                 mysql_index_lst.append(index)
-            if item.get("roles") == "mysql":
+            if item.get("roles") == "mysql" or item.get("deploy_mode") == "master-master" or item.get("vip"):
                 mysql_vip_flag = True
         if len(mysql_index_lst) == 1:
-            service_list[mysql_index_lst[0]]["roles"] = "single"
+            service_list[mysql_index_lst[0]]["roles"] = ""
         elif len(mysql_index_lst) == 2:
             if not mysql_vip_flag:
                 service_list[mysql_index_lst[0]]["roles"] = "master"

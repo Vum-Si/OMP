@@ -16,20 +16,15 @@ import { apiRequest } from "@/config/requestApi";
 import { useDispatch } from "react-redux";
 import moment from "moment";
 import { SearchOutlined } from "@ant-design/icons";
+import { locales } from "@/config/locales";
 
-const UserManagement = () => {
+const UserManagement = ({ locale }) => {
   const dispatch = useDispatch();
-
   const [loading, setLoading] = useState(false);
-
-  const [searchLoading, setSearchLoading] = useState(false);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [userListSource, setUserListSource] = useState([]);
-  const [searchValue, setSearchValue] = useState("");
   const [selectValue, setSelectValue] = useState();
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -37,67 +32,63 @@ const UserManagement = () => {
     ordering: "",
     searchParams: {},
   });
-
   //修改密码弹框
   const [showModal, setShowModal] = useState(false);
+  // 定义row存数据
+  const [row, setRow] = useState({});
+  const context = locales[locale].common;
 
   const columns = [
     {
-      title: "序列",
+      title: context.row,
       width: 40,
       key: "_idx",
       dataIndex: "_idx",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       render: nonEmptyProcessing,
       fixed: "left",
     },
     {
-      title: "用户名",
+      title: context.username,
       key: "username",
       width: 100,
       dataIndex: "username",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       render: nonEmptyProcessing,
     },
     {
-      title: "角色",
+      title: context.role,
       key: "is_superuser",
       dataIndex: "is_superuser",
       width: 100,
-      //sorter: (a, b) => a.is_superuser - b.is_superuser,
-      //sortDirections: ["descend", "ascend"],
       align: "center",
       render: (text, record) => {
         if (text) {
-          return "普通管理员";
+          return context.superuser;
         } else {
-          if (record.username == "omp") {
-            return "只读用户";
+          if (record.username === "omp") {
+            return context.readonly;
           }
-          return "普通用户";
+          return context.ordinary;
         }
       },
     },
     {
-      title: "用户状态",
+      title: context.active,
       key: "is_active",
       dataIndex: "is_active",
       align: "center",
       width: 100,
       render: (text) => {
         if (text) {
-          return "正常";
+          return context.normal;
         } else {
-          return "停用";
+          return context.disabled;
         }
       },
     },
     {
-      title: "创建时间",
+      title: context.created,
       key: "date_joined",
       dataIndex: "date_joined",
       align: "center",
@@ -110,15 +101,8 @@ const UserManagement = () => {
         }
       },
     },
-    // {
-    //   title: "描述",
-    //   key: "describe",
-    //   dataIndex: "describe",
-    //   align: "center",
-    //   render: nonEmptyProcessing,
-    // },
     {
-      title: "用户操作",
+      title: context.action,
       key: "1",
       width: 50,
       dataIndex: "1",
@@ -133,27 +117,19 @@ const UserManagement = () => {
             }}
             style={{ display: "flex", justifyContent: "space-around" }}
           >
-            <a>修改密码</a>
+            <a>{context.changePass}</a>
           </div>
         );
       },
     },
   ];
 
-  const msgRef = useRef(null);
-
-  //select 的onblur函数拿不到最新的search value,使用useref存(是最新的，但是因为失去焦点时会自动触发清空search，还是得使用ref存)
-  const searchValueRef = useRef(null);
-
-  // 定义row存数据
-  const [row, setRow] = useState({});
-
   //auth/users
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.auth.users, {
       params: {
@@ -190,7 +166,7 @@ const UserManagement = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   const onPassWordChange = (data) => {
     setLoading(true);
@@ -205,12 +181,24 @@ const UserManagement = () => {
         handleResponse(res, (res) => {
           if (res.code == 0) {
             if (localStorage.getItem("username") == row.username) {
-              message.success("修改密码成功, 请重新登录");
+              message.success(
+                context.change +
+                  context.ln +
+                  context.password +
+                  context.ln +
+                  context.succeeded
+              );
               setTimeout(() => {
                 logout();
               }, 1000);
             } else {
-              message.success("修改密码成功");
+              message.success(
+                context.change +
+                  context.ln +
+                  context.password +
+                  context.ln +
+                  context.succeeded
+              );
             }
             setShowModal(false);
           }
@@ -226,31 +214,21 @@ const UserManagement = () => {
     fetchData(pagination);
   }, []);
 
-  //console.log(checkedList)
   // 防止在校验进入死循环
   const flag = useRef(null);
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部用户过滤/刷新 -- */}
       <div style={{ display: "flex" }}>
         <div style={{ display: "flex", marginLeft: "auto" }}>
-          <span style={{ width: 60, display: "flex", alignItems: "center" }}>
-            用户名:
+          <span
+            style={{ marginRight: 5, display: "flex", alignItems: "center" }}
+          >
+            {context.username + " : "}
           </span>
-          {/* <Input.Search placeholder="请输入用户名"
-          allowClear
-          onSearch={(e)=>{
-              setSelectValue(e)
-              console.log(e)
-              fetchData(
-                { current: pagination.current, pageSize: pagination.pageSize },
-                {username:e},
-                pagination.ordering
-              );
-          }}
-          style={{ width: 200 }} /> */}
           <Input
-            placeholder="请输入用户名"
+            placeholder={context.input + context.ln + context.username}
             style={{ width: 200 }}
             allowClear
             value={selectValue}
@@ -304,7 +282,6 @@ const UserManagement = () => {
             style={{ marginLeft: 10 }}
             onClick={() => {
               dispatch(refreshTime());
-              // console.log(pagination, "hosts/hosts/?page=1&size=10");
               fetchData(
                 { current: pagination.current, pageSize: pagination.pageSize },
                 { username: selectValue },
@@ -312,10 +289,12 @@ const UserManagement = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -349,11 +328,11 @@ const UserManagement = () => {
                 }}
               >
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -362,26 +341,25 @@ const UserManagement = () => {
           rowKey={(record) => record.id}
         />
       </div>
+
+      {/* -- 修改密码 -- */}
       <OmpModal
         loading={loading}
         onFinish={onPassWordChange}
         visibleHandle={[showModal, setShowModal]}
-        title="修改密码"
-        beForeOk={() => {
-          flag.current = true;
-        }}
-        afterClose={() => {
-          flag.current = null;
-        }}
+        title={context.changePass}
+        beForeOk={() => (flag.current = true)}
+        afterClose={() => (flag.current = null)}
+        context={context}
       >
         <Form.Item
-          label="当前密码"
+          label={context.currentPassword}
           name="old_password"
           key="old_password"
           rules={[
             {
               required: true,
-              message: "请输入当前用户密码",
+              message: context.input + context.ln + context.currentPassword,
             },
             {
               validator: (rule, value, callback) => {
@@ -403,17 +381,20 @@ const UserManagement = () => {
             },
           ]}
         >
-          <Input.Password placeholder="请输入当前密码" />
+          <Input.Password
+            placeholder={context.input + context.ln + context.currentPassword}
+          />
         </Form.Item>
+
         <Form.Item
-          label="新密码"
+          label={context.newPassword}
           name="new_password1"
           key="new_password1"
           useforminstanceinvalidator="true"
           rules={[
             {
               required: true,
-              message: "请输入新密码",
+              message: context.input + context.ln + context.newPassword,
             },
             {
               validator: (rule, value, callback, passwordModalForm) => {
@@ -438,17 +419,20 @@ const UserManagement = () => {
             },
           ]}
         >
-          <Input.Password placeholder="请设置新密码" />
+          <Input.Password
+            placeholder={context.input + context.ln + context.newPassword}
+          />
         </Form.Item>
+
         <Form.Item
-          label="确认密码"
+          label={context.confirmPassword}
           name="new_password2"
           key="new_password2"
           useforminstanceinvalidator="true"
           rules={[
             {
               required: true,
-              message: "请再次输入新密码",
+              message: context.input + context.ln + context.confirmPassword,
             },
             {
               validator: (rule, value, callback, passwordModalForm) => {
@@ -478,7 +462,9 @@ const UserManagement = () => {
             },
           ]}
         >
-          <Input.Password placeholder="请再次输入新密码" />
+          <Input.Password
+            placeholder={context.input + context.ln + context.confirmPassword}
+          />
         </Form.Item>
       </OmpModal>
     </OmpContentWrapper>

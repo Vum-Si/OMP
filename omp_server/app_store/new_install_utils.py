@@ -8,9 +8,11 @@
 
 import os
 import json
+import uuid
 import pickle
 import logging
 import traceback
+import re
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 
@@ -24,7 +26,8 @@ from omp_server.settings import PROJECT_DIR
 from db_models.models import (
     ProductHub, ApplicationHub, ClusterInfo, Service, Host,
     Env, ServiceConnectInfo, Product, MainInstallHistory,
-    DetailInstallHistory, PreInstallHistory, PostInstallHistory
+    DetailInstallHistory, PreInstallHistory, PostInstallHistory,
+    ExecutionRecord
 )
 from app_store.tasks import install_service as install_service_task
 from app_store.deploy_mode_utils import SERVICE_MAP
@@ -37,12 +40,23 @@ from utils.parse_config import (
     OMP_REDIS_PASSWORD
 )
 from app_store.deploy_role_utils import DEPLOY_ROLE_UTILS
+from app_store.tasks import install_service
 
 logger = logging.getLogger("server")
 
 DIR_KEY = "{data_path}"
 UNIQUE_KEY_ERROR = "后台无法追踪此流程或安装流程已开始,请查看安装记录或重新进入部署流程!"
 WEB_CONTAINERS = ["tengine"]
+
+
+def get_app(name, version):
+    app_objs = ApplicationHub.objects.filter(
+        app_name=name, app_version__regex=version, is_release=True
+    ).order_by("created")
+    for i in app_objs:
+        if i.service_set.count() != 0:
+            return i
+    return app_objs.last()
 
 
 class RedisDB(object):
@@ -163,6 +177,23 @@ class BaseRedisData(object):
         :return:
         """
         key = self.unique_key + "_with_ser"
+        return self._get(key=key)
+
+    def step_set_deploy_mode_ser(self, data):
+        """
+        设置含有部署类型的服务
+        [
+            {"name": "xx", "version": "xxx", "deploy_mode": "xxx"}
+        ]
+        """
+        self.redis.set(
+            name=self.unique_key + "_deploy_mode_ser",
+            data=data
+        )
+
+    def get_deploy_mode_ser(self):
+        """ 获取部署类型服务数据 """
+        key = self.unique_key + "_deploy_mode_ser"
         return self._get(key=key)
 
     def step_1_set_unique_key(self, data):
@@ -309,14 +340,19 @@ class BaseRedisData(object):
                     "exist_instance", [])
                 continue
             # TODO 优化版本间若依赖选择
-            _data["install"][item["name"]] = {
-                # "version": item["version"],
-                "version": ApplicationHub.objects.filter(
-                    app_name=item["name"],
-                    app_version__startswith=item["version"]
-                ).last().app_version,
-                "product": None
-            }
+            try:
+                _data["install"][item["name"]] = {
+                    # "version": item["version"],
+                    "version": get_app(item["name"], item["version"]).app_version,
+                    # ApplicationHub.objects.filter(
+                    # app_name=item["name"],
+                    # app_version__regex=item["version"]
+                    # ).last().app_version,
+                    "product": None
+                }
+            except AttributeError:
+                raise GeneralError(
+                    f"缺少依赖 [{item['name']} - {item['version']}]")
         self.redis.set(
             name=self.unique_key + "_step_2_origin_data",
             data=_data
@@ -455,6 +491,31 @@ class BaseRedisData(object):
             data=data
         )
 
+    def step_4_set_service_cluster_args(self, data):
+        """
+        [
+        {
+        "app_name":obj.app_name,
+        "install_args": obj.install_args
+        },
+        ]
+        """
+        self.redis.set(
+            name=self.unique_key + "_step_4_set_service_cluster_args",
+            data=data
+        )
+
+    def get_4_set_service_cluster_args(self):
+        """
+        获取要部署的服务的数量以及服务绑定关系
+        :return:
+        """
+        key = self.unique_key + "_step_4_set_service_cluster_args"
+        _flag, _data = self.redis.get(name=key)
+        if not _flag:
+            _data = []
+        return _data
+
     def get_step_4_service_distribution(self):
         """
         获取要部署的服务的数量以及服务绑定关系
@@ -581,7 +642,7 @@ class ProductServiceParse(object):
 
     def __init__(
             self, pro_name, pro_version,
-            high_availability=False, unique_key=None
+            high_availability=False, unique_key=None, deploy_mode=None
     ):
         """
         产品、应用解析服务信息
@@ -593,6 +654,8 @@ class ProductServiceParse(object):
         self.pro_version = pro_version
         self.high_availability = high_availability
         self.unique_key = unique_key
+        # 产品的部署类型
+        self.deploy_mode = deploy_mode
 
     def get_default_and_step(self, app_obj):
         """
@@ -624,27 +687,32 @@ class ProductServiceParse(object):
             app_name=_name,
             app_version=_version
         ).last()
+        if not app_obj:
+            raise GeneralError(
+                f"产品包[{self.pro_name}]不完整，请检查服务[{_name}-{_version}]是否缺失")
         # 解决服务强绑定依赖问题
         if "affinity" in app_obj.extend_fields and \
                 app_obj.extend_fields["affinity"] in WEB_CONTAINERS:
             return {
                 "name": _name,
                 "version": _version,
+                "self_deploy_mode": self.deploy_mode,
                 "with": app_obj.extend_fields["affinity"],
                 "with_flag": True,
                 "deploy_mode": {
                     "default": 1,
                     "step": 0
-                }
+                },
             }
         _default_dic = {
             "name": _name,
             "version": _version,
+            "self_deploy_mode": self.deploy_mode,
             "deploy_mode": {
                 "default": 1,
                 "step": 0
             },
-            "error_msg": ""
+            "error_msg": "",
         }
         # 如果产品下的服务不存在应该返回错误信息
         if not app_obj:
@@ -668,6 +736,7 @@ class ProductServiceParse(object):
         return {
             "name": _name,
             "version": _version,
+            "self_deploy_mode": self.deploy_mode,
             "deploy_mode": {
                 "default": default,
                 "step": step
@@ -707,7 +776,7 @@ class ProductServiceParse(object):
 
 
 class ComponentServiceParse(object):
-    """组件服务安祖昂解析"""
+    """ 组件服务安装解析 """
 
     def __init__(
             self, ser_name, ser_version,
@@ -799,10 +868,11 @@ def make_lst_unique(lst, key_1, key_2):
         if _unique in unique_dic:
             continue
         # 服务版本模糊判断逻辑 jon.liu 20211225
-        _app = ApplicationHub.objects.filter(
-            app_name=el.get(key_1),
-            app_version__startswith=el.get(key_2)
-        ).last()
+        _app = get_app(el.get(key_1), el.get(key_2))
+        # ApplicationHub.objects.filter(
+        #    app_name=el.get(key_1),
+        #    app_version__startswith=el.get(key_2)
+        # ).last()
         if not _app or el.get(key_1) + "_" + el.get(key_2) not in unique_dic:
             unique_dic[el.get(key_1) + "_" + el.get(key_2)] = True
             ret_lst.append(el)
@@ -822,7 +892,8 @@ class SerDependenceParseUtils(object):
     依赖解决工具类
     """
 
-    def __init__(self, parse_name, parse_version, high_availability=False):
+    def __init__(self, parse_name, parse_version,
+                 high_availability=False, deploy_mode=None):
         """
         初始化对象, 服务级别的解析，包含自研服务和基础组件服务
         :param parse_name: 要解析的名称，服务
@@ -831,12 +902,16 @@ class SerDependenceParseUtils(object):
         :type parse_version: str
         :param high_availability: 是否使用高可用模式
         :type high_availability: bool
+        :param deploy_mode: 服务的部署类型
+        :type deploy_mode: str
         """
         self.high_availability = high_availability
         self.parse_name = parse_name
         self.parse_version = parse_version
         self.unique_key = self.parse_name + self.parse_version
         self.host_num = Host.objects.all().count()
+        # 服务的部署类型
+        self.deploy_mode = deploy_mode
 
     def get_newest_ser(self):
         """
@@ -924,12 +999,23 @@ class SerDependenceParseUtils(object):
         unique_key_lst = list()
         for inner in dep:
             _name, _version = inner.get("name"), inner.get("version")
+            # 弱版本依赖标识
+            is_weaken_version = inner.get("weaken_version", False)
             # 服务版本弱依赖逻辑 jon.liu 20211225
-            _app = ApplicationHub.objects.filter(
-                app_name=_name,
-                app_version__startswith=_version,
-                is_release=True
-            ).order_by("created").last()
+            _app = get_app(_name, _version)
+            # ApplicationHub.objects.filter(
+            #    app_name=_name,
+            #    app_version__startswith=_version,
+            #    is_release=True
+            # ).order_by("created").last()
+            # 当服务为弱版本依赖时:
+            if is_weaken_version:
+                # 存在实例的 app
+                exists_instance_app_queryset = ApplicationHub.objects.filter(
+                    app_name=_name, service__isnull=False, is_release=True
+                ).order_by("created")
+                if exists_instance_app_queryset.exists():
+                    _app = exists_instance_app_queryset.last()
             if _app:
                 inner["version"] = _app.app_version
                 _version = _app.app_version
@@ -970,6 +1056,9 @@ class SerDependenceParseUtils(object):
             if not _app.app_dependence:
                 continue
             _app_dependence = json.loads(_app.app_dependence)
+            # 依赖嵌套情况下的服务，默认部署模式为 None，采用指定的 default
+            _app_dependence = DeployTypeUtil(
+                _app, _app_dependence).get_dependence_by_deploy(None)
             self.get_dependence(
                 lst, dep=_app_dependence
             )
@@ -982,7 +1071,9 @@ class SerDependenceParseUtils(object):
         _ser = self.get_newest_ser()
         if not _ser or not _ser.app_dependence:
             return list()
-        app_dep_lst = json.loads(_ser.app_dependence)
+        _dep_ls = json.loads(_ser.app_dependence)
+        app_dep_lst = DeployTypeUtil(
+            _ser, _dep_ls).get_dependence_by_deploy(self.deploy_mode)
         ret_lst = list()
         self.get_dependence(lst=ret_lst, dep=app_dep_lst)
         ret_lst = make_lst_unique(ret_lst, "name", "version")
@@ -1093,13 +1184,13 @@ class SerVipUtils(object):
         keep_alive_lst = list()
         for item in self.install_services:
             if item.get("name") in self.service_vip_map:
-                _ser = self.get_keep_alive(
-                    ip=item.get("ip"),
-                    data_folder=item.get("data_folder"),
-                    name=item.get("name")
-                )
-                _ser["vip"] = self.service_vip_map[item["name"]]
-                keep_alive_lst.append(_ser)
+                # _ser = self.get_keep_alive(
+                #    ip=item.get("ip"),
+                #    data_folder=item.get("data_folder"),
+                #    name=item.get("name")
+                # )
+                item["vip"] = self.service_vip_map[item["name"]]
+                # keep_alive_lst.append(_ser)
         return keep_alive_lst
 
 
@@ -1255,7 +1346,7 @@ class ServiceArgsPortUtils(object):
                 el["dir_key"] = DIR_KEY
         return app_install_args
 
-    def get_app_install_args(self, obj):  # NOQA
+    def get_app_install_args(self, obj, cluster=False):  # NOQA
         """
         解析安装参数信息
         :param obj: 服务对象
@@ -1268,6 +1359,14 @@ class ServiceArgsPortUtils(object):
         if not obj.app_install_args:
             return list()
         origin_args = json.loads(obj.app_install_args)
+        # cluster属性区分
+        if cluster:
+            o_args = []
+            for args in origin_args:
+                attr_ls = args.get("attr", "").split(",")
+                if "cluster" in attr_ls:
+                    o_args.append(args)
+            origin_args = o_args
         final_args = self.make_product_config_overwrite(
             app_name=obj.app_name,
             rep_type="app_install_args",
@@ -1475,18 +1574,19 @@ class BaseEnvServiceUtils(object):
         """
         for el in dep_lst:
             # 服务版本弱依赖逻辑 jon.liu 20211225
-            _dep_obj = ApplicationHub.objects.filter(
-                app_name=el["name"],
-                app_version__startswith=el["version"]
-            ).last()
-            if not _dep_obj.is_base_env:
+            _dep_obj = get_app(el["name"], el["version"])
+            # ApplicationHub.objects.filter(
+            #    app_name=el["name"],
+            #    app_version__startswith=el["version"]
+            # ).last()
+            if not _dep_obj or not _dep_obj.is_base_env:
                 continue
             # 当被依赖的基础服务已经被安装时，使用如下方法进行过滤处理
-            # 服务版本弱依赖逻辑 jon.liu 20211225
+            # 服务版本弱依赖逻辑 jon.liu 20211225 考虑hadoop等
             if Service.split_objects.filter(
                     ip=item["ip"],
                     service__app_name=el["name"],
-                    service__app_version__startswith=el["version"]
+                    service__app_version__regex=f'^{el["version"]}'
             ).count() > 0:
                 continue
             if item["ip"] in base_env_dic and \
@@ -1684,8 +1784,10 @@ class DataJson(object):
         deploy_detail = DetailInstallHistory.objects.get(service=obj)
         install_args = \
             deploy_detail.install_detail_args.get("install_args")
-        deploy_mode = \
-            deploy_detail.install_detail_args.get("deploy_mode")
+        deploy_mode = obj.deploy_mode
+        if deploy_mode is None:
+            deploy_mode = \
+                deploy_detail.install_detail_args.get("deploy_mode", None)
         return {
             "install_args": install_args,
             "deploy_mode": deploy_mode
@@ -1764,8 +1866,15 @@ class CreateInstallPlan(object):
 
         :param all_install_service_lst:
         """
-        logger.info(f"CreateInstallPlan.__init__: {all_install_service_lst}")
-        self.install_services = all_install_service_lst
+        service_instance_set = set()
+        _service_ls = []
+        for service in all_install_service_lst:
+            service_name = service.get("instance_name", "unKnow")
+            if service_name not in service_instance_set:
+                service_instance_set.add(service_name)
+                _service_ls.append(service)
+        logger.info(f"CreateInstallPlan.__init__: {_service_ls}")
+        self.install_services = _service_ls
         self.unique_key = unique_key
 
     def get_app_obj_for_service(self, dic):  # NOQA
@@ -1775,9 +1884,10 @@ class CreateInstallPlan(object):
         :type dic: dict
         :return:
         """
-        return ApplicationHub.objects.filter(
-            app_name=dic["name"], app_version__startswith=dic["version"]
-        ).last()
+        return get_app(dic["name"], dic["version"])
+        # ApplicationHub.objects.filter(
+        #    app_name=dic["name"], app_version__startswith=dic["version"]
+        # ).last()
 
     def get_controllers_for_service(self, dic):  # NOQA
         """
@@ -1893,6 +2003,22 @@ class CreateInstallPlan(object):
             "instance_name": ser_obj.service_instance_name
         }
 
+    def _get_service_deploy_mode_dict(self):
+        """
+        获取服务的部署类型字段
+        """
+        # 获取服务的部署类型
+        deploy_mode_lst = BaseRedisData(
+            unique_key=self.unique_key
+        ).get_deploy_mode_ser()
+
+        service_type_dict = {}
+        for service in deploy_mode_lst:
+            service_type_dict[
+                service.get("name")
+            ] = service.get("deploy_mode", None)
+        return service_type_dict
+
     def _get_install_dep(self, inner):
         """
         获取将要安装服务中的被依赖项
@@ -1903,7 +2029,8 @@ class CreateInstallPlan(object):
         _ser_version = inner["version"]
         for el in self.install_services:
             if el.get("name") == _ser_name and \
-                    el.get("version").startswith(_ser_version):
+                    re.search(f"^{_ser_version}", el.get("version")):
+                # el.get("version").startswith(_ser_version):
                 cluster_name = el.get("cluster_name")
                 instance_name = el.get("instance_name")
                 if cluster_name:
@@ -1918,10 +2045,11 @@ class CreateInstallPlan(object):
         raise ValidationError(
             f"无法找到被依赖的服务[{_ser_name}({_ser_version})]")
 
-    def get_dependence(self, dic):
+    def get_dependence(self, dic, deploy_dict):
         """
         获取服务依赖的实例信息
         :param dic:
+        :param deploy_dict:
         :return:
         """
         _obj = self.get_app_obj_for_service(dic)
@@ -1930,15 +2058,21 @@ class CreateInstallPlan(object):
             return []
         lst = json.loads(_obj.app_dependence)
 
+        # 部署类型的服务过滤依赖
+        _deploy_mode = deploy_dict.get(dic["name"], None)
+        lst = DeployTypeUtil(
+            _obj, lst).get_dependence_by_deploy(_deploy_mode)
+
         exist_data = BaseRedisData(
             unique_key=self.unique_key
         ).get_step_2_origin_data().get("use_exist")
         for item in lst:
             # 已存在的base_env服务依赖
-            _dep_obj = ApplicationHub.objects.filter(
-                app_name=item.get("name"),
-                app_version__startswith=item.get("version")
-            ).last()
+            _dep_obj = get_app(item.get("name"), item.get("version"))
+            # ApplicationHub.objects.filter(
+            #    app_name=item.get("name"),
+            #    app_version__startswith=item.get("version")
+            # ).last()
             if _dep_obj.is_base_env:
                 _ser_obj = Service.split_objects.filter(
                     service=_dep_obj, ip=dic.get("ip")
@@ -1957,11 +2091,26 @@ class CreateInstallPlan(object):
                 _dep_lst.append(self._get_install_dep(item))
         return _dep_lst
 
-    def create_service(self, dic):
+    def get_service_deploy_mode(self, dic, deploy_dict):
+        """ 获取服务的部署模式 """
+        deploy_mode = deploy_dict.get(dic["name"], None)
+        app_obj = self.get_app_obj_for_service(dic)
+        if app_obj.deploy_mode is not None:
+            default_deploy_mode = app_obj.deploy_mode.get(
+                "default_deploy_mode", None)
+            # 当 deploy_mode 为 None 时
+            if deploy_mode is None and \
+                    default_deploy_mode is not None:
+                deploy_mode = default_deploy_mode
+        return deploy_mode
+
+    def create_service(self, dic, deploy_dict):
         """
         创建服务实例
         :param dic: 服务数据
         :type dic: dict
+        :param deploy_dict: 部署类型字典
+        :type deploy_dict: dict
         :return:
         """
         # 创建服务实例对象，默认从安装来的服务的状态为 安装中
@@ -1976,13 +2125,15 @@ class CreateInstallPlan(object):
             env=self.get_env_for_service(),
             service_status=6,
             service_connect_info=self.create_connect_info(dic),
-            service_dependence=json.dumps(self.get_dependence(dic)),
-            vip=dic.get("vip")
+            service_dependence=json.dumps(
+                self.get_dependence(dic, deploy_dict)),
+            vip=dic.get("vip"),
+            deploy_mode=self.get_service_deploy_mode(dic, deploy_dict)
         )
         _ser_obj.save()
         return _ser_obj
 
-    def create_product_instance(self, dic):  # NOQA
+    def create_product_instance(self, dic, deploy_dict):  # NOQA
         """
         创建产品实例
         :param dic: 服务数据
@@ -2000,7 +2151,8 @@ class CreateInstallPlan(object):
                 product_instance_name = item.get("cluster_name")
                 Product.objects.get_or_create(
                     product_instance_name=product_instance_name,
-                    product=_obj.product
+                    product=_obj.product,
+                    deploy_mode=self.get_service_deploy_mode(dic, deploy_dict)
                 )
 
     def check_if_has_post_action(self, ser):  # NOQA
@@ -2024,6 +2176,7 @@ class CreateInstallPlan(object):
         _data = list(DetailInstallHistory.objects.filter(
             main_install_history=main_obj
         ).values_list("service__ip", flat=True))
+        # _data = list(Host.objects.all().values_list("ip", flat=True))
 
         for item in set(_data):
             PreInstallHistory(
@@ -2073,12 +2226,13 @@ class CreateInstallPlan(object):
                     install_args=self.install_services
                 )
                 main_obj.save()
+                deploy_dict = self._get_service_deploy_mode_dict()
                 # step2: 创建安装细节表
                 for item in self.install_services:
                     # 创建服务实例对象
-                    ser_obj = self.create_service(item)
+                    ser_obj = self.create_service(item, deploy_dict)
                     # 创建产品实例对象
-                    self.create_product_instance(item)
+                    self.create_product_instance(item, deploy_dict)
                     post_action_flag = 0 if self.check_if_has_post_action(
                         ser_obj) else 4
                     DetailInstallHistory(
@@ -2298,3 +2452,158 @@ class ValidateInstallServicePortArgs(object):
         thread_p.shutdown(wait=True)
         # TODO 整体服务间的关键校验
         return result_list
+
+
+class DeployTypeUtil:
+    """ 部署类型工具类 """
+
+    def __init__(self, app_obj, dependence_ls):
+        """
+        依赖信息列表，入参格式
+        [
+            {"name": "hadoop", "version": "2", "deploy_mode": "per-job"},
+            {"name": "jdk", "version": "1"},
+            ...
+        ]
+        """
+        self.app_obj = app_obj
+        self.dependence_ls = dependence_ls
+
+    def get_dependence_by_deploy(self, deploy_mode):
+        """
+        服务的部署类型 deploy_mode
+        """
+        # 没有依赖信息，直接返回所有服务
+        if not self.app_obj.deploy_mode:
+            return self.dependence_ls
+        default_deploy_mode = self.app_obj.deploy_mode.get(
+            "default_deploy_mode", None)
+        # 当 deploy_mode 为 None 时
+        if deploy_mode is None and \
+                default_deploy_mode is not None:
+            deploy_mode = default_deploy_mode
+        res_ls = []
+        for app in self.dependence_ls:
+            if not app.get("deploy_mode", None):
+                res_ls.append(app)
+            else:
+                type_ls = app.get("deploy_mode").split(",")
+                if deploy_mode is not None and \
+                        deploy_mode in type_ls:
+                    res_ls.append(app)
+        return res_ls
+
+
+def change_conf(service_ids):
+    """
+    配置同步更新操作
+    :return:
+    """
+    service_objs = Service.objects.filter(id__in=service_ids)
+
+    with transaction.atomic():
+        try:
+            # step0: 生成
+            # step1: 生成操作唯一uuid，创建主安装记录
+            operation_uuid = str(uuid.uuid4())
+            main_obj = MainInstallHistory(
+                operation_uuid=operation_uuid,
+                install_status=0,
+                install_args=[]
+            )
+            main_obj.save()
+            # step2: 创建安装细节表
+            install_args = []
+            for ser_obj in service_objs:
+                _dic = {
+                    "main_install_history": main_obj,
+                    "install_step_status": 0,
+                    "install_flag": 0,
+                    # "start_flag": 0
+                }
+                detail_obj = ser_obj.detailinstallhistory_set
+                install_args.append(detail_obj.first().install_detail_args)
+                detail_obj.update(**_dic)
+            main_obj.install_args = install_args
+            main_obj.save()
+            # clear main
+            for obj in MainInstallHistory.objects.all():
+                if obj.detailinstallhistory_set.count() == 0:
+                    ExecutionRecord.objects.filter(
+                        module="MainInstallHistory", module_id=obj.operation_uuid
+                    ).delete()
+                    obj.delete()
+
+            # pre
+            _data = list(DetailInstallHistory.objects.filter(
+                main_install_history=main_obj
+            ).values_list("service__ip", flat=True))
+
+            for item in set(_data):
+                PreInstallHistory(
+                    main_install_history=main_obj,
+                    ip=item
+                ).save()
+
+            _json_obj = DataJson(operation_uuid=operation_uuid)
+            _json_obj.run()
+            # 调用安装异步任务，并回写异步任务到
+            task_id = install_service.delay(main_obj.id, action=("install",))
+            MainInstallHistory.objects.filter(id=main_obj.id).update(
+                task_id=task_id
+            )
+        except Exception as e:
+            return False, f"生成部署计划失败: {str(e)}"
+    return True, operation_uuid
+
+
+class CheckAttr:
+    def __init__(self, install_args, num=0):
+        self.install_args = install_args
+        self.default_value = self.install_args.get("default")
+        self.num = num
+
+    def is_number(self):
+        if isinstance(self.default_value, int):
+            return True, ""
+        if isinstance(self.default_value, str) and self.default_value.isdigit():
+            return True, ""
+        return False, f"该值{self.default_value}不是整数类型"
+
+    def odd_number(self):
+        res, msg = self.is_number()
+        if not res:
+            return res, msg
+        remainder = int(self.default_value) % 2
+        if (remainder != 1 or int(self.default_value) < 0) and int(self.default_value) != 0:
+            return False, f"该值{self.default_value}不是含0正奇数类型"
+        return True, ""
+
+    def even_number(self):
+        res, msg = self.is_number()
+        if not res:
+            return res, msg
+        remainder = int(self.default_value) % 2
+        if remainder != 0 or int(self.default_value) < 0:
+            return False, f"该值{self.default_value}不是含0正偶数类型"
+        return True, ""
+
+    def less_than_ser_count(self):
+        # 小于服务数量，且奇数，且0合法的集合, 专有代码。
+        if self.num == 0:
+            return True, ""
+        res, msg = self.odd_number()
+        if not res:
+            return res, msg
+        if int(self.default_value) > self.num:
+            return False, f"当前数{self.default_value}大于最大值{self.num}"
+        return True, ""
+
+    def run(self):
+        attr = self.install_args.get("attr", "ignore")
+        for attr in attr.split(","):
+            if hasattr(self, attr):
+                res, msg = getattr(self, attr)()
+                if not res:
+                    return False, msg
+        return True, ""

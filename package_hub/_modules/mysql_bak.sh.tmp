@@ -100,8 +100,11 @@ function backup_mysql(){
     else
         $MySQLDump --single-transaction -P$mysqlPort -u$mysqlUser -p$mysqlPasswd -h'127.0.0.1' -a --default-character-set=utf8 --skip-comments $dataName 2>/dev/null >$backupDir/$dataName-$nowTime.sql
     fi
-  touch_zip $? $backupDir
-done
+    if [ $? -ne 0 ]; then
+        touch_zip 1 "MySQLDump $dataName Error"
+    fi
+  done
+  touch_zip 0 $backupDir
 }
 
 check_mysql

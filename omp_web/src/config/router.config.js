@@ -3,7 +3,6 @@ import AppStoreDetail from "@/pages/AppStore/config/detail";
 //import VersionManagement from "@/pages/ProductsManagement/VersionManagement";
 import MachineManagement from "@/pages/MachineManagement";
 import UserManagement from "@/pages/UserManagement";
-import MonitoringSettings from "@/pages/MonitoringSettings";
 import SystemManagement from "@/pages/SystemManagement";
 import AlarmLog from "@/pages/AlarmLog";
 import ExceptionList from "@/pages/ExceptionList";
@@ -11,11 +10,8 @@ import PatrolInspectionRecord from "@/pages/PatrolInspectionRecord";
 import PatrolStrategy from "@/pages/PatrolStrategy";
 import PatrolInspectionDetail from "@/pages/PatrolInspectionRecord/config/detail";
 import ServiceManagement from "@/pages/ServiceManagement";
-import ComponentInstallation from "@/pages/AppStore/config/ComponentInstallation";
-import ApplicationInstallation from "@/pages/AppStore/config/ApplicationInstallation";
+import ServiceConfig from "@/pages/ServiceConfig";
 import Installation from "@/pages/AppStore/config/Installation";
-import EmailSettings from "src/pages/EmailSettings";
-import RuleCenter from "src/pages/RuleCenter";
 import InstallationRecord from "@/pages/InstallationRecord";
 import Upgrade from "@/pages/AppStore/config/Upgrade";
 import Rollback from "@/pages/AppStore/config/Rollback";
@@ -34,11 +30,14 @@ import ToolExecutionResults from "@/pages/ToolExecutionResults";
 import RuleIndicator from "@/pages/RuleIndicator";
 import RuleExtend from "@/pages/RuleExtend";
 import GetService from "@/pages/AppStore/config/GetService";
-
+import LogManagement from "@/pages/LogManagement";
+import LogClear from "@/pages/LogClear";
+import CreateDeployment from "@/pages/DeploymentPlan/CreateDeployment";
+import AlarmPush from "@/pages/AlarmPush";
+import ContainerService from "@/pages/ContainerService";
 import {
   DesktopOutlined,
-  ClusterOutlined,
-  ProfileOutlined,
+  BookOutlined,
   SettingOutlined,
   LineChartOutlined,
   AppstoreOutlined,
@@ -50,273 +49,289 @@ import {
   ToolOutlined,
 } from "@ant-design/icons";
 
-export default [
-  {
-    menuTitle: "资源管理",
-    menuIcon: <DesktopOutlined />,
-    menuKey: "/resource-management",
-    children: [
-      {
-        title: "主机管理",
-        path: "/resource-management/machine-management",
-        component: MachineManagement,
-      },
-    ],
-  },
-  {
-    menuTitle: "应用管理",
-    menuIcon: <AppstoreOutlined />,
-    menuKey: "/application_management",
-    children: [
-      {
-        title: "服务管理",
-        path: "/application_management/service_management",
-        component: ServiceManagement,
-      },
-      {
-        title: "应用商店",
-        path: "/application_management/app_store",
-        component: AppStore,
-      },
-      {
-        title: "组件安装",
-        path: "/application_management/app_store/component_installation/:name",
-        notInMenu: true,
-        component: ComponentInstallation,
-      },
-      {
-        title: "应用安装",
-        path: "/application_management/app_store/application_installation/:name",
-        notInMenu: true,
-        component: ApplicationInstallation,
-      },
-      {
-        title: "应用商店服务详情",
-        path: "/application_management/app_store/app-service-detail/:name/:verson",
-        notInMenu: true,
-        component: AppStoreDetail,
-      },
-      {
-        title: "应用商店组件详情",
-        path: "/application_management/app_store/app-component-detail/:name/:verson",
-        notInMenu: true,
-        component: AppStoreDetail,
-      },
-      {
-        title: "批量安装",
-        path: "/application_management/app_store/installation",
-        notInMenu: true,
-        component: Installation,
-      },
-      // {
-      //   title: "服务安装",
-      //   path: "/application_management/app_store/installation-service",
-      //   notInMenu: true,
-      //   component: Installation,
-      // },
-      {
-        title: "执行记录",
-        path: "/application_management/install-record",
-        component: InstallationRecord,
-      },
-      {
-        title: "服务升级",
-        path: "/application_management/app_store/service_upgrade",
-        notInMenu: true,
-        component: Upgrade,
-      },
-      {
-        title: "服务回滚",
-        path: "/application_management/app_store/service_rollback",
-        notInMenu: true,
-        component: Rollback,
-      },
-      {
-        title: "部署模板",
-        path: "/application_management/deployment-plan",
-        component: DeploymentPlan,
-      },
-      {
-        title: "服务纳管",
-        path: "/application_management/get-service",
-        notInMenu: true,
-        component: GetService,
-      },
-    ],
-  },
-  {
-    menuTitle: "应用监控",
-    menuIcon: <LineChartOutlined />,
-    menuKey: "/application-monitoring",
-    children: [
-      {
-        title: "异常清单",
-        path: "/application-monitoring/exception-list",
-        component: ExceptionList,
-      },
-      {
-        title: "告警记录",
-        path: "/application-monitoring/alarm-log",
-        component: AlarmLog,
-      },
-      {
-        title: "监控设置",
-        path: "/application-monitoring/monitoring-settings",
-        component: MonitoringSettings,
-      },
-    ],
-  },
-  {
-    menuTitle: "故障自愈",
-    menuIcon: <InteractionOutlined />,
-    menuKey: "/fault-selfHealing",
-    children: [
-      {
-        title: "自愈策略",
-        path: "/fault-selfHealing/selfHealing-strategy",
-        component: SelfHealingStrategy,
-      },
-      {
-        title: "自愈记录",
-        path: "/fault-selfHealing/selfHealing-record",
-        component: SelfHealingRecord,
-      },
-    ],
-  },
-  {
-    menuTitle: "状态巡检",
-    menuIcon: <EyeOutlined />,
-    menuKey: "/status-patrol",
-    children: [
-      {
-        title: "巡检记录",
-        path: "/status-patrol/patrol-inspection-record",
-        component: PatrolInspectionRecord,
-      },
-      {
-        title: "巡检记录详情",
-        path: "/status-patrol/patrol-inspection-record/status-patrol-detail/:id",
-        notInMenu: true,
-        component: PatrolInspectionDetail,
-      },
-      {
-        title: "巡检策略",
-        path: "/status-patrol/patrol-strategy",
-        component: PatrolStrategy,
-      },
-    ],
-  },
-  {
-    menuTitle: "指标中心",
-    menuIcon: <UnorderedListOutlined />,
-    menuKey: "/rule-center",
-    children: [
-      // {
-      //   title: "默认指标",
-      //   path: "/rule-center/default-rule",
-      //   component: RuleCenter,
-      // },
-      {
-        title: "指标规则",
-        path: "/rule-center/indicator-rule",
-        component: RuleIndicator,
-      },
-      {
-        title: "扩展指标",
-        path: "/rule-center/extend-rule",
-        component: RuleExtend,
-      },
-    ],
-  },
-  {
-    menuTitle: "数据备份",
-    menuIcon: <SaveOutlined />,
-    menuKey: "/data-backup",
-    children: [
-      {
-        title: "备份策略",
-        path: "/data-backup/backup-strategy",
-        component: BackupStrategy,
-      },
-      {
-        title: "备份记录",
-        path: "/data-backup/backup-record",
-        component: BackupRecords,
-      },
-    ],
-  },
-  {
-    menuTitle: "实用工具",
-    menuIcon: <ToolOutlined />,
-    menuKey: "/utilitie",
-    children: [
-      {
-        title: "工具管理",
-        path: "/utilitie/tool-management",
-        component: ToolManagement,
-      },
-      {
-        title: "工具详情",
-        path: "/utilitie/tool-management/tool-management-detail/:id",
-        notInMenu: true,
-        component: ToolDetails,
-      },
-      {
-        title: "工具执行",
-        path: "/utilitie/tool-management/tool-execution/:id",
-        notInMenu: true,
-        component: ToolExecution,
-      },
-      {
-        title: "执行结果",
-        path: "/utilitie/tool-management/tool-execution-results/:id",
-        notInMenu: true,
-        component: ToolExecutionResults,
-      },
-      {
-        title: "任务记录",
-        path: "/utilitie/task-record",
-        component: TaskRecord,
-      },
-    ],
-  },
-  {
-    menuTitle: "操作记录",
-    menuIcon: <SolutionOutlined />,
-    menuKey: "/operation-record",
-    children: [
-      {
-        title: "登录日志",
-        path: "/operation-record/login-log",
-        component: LoginLog,
-      },
-      {
-        title: "系统记录",
-        path: "/operation-record/system-log",
-        component: SystemLog,
-      },
-    ],
-  },
-  {
-    menuTitle: "系统设置",
-    menuIcon: <SettingOutlined />,
-    menuKey: "/system-settings",
-    children: [
-      {
-        title: "用户管理",
-        path: "/system-settings/user-management",
-        component: UserManagement,
-      },
-      {
-        title: "系统管理",
-        path: "/system-settings/system-management",
-        component: SystemManagement,
-      },
-      {
-        title: "邮件管理",
-        path: "/system-settings/email-settings",
-        component: EmailSettings,
-      },
-    ],
-  },
-];
+const getRouterConfig = (currentLocale) => {
+  return [
+    {
+      menuTitle: currentLocale.menu.left.resource.name,
+      menuIcon: <DesktopOutlined />,
+      menuKey: "/resource-management",
+      children: [
+        {
+          title: currentLocale.menu.left.resource.chlidren.machine,
+          path: "/resource-management/machine-management",
+          component: MachineManagement,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.application.name,
+      menuIcon: <AppstoreOutlined />,
+      menuKey: "/application_management",
+      children: [
+        {
+          title: currentLocale.menu.left.application.chlidren.service,
+          path: "/application_management/service_management",
+          component: ServiceManagement,
+        },
+        {
+          title: currentLocale.menu.left.application.chlidren.serviceConfig,
+          path: "/application_management/service_config",
+          component: ServiceConfig,
+        },
+        {
+          title: currentLocale.menu.left.application.chlidren.appStore,
+          path: "/application_management/app_store",
+          component: AppStore,
+        },
+        // {
+        //   title: "服务安装",
+        //   path: "/application_management/app_store/installation-service",
+        //   notInMenu: true,
+        //   component: Installation,
+        // },
+        {
+          title: currentLocale.menu.left.application.chlidren.record,
+          path: "/application_management/install-record",
+          component: InstallationRecord,
+        },
+        {
+          title: currentLocale.menu.left.application.chlidren.deployment,
+          path: "/application_management/deployment-plan",
+          component: DeploymentPlan,
+        },
+        {
+          title: "应用商店服务详情",
+          path: "/application_management/app_store/app-service-detail/:name/:verson",
+          notInMenu: true,
+          component: AppStoreDetail,
+        },
+        {
+          title: "应用商店组件详情",
+          path: "/application_management/app_store/app-component-detail/:name/:verson",
+          notInMenu: true,
+          component: AppStoreDetail,
+        },
+        {
+          title: "批量安装",
+          path: "/application_management/app_store/installation",
+          notInMenu: true,
+          component: Installation,
+        },
+        {
+          title: "服务升级",
+          path: "/application_management/app_store/service_upgrade",
+          notInMenu: true,
+          component: Upgrade,
+        },
+        {
+          title: "服务回滚",
+          path: "/application_management/app_store/service_rollback",
+          notInMenu: true,
+          component: Rollback,
+        },
+        {
+          title: "服务纳管",
+          path: "/application_management/get-service",
+          notInMenu: true,
+          component: GetService,
+        },
+        {
+          title: "生成模板",
+          path: "/application_management/create-deployment",
+          notInMenu: true,
+          component: CreateDeployment,
+        },
+        {
+          title: "容器服务",
+          path: "/container-service",
+          notInMenu: true,
+          component: ContainerService,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.monitor.name,
+      menuIcon: <LineChartOutlined />,
+      menuKey: "/application-monitoring",
+      children: [
+        {
+          title: currentLocale.menu.left.monitor.chlidren.exception,
+          path: "/application-monitoring/exception-list",
+          component: ExceptionList,
+        },
+        {
+          title: currentLocale.menu.left.monitor.chlidren.alarmLog,
+          path: "/application-monitoring/alarm-log",
+          component: AlarmLog,
+        },
+        {
+          title: currentLocale.menu.left.monitor.chlidren.alarmPush,
+          path: "/application-monitoring/alarm-push",
+          component: AlarmPush,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.selfHealing.name,
+      menuIcon: <InteractionOutlined />,
+      menuKey: "/fault-selfHealing",
+      children: [
+        {
+          title: currentLocale.menu.left.selfHealing.chlidren.strategy,
+          path: "/fault-selfHealing/selfHealing-strategy",
+          component: SelfHealingStrategy,
+        },
+        {
+          title: currentLocale.menu.left.selfHealing.chlidren.record,
+          path: "/fault-selfHealing/selfHealing-record",
+          component: SelfHealingRecord,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.inspection.name,
+      menuIcon: <EyeOutlined />,
+      menuKey: "/status-patrol",
+      children: [
+        {
+          title: currentLocale.menu.left.inspection.chlidren.record,
+          path: "/status-patrol/patrol-inspection-record",
+          component: PatrolInspectionRecord,
+        },
+        {
+          title: "巡检记录详情",
+          path: "/status-patrol/patrol-inspection-record/status-patrol-detail/:id",
+          notInMenu: true,
+          component: PatrolInspectionDetail,
+        },
+        {
+          title: currentLocale.menu.left.inspection.chlidren.strategy,
+          path: "/status-patrol/patrol-strategy",
+          component: PatrolStrategy,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.monitorRules.name,
+      menuIcon: <UnorderedListOutlined />,
+      menuKey: "/rule-center",
+      children: [
+        {
+          title: currentLocale.menu.left.monitorRules.chlidren.indicator,
+          path: "/rule-center/indicator-rule",
+          component: RuleIndicator,
+        },
+        {
+          title: currentLocale.menu.left.monitorRules.chlidren.extend,
+          path: "/rule-center/extend-rule",
+          component: RuleExtend,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.backup.name,
+      menuIcon: <SaveOutlined />,
+      menuKey: "/data-backup",
+      children: [
+        {
+          title: currentLocale.menu.left.backup.chlidren.strategy,
+          path: "/data-backup/backup-strategy",
+          component: BackupStrategy,
+        },
+        {
+          title: currentLocale.menu.left.backup.chlidren.record,
+          path: "/data-backup/backup-record",
+          component: BackupRecords,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.log.name,
+      menuIcon: <BookOutlined />,
+      menuKey: "/log-management",
+      children: [
+        {
+          title: currentLocale.menu.left.log.chlidren.clear,
+          path: "/log-management/log-clear",
+          component: LogClear,
+        },
+        {
+          title: currentLocale.menu.left.log.chlidren.level,
+          path: "/log-management/log-level",
+          component: LogManagement,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.tool.name,
+      menuIcon: <ToolOutlined />,
+      menuKey: "/utilitie",
+      children: [
+        {
+          title: currentLocale.menu.left.tool.chlidren.toolsList,
+          path: "/utilitie/tool-management",
+          component: ToolManagement,
+        },
+        {
+          title: "工具详情",
+          path: "/utilitie/tool-management/tool-management-detail/:id",
+          notInMenu: true,
+          component: ToolDetails,
+        },
+        {
+          title: "工具执行",
+          path: "/utilitie/tool-management/tool-execution/:id",
+          notInMenu: true,
+          component: ToolExecution,
+        },
+        {
+          title: "执行结果",
+          path: "/utilitie/tool-management/tool-execution-results/:id",
+          notInMenu: true,
+          component: ToolExecutionResults,
+        },
+        {
+          title: currentLocale.menu.left.tool.chlidren.record,
+          path: "/utilitie/task-record",
+          component: TaskRecord,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.systemLog.name,
+      menuIcon: <SolutionOutlined />,
+      menuKey: "/operation-record",
+      children: [
+        {
+          title: currentLocale.menu.left.systemLog.chlidren.loginLog,
+          path: "/operation-record/login-log",
+          component: LoginLog,
+        },
+        {
+          title: currentLocale.menu.left.systemLog.chlidren.operationLog,
+          path: "/operation-record/system-log",
+          component: SystemLog,
+        },
+      ],
+    },
+    {
+      menuTitle: currentLocale.menu.left.settings.name,
+      menuIcon: <SettingOutlined />,
+      menuKey: "/system-settings",
+      children: [
+        {
+          title: currentLocale.menu.left.settings.chlidren.user,
+          path: "/system-settings/user-management",
+          component: UserManagement,
+        },
+        {
+          title: currentLocale.menu.left.settings.chlidren.system,
+          path: "/system-settings/system-management",
+          component: SystemManagement,
+        },
+      ],
+    },
+  ];
+};
+
+export default getRouterConfig;

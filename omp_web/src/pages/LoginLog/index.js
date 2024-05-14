@@ -5,14 +5,13 @@ import { handleResponse, _idxInit, nonEmptyProcessing } from "@/utils/utils";
 import { fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import { SearchOutlined } from "@ant-design/icons";
+import { locales } from "@/config/locales";
 
-const LoginLog = () => {
+const LoginLog = ({ locale }) => {
   const [loading, setLoading] = useState(false);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [selectValue, setSelectValue] = useState();
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -20,21 +19,20 @@ const LoginLog = () => {
     ordering: "",
     searchParams: {},
   });
+  const context = locales[locale].common;
 
   const columns = [
     {
-      title: "序号",
+      title: context.row,
       width: 40,
       key: "_idx",
       dataIndex: "_idx",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       render: nonEmptyProcessing,
       fixed: "left",
     },
     {
-      title: "用户名",
+      title: context.username,
       key: "username",
       width: 100,
       dataIndex: "username",
@@ -44,7 +42,7 @@ const LoginLog = () => {
       render: nonEmptyProcessing,
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "ip",
       dataIndex: "ip",
       width: 100,
@@ -54,53 +52,32 @@ const LoginLog = () => {
       render: nonEmptyProcessing,
     },
     {
-      title: "角色",
+      title: context.role,
       key: "role",
       dataIndex: "role",
       width: 100,
       sorter: (a, b) => a.role - b.role,
       sortDirections: ["descend", "ascend"],
       align: "center",
-      render: nonEmptyProcessing,
+      render: (text) => (text === "omp" ? context.readonly : context.superuser),
     },
-    // {
-    //   title: "用户状态",
-    //   key: "is_active",
-    //   dataIndex: "is_active",
-    //   align: "center",
-    //   width: 100,
-    //   render: (text) => {
-    //     if (text) {
-    //       return "正常";
-    //     } else {
-    //       return "停用";
-    //     }
-    //   },
-    // },
     {
-      title: "登录时间",
+      title: context.login + context.ln + context.time,
       key: "login_time",
       dataIndex: "login_time",
       align: "center",
       width: 100,
       sorter: (a, b) => a.login_time - b.login_time,
       sortDirections: ["descend", "ascend"],
-      // render: (text) => {
-      //   if (text) {
-      //     return moment(text).format("YYYY-MM-DD HH:mm:ss");
-      //   } else {
-      //     return "-";
-      //   }
-      // },
       render: nonEmptyProcessing,
     },
   ];
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.operationRecord.queryLoginLog, {
       params: {
@@ -134,7 +111,7 @@ const LoginLog = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
   useEffect(() => {
     fetchData(pagination);
@@ -142,13 +119,16 @@ const LoginLog = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部导航栏 -- */}
       <div style={{ display: "flex" }}>
         <div style={{ display: "flex", marginLeft: "auto" }}>
-          <span style={{ width: 60, display: "flex", alignItems: "center" }}>
-            用户名:
+          <span
+            style={{ marginRight: 5, display: "flex", alignItems: "center" }}
+          >
+            {context.username + " : "}
           </span>
           <Input
-            placeholder="请输入用户名"
+            placeholder={context.input + context.ln + context.username}
             style={{ width: 200 }}
             allowClear
             value={selectValue}
@@ -208,10 +188,12 @@ const LoginLog = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -245,11 +227,11 @@ const LoginLog = () => {
                 }}
               >
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),

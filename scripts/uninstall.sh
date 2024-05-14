@@ -14,6 +14,7 @@ OMP_SCRIPT="${PROJECT_FOLDER}/scripts/omp"
 # 清除omp server端保活定时任务
 function clear_omp_keep_alive() {
   crontab -l|grep -v "omp all start" 2>/dev/null | crontab -
+  crontab -l|grep -v "component/CloudPanguDB/scripts" 2>/dev/null | crontab -
 }
 
 

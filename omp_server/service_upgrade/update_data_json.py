@@ -5,6 +5,7 @@ from django.conf import settings
 
 from db_models.models import DetailInstallHistory, Service, Host, UpgradeDetail
 from utils.plugin.salt_client import SaltClient
+from app_store.new_install_utils import DeployTypeUtil
 
 
 class DataJsonUpdate(object):
@@ -18,8 +19,10 @@ class DataJsonUpdate(object):
         """
         self.json_name = f"{operation_uuid}.json"
         self.data_path = os.path.join("data_files", self.json_name)
+        self.ips = {}
 
-    def get_ser_install_args(self, obj, app_install_args=None):
+    @staticmethod
+    def get_ser_install_args(obj, app_install_args=None):
         """
         获取服务的安装参数
         :param obj: Service obj
@@ -29,12 +32,13 @@ class DataJsonUpdate(object):
         deploy_detail = DetailInstallHistory.objects.filter(
             service=obj).first()
         install_args = []
-        deploy_mode = ""
+        deploy_mode = obj.deploy_mode
         if deploy_detail:
             install_args = \
                 deploy_detail.install_detail_args.get("install_args", [])
-            deploy_mode = \
-                deploy_detail.install_detail_args.get("deploy_mode")
+            if deploy_mode is None:
+                deploy_mode = \
+                    deploy_detail.install_detail_args.get("deploy_mode", None)
         old_arg_dict = {}
         for old_arg in install_args:
             old_arg_dict[old_arg["key"]] = old_arg
@@ -76,9 +80,14 @@ class DataJsonUpdate(object):
             _ser_dic["ports"] = service.update_port(
                 json.loads(tag_app.app_port or '[]')
             )
+            # 根据当前 service 实例部署类型，决定 app 依赖
+            app_dependence = json.loads(tag_app.app_dependence or '[]')
+            dependence_list = DeployTypeUtil(
+                tag_app, app_dependence
+            ).get_dependence_by_deploy(service.deploy_mode)
             _ser_dic["dependence"] = service.update_dependence(
                 service.service_dependence,
-                json.loads(tag_app.app_dependence or '[]')
+                dependence_list
             )
             _others = self.get_ser_install_args(
                 service, json.loads(tag_app.app_install_args or '[]'))
@@ -127,7 +136,11 @@ class DataJsonUpdate(object):
         for service in services:
             tag_app = details.get(service.service_instance_name)
             _item = self.parse_single_service(service, tag_app)
-            _item["agent_dir"] = ip_agent_dir_dir.get(_item.get("ip"))
+            ip = _item.get("ip")
+            # 存在变更的ip再记录
+            if tag_app:
+                self.ips[ip] = ip_agent_dir_dir.get(ip)
+            _item["agent_dir"] = ip_agent_dir_dir.get(ip)
             json_lst.append(_item)
         return json_lst
 
@@ -142,20 +155,20 @@ class DataJsonUpdate(object):
         )
 
     def send_data_json_all(self):
-        hosts = Host.objects.all().values_list("ip", "data_folder")
+        # hosts = Host.objects.all().values_list("ip", "data_folder")
         fail_message = []
         salt_obj = SaltClient()
-        for host in hosts:
+        for ip, data_folder in self.ips.items():
             json_target_path = os.path.join(
-                host[1], "omp_packages", self.json_name)
+                data_folder, "omp_packages", self.json_name)
             state, message = salt_obj.cp_file(
-                target=host[0],
+                target=ip,
                 source_path=self.data_path,
                 target_path=json_target_path
             )
             if not state:
                 fail_message.append(
-                    f"ip:{host[1]}更新data.json失败，错误：{message}")
+                    f"ip:{ip}更新data.json失败，错误：{message}")
         return fail_message
 
     def create_json_file(self, details=None):

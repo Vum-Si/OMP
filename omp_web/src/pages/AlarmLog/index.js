@@ -14,35 +14,25 @@ import getColumnsConfig from "./config/columns";
 import { SearchOutlined } from "@ant-design/icons";
 import moment from "moment";
 import { useHistory, useLocation } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const AlarmLog = () => {
+const AlarmLog = ({ locale }) => {
   const history = useHistory();
-
   const location = useLocation();
-
   const initTime = location.state?.time;
-
   const [time, setTime] = useState([]);
-
   const initIp = location.state?.ip;
-
   const [loading, setLoading] = useState(false);
-
   const [searchLoading, setSearchLoading] = useState(false);
-
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [ipListSource, setIpListSource] = useState([]);
-
   const [selectValue, setSelectValue] = useState(initIp);
-
   const [instanceSelectValue, setInstanceSelectValue] = useState(
     location.state?.alert_instance_name
   );
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -50,19 +40,18 @@ const AlarmLog = () => {
     ordering: "",
     searchParams: {},
   });
-
   // 筛选label
   const [labelControl, setLabelControl] = useState(
     initIp ? "ip" : "instance_name"
   );
-
   const [showIframe, setShowIframe] = useState({});
+  const context = locales[locale].common;
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams = {},
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.Alert.listAlert, {
       params: {
@@ -92,7 +81,7 @@ const AlarmLog = () => {
         fetchIPlist();
         //fetchNameList();
       });
-  }
+  };
 
   const fetchIPlist = () => {
     setSearchLoading(true);
@@ -118,7 +107,7 @@ const AlarmLog = () => {
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          message.success("已读成功");
+          message.success(context.succeeded);
         });
       })
       .catch((e) => console.log(e))
@@ -158,6 +147,7 @@ const AlarmLog = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部过滤 -- */}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <Button
           type="primary"
@@ -167,8 +157,9 @@ const AlarmLog = () => {
             updateAlertRead(ids);
           }}
         >
-          批量已读
+          {context.batchRead}
         </Button>
+
         <div style={{ display: "flex" }}>
           <OmpDatePicker
             onChange={(e) => {
@@ -215,7 +206,7 @@ const AlarmLog = () => {
             <Input.Group compact style={{ display: "flex" }}>
               <Select
                 value={labelControl}
-                style={{ width: 100 }}
+                style={{ minWidth: 100 }}
                 onChange={(e) => {
                   setLabelControl(e);
                   fetchData(
@@ -234,11 +225,14 @@ const AlarmLog = () => {
                   setSelectValue();
                 }}
               >
-                <Select.Option value="ip"> IP地址</Select.Option>
-                <Select.Option value="instance_name">实例名称</Select.Option>
+                <Select.Option value="ip">{context.ipAddress}</Select.Option>
+                <Select.Option value="instance_name">
+                  {context.serviceInstance}
+                </Select.Option>
               </Select>
               {labelControl === "ip" && (
                 <OmpSelect
+                  placeholder={context.input + context.ln + context.ip}
                   searchLoading={searchLoading}
                   selectValue={selectValue}
                   listSource={ipListSource}
@@ -258,7 +252,9 @@ const AlarmLog = () => {
               )}
               {labelControl === "instance_name" && (
                 <Input
-                  placeholder="输入实例名称"
+                  placeholder={
+                    context.input + context.ln + context.serviceInstance
+                  }
                   style={{ width: 200 }}
                   allowClear
                   value={instanceSelectValue}
@@ -329,11 +325,13 @@ const AlarmLog = () => {
                 );
               }}
             >
-              刷新
+              {context.refresh}
             </Button>
           </div>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -343,7 +341,6 @@ const AlarmLog = () => {
       >
         <OmpTable
           loading={loading}
-          //scroll={{ x: 1400 }}
           onChange={(e, filters, sorter) => {
             let ordering = sorter.order
               ? `${sorter.order == "descend" ? "" : "-"}${sorter.columnKey}`
@@ -354,7 +351,6 @@ const AlarmLog = () => {
           }}
           columns={getColumnsConfig(
             (params) => {
-              // console.log(pagination.searchParams)
               fetchData(
                 { current: 1, pageSize: pagination.pageSize },
                 { ...pagination.searchParams, ...params },
@@ -363,7 +359,8 @@ const AlarmLog = () => {
             },
             setShowIframe,
             updateAlertRead,
-            history
+            history,
+            context
           )}
           dataSource={dataSource}
           pagination={{
@@ -378,13 +375,15 @@ const AlarmLog = () => {
                   lineHeight: 2.8,
                 }}
               >
-                <p>已选中 {checkedList.length} 条</p>
+                <p>
+                  {context.selected} {checkedList.length} {context.tiao}
+                </p>
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -394,7 +393,13 @@ const AlarmLog = () => {
           checkedState={[checkedList, setCheckedList]}
         />
       </div>
-      <OmpDrawer showIframe={showIframe} setShowIframe={setShowIframe} />
+
+      {/* -- 监控面板 -- */}
+      <OmpDrawer
+        showIframe={showIframe}
+        setShowIframe={setShowIframe}
+        context={context}
+      />
     </OmpContentWrapper>
   );
 };

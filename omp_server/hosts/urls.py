@@ -14,7 +14,8 @@ from hosts.views import (
     HostAgentRestartView, HostOperateLogView, HostBatchValidateView,
     HostBatchImportView, HostInitView, HostsAgentStatusView,
     HostReinstallView, MonitorReinstallView,
-    HostUninstallView
+    HostUninstallView, HostDataJsonView,
+    HostCreateUrlView
 )
 
 router = DefaultRouter()
@@ -40,3 +41,6 @@ router.register("monitorReinstall",
                 MonitorReinstallView, basename="monitorReinstall")
 router.register("hostUninstall",
                 HostUninstallView, basename="hostUninstall")
+router.register("data_json",
+                HostDataJsonView, basename="hostUninstall")
+router.register("host_create_url", HostCreateUrlView, basename="hostUninstall")

@@ -8,7 +8,7 @@ import paramiko
 from scp import SCPClient
 
 from utils.parse_config import (
-    SSH_CMD_TIMEOUT, SSH_CHECK_TIMEOUT
+    SSH_CMD_TIMEOUT, SSH_CHECK_TIMEOUT, IS_NO_SSH
 )
 
 logger = logging.getLogger("server")
@@ -56,6 +56,7 @@ class SSH(object):
                     timeout=self.timeout
                 )
                 scp_client = SCPClient(ssh_client.get_transport())
+                self.connect = True
             except Exception as error:
                 self.is_error = True
                 self.error_message = error
@@ -69,6 +70,10 @@ class SSH(object):
         检查SSH连接信息
         :return: is_connect, message
         """
+        # 当为无ssh场景下，默认返回成功结果
+        if IS_NO_SSH is True:
+            logger.info("NO SSH CONDITION: SSH.check return default success")
+            return True, "check passed"
         self._get_connection()
         if self.is_error:
             return False, str(self.error_message)
@@ -83,6 +88,9 @@ class SSH(object):
         检查用户是否具有sudo权限
         :return: is_sudo, message
         """
+        if IS_NO_SSH is True:
+            logger.info("NO SSH CONDITION: SSH.is_sudo return default success")
+            return True, "is sudo"
         self._get_connection()
         if self.is_error:
             return False, str(self.error_message)
@@ -101,6 +109,9 @@ class SSH(object):
         :param get_pty:
         :return:
         """
+        if IS_NO_SSH is True:
+            logger.info("NO SSH CONDITION: SSH.cmd return default success")
+            return True, "default success"
         self._get_connection()
         if self.is_error:
             return False, str(self.error_message)
@@ -120,17 +131,21 @@ class SSH(object):
         :type remote_path str
         :return:
         """
+        if IS_NO_SSH is True:
+            logger.info("NO SSH CONDITION: "
+                        "SSH.make_remote_path_exist return default success")
+            return
         self._get_connection()
-        if self.username == "root":
-            command = "test -d {0} || mkdir -p {0}".format(remote_path)
-        else:
-            is_sudo_flag, _ = self.is_sudo()
-            if is_sudo_flag:
-                command = f"sudo mkdir -p {remote_path} && " \
-                          f"sudo chown -R {self.username}.{self.username} {remote_path}"
-            else:
-                # 普通用户仅尝试创建文件夹
-                command = "test -d {0} || mkdir -p {0}".format(remote_path)
+        # if self.username == "root":
+        command = "test -d {0} || mkdir -p {0}".format(remote_path)
+        # else:
+        #     is_sudo_flag, _ = self.is_sudo()
+        #     if is_sudo_flag:
+        #         command = f"sudo mkdir -p {remote_path} && " \
+        #                   f"sudo chown -R {self.username}.{self.username} {remote_path}"
+        #     else:
+        #         # 普通用户仅尝试创建文件夹
+        #         command = "test -d {0} || mkdir -p {0}".format(remote_path)
         self.cmd(command)
 
     def file_push(self, file, remote_path="/tmp"):
@@ -140,6 +155,10 @@ class SSH(object):
         :param str file: file path
         :param str remote_path: remote directory path
         """
+        if IS_NO_SSH is True:
+            logger.info(
+                "NO SSH CONDITION: SSH.file_push return default success")
+            return True, "default success"
         file_name = os.path.basename(file)
         remote_file_full_path = os.path.join(remote_path, file_name)
         self._get_connection()

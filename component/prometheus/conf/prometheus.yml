@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  scrape_timeout: 25s
+alerting:
+  alertmanagers:
+  - scheme: http
+    basic_auth:
+      username: ${CW_ALERTMANAGER_USERNAME}
+      password: ${CW_ALERTMANAGER_PASSWORD}
+    static_configs:
+      - targets:
+        - 127.0.0.1:${CW_ALERTMANAGER_PORT}
+rule_files:
+  - rules/*_rule.yml
+scrape_configs:
+  - job_name: nodeExporter
+    metrics_path: /metrics/monitor/node
+    file_sd_configs:
+    - refresh_interval: 30s
+      files:
+      - targets/nodeExporter_all.json

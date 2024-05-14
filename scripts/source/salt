@@ -21,6 +21,7 @@ start() {
     echo "${APP_NAME} [running]"
     return 0
   else
+    stop
     ${PYTHON3} ${PROJECT_FOLDER}/component/env/bin/salt-master \
       -c ${SALT_CONFIG_DIR} \
       --pid-file ${SALT_PID_FILE} \
@@ -33,9 +34,10 @@ start() {
 
 stop() {
   real_status
-  if [ $? -eq 0 ]; then
-    ps -ef | grep "${PROJECT_FOLDER}/component/env/bin/salt-master" | grep -v grep | awk '{print $2}' | xargs kill -9
-  fi
+  # if [ $? -eq 0 ]; then
+  #   ps -ef | grep "${PROJECT_FOLDER}/component/env/bin/salt-master" | grep -v grep | awk '{print $2}' | xargs -r kill -9
+  # fi
+  ps -ef | grep "${PROJECT_FOLDER}/component/env/bin/salt-master" | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null
   sleep 3
   real_status
   if [ $? -eq 0 ]; then
@@ -49,7 +51,7 @@ stop() {
 
 real_status() {
   salt_master_num=$(ps -ef | grep ${PROJECT_FOLDER}/component/env/bin/salt-master | grep -v grep | wc -l)
-  if [ $salt_master_num -gt 12 ]; then
+  if [ $salt_master_num -eq 13 ]; then
     return 0
   else
     return 1

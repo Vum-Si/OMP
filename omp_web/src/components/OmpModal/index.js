@@ -17,6 +17,7 @@ const OmpModal = ({
   beForeOk = () => {},
   formLabelCol = { span: 7 },
   formWrapperCol = { span: 14 },
+  context = null,
   ...residualParam
 }) => {
   const [modalForm] = Form.useForm();
@@ -58,7 +59,7 @@ const OmpModal = ({
       visible={visibleHandle[0]}
       //onOk={() => onOk()}
       onCancel={() => visibleHandle[1](false)}
-      footer={footer}
+      footer={null}
       destroyOnClose
       loading={loading}
       afterClose={() => {
@@ -67,7 +68,6 @@ const OmpModal = ({
         //传入的afterClose
         afterClose();
       }}
-      footer={null}
       {...residualParam}
     >
       <Form
@@ -87,7 +87,7 @@ const OmpModal = ({
             style={{ marginRight: 16 }}
             onClick={() => visibleHandle[1](false)}
           >
-            取消
+            {context?.cancel || "取消"}
           </Button>
           <span
             onClick={() => {
@@ -95,7 +95,7 @@ const OmpModal = ({
             }}
           >
             <Button loading={loading} type="primary" htmlType="submit">
-              {okBtnText || "确定"}
+              {okBtnText || context?.ok || "确认"}
             </Button>
           </span>
         </Form.Item>

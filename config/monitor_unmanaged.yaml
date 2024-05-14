@@ -1,0 +1,55 @@
+#add:
+#  - service_name: flink
+#    instance_name: flink-14-225
+#    cluster: A
+#    data_path: /data/appData/flink
+#    log_path: /data/logs/flink
+#    env: default
+#    ip: 10.0.14.225
+#    listen_port: 18550
+#    metric_port: 18550
+#    only_process: false
+#    process_key_word:
+#    username:
+#    password:
+#  - service_name: victoriaMetrics
+#    instance_name: victoriaMetrics-16-167
+#    cluster: A
+#    data_path: /data/appData/victoriaMetrics
+#    log_path: /data/logs/victoriaMetrics
+#    env: default
+#    ip: 10.0.16.167
+#    listen_port: 18140
+#    metric_port: 18140
+#    only_process: false
+#    process_key_word:
+#    username:
+#    password:
+#
+#del:
+#  - service_name: flink
+#    instance_name: flink-14-225
+#    cluster: A
+#    data_path: /data/appData/flink
+#    log_path: /data/logs/flink
+#    env: default
+#    ip: 10.0.14.225
+#    listen_port: 18550
+#    metric_port: 18550
+#    only_process: false
+#    process_key_word:
+#    username:
+#    password:
+#  - service_name: victoriaMetrics
+#    instance_name: victoriaMetrics-16-167
+#    cluster: A
+#    data_path: /data/appData/victoriaMetrics
+#    log_path: /data/logs/victoriaMetrics
+#    env: default
+#    ip: 10.0.16.167
+#    listen_port: 18140
+#    metric_port: 18140
+#    only_process: false
+#    process_key_word:
+#    username:
+#    password:

@@ -1,0 +1,32 @@
+#服务面板常用门户
+# username 默认使用yaml的 username
+# password 默认使用yaml的 password
+# url  后文根  默认不加
+# port  默认使用yaml的service_port
+# ip    默认自己ip 可以填写别的服务代理ip 如tengine
+# cluster 集群：默认取ip列第一个。
+# 写了需要自行填写覆盖，如果需要覆盖上述5个值需自行填写规则如上
+tengine:
+  username: admin
+  password: Cloudwise_654321
+nacos:
+  username: nacos
+  password: Nacos_654321
+  url: /nacos
+minio:
+  cluster:
+    ip: tengine
+    port: 18055
+apmAdmin:
+  ip: tengine
+  port: 18082
+  username: superman
+  password: Cloudwise_654321
+xxlJob:
+  url: /xxl-job/
+  cluster:
+    ip: tengine
+    port: 18096
+
+
+

@@ -60,7 +60,7 @@ class ServiceRedisCrawl(Prometheus):
     def conn_num(self):
         """连接数量"""
         expr = f"redis_connected_clients{{env='{self.env}'," \
-               f"instance=~'{self.instance}'}}"
+               f"instance=~'{self.instance}', app='{self.service_name}'}}"
         self.basic.append({
             "name": "conn_num", "name_cn": "连接数量",
             "value": self.unified_job(*self.query(expr))}
@@ -69,11 +69,11 @@ class ServiceRedisCrawl(Prometheus):
     def hit_rate(self):
         """命中率"""
         expr = f"(redis_keyspace_hits_total{{env='{self.env}', " \
-               f"instance=~'{self.instance}', job='redisExporter'}}  / " \
+               f"instance=~'{self.instance}', app='{self.service_name}'}}  / " \
                f"(redis_keyspace_hits_total{{env='{self.env}', " \
-               f"instance=~'{self.instance}', job='redisExporter'}} + " \
+               f"instance=~'{self.instance}', app='{self.service_name}'}} + " \
                f"redis_keyspace_misses_total{{env='{self.env}', " \
-               f"instance=~'{self.instance}', job='redisExporter'}})) * 100"
+               f"instance=~'{self.instance}', app='{self.service_name}'}})) * 100"
         val = self.unified_job(*self.query(expr))
         val = round(float(val), 4) if val else 0
         self.basic.append({
@@ -84,7 +84,7 @@ class ServiceRedisCrawl(Prometheus):
     def max_memory(self):
         """最大内存"""
         expr = f"redis_memory_max_bytes{{env=~'{self.env}'," \
-               f"instance=~'{self.instance}'}})"
+               f"instance=~'{self.instance}', app='{self.service_name}'}})"
         val = self.unified_job(*self.query(expr))
         val = round(int(val) / 1048576, 2) if val else '-'
         self.basic.append({
@@ -95,12 +95,12 @@ class ServiceRedisCrawl(Prometheus):
     def network_io(self):
         """网络io"""
         expr = f"redis_net_input_bytes_total{{env=~'{self.env}'," \
-               f"instance=~'{self.instance}'}} / 1000000"
+               f"instance=~'{self.instance}', app='{self.service_name}'}} / 1000000"
         val_in = self.unified_job(*self.query(expr))
         val_in = round(float(val_in), 2) if val_in else 0
 
         expr = f"redis_net_output_bytes_total{{env=~'{self.env}'," \
-               f"instance=~'{self.instance}'}} / 1000000"
+               f"instance=~'{self.instance}', app='{self.service_name}'}} / 1000000"
         val_out = self.unified_job(*self.query(expr))
         val_out = round(float(val_out), 2) if val_out else 0
 

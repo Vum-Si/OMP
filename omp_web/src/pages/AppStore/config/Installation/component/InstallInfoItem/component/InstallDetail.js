@@ -1,3 +1,4 @@
+import { Spin } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import { useEffect, useRef } from "react";
 
@@ -5,13 +6,13 @@ const stepOpen = {
   marginTop: 10,
   minHeight: 30,
   height: 300,
-  transition: "all .2s ease-in",
+  transition: "all .4s ease-in",
   //overflow: "hidden",
   backgroundColor: "#000",
   color: "#fff",
   padding: 10,
   overflowY: "auto",
-  whiteSpace: "pre-line"
+  whiteSpace: "pre-line",
 };
 const stepNotOpen = {
   height: 0,
@@ -21,29 +22,32 @@ const stepNotOpen = {
   backgroundColor: "#f9f9f9",
 };
 
-// 状态渲染规则
+const InstallDetail = ({
+  title,
+  ip,
+  status,
+  openName,
+  setOpenName,
+  log,
+  context,
+}) => {
   const renderStatus = {
-    0: <span style={{ color: "#f0c242" }}>等待安装</span>,
-    1: <span style={{ color: "rgba(0, 0, 0, 0.85)" }}>正在安装</span>,
-    2: <span style={{ color: "rgb(118,204,104)" }}>安装成功</span>,
-    3: <span style={{ color: "#da4e48" }}>安装失败</span>,
+    0: <span style={{ color: "#f0c242" }}>{context.waiting}</span>,
+    1: (
+      <span style={{ color: "rgba(0, 0, 0, 0.85)" }}>{context.installing}</span>
+    ),
+    2: <span style={{ color: "rgb(118,204,104)" }}>{context.succeeded}</span>,
+    3: <span style={{ color: "#da4e48" }}>{context.installFailed}</span>,
   };
 
-const InstallDetail = ({ title, ip, status, openName, setOpenName,log }) => {
+  const containerRef = useRef(null);
 
-  const containerRef = useRef(null)
-
-  useEffect(()=>{
-    containerRef.current.scrollTop =
-    containerRef.current.scrollHeight;
-  },[log])
+  useEffect(() => {
+    containerRef.current.scrollTop = containerRef.current.scrollHeight;
+  }, [log]);
 
   return (
-    <div
-      style={{
-        padding: 10,
-      }}
-    >
+    <div style={{ padding: 10 }}>
       <div
         style={{
           display: "flex",
@@ -62,7 +66,7 @@ const InstallDetail = ({ title, ip, status, openName, setOpenName,log }) => {
               }
             }}
           >
-            查看详细安装信息
+            {context.view + context.ln + context.detail}
             <DownOutlined
               style={{
                 transform: `rotate(${
@@ -76,8 +80,11 @@ const InstallDetail = ({ title, ip, status, openName, setOpenName,log }) => {
           </a>
         </div>
       </div>
-      <div ref={containerRef} style={openName == `${title}=${ip}` ? stepOpen : stepNotOpen}>
-        {log || "暂无数据"}
+      <div
+        ref={containerRef}
+        style={openName == `${title}=${ip}` ? stepOpen : stepNotOpen}
+      >
+        {log || context.noData}
       </div>
     </div>
   );

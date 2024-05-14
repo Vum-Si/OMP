@@ -64,13 +64,24 @@ def set_alert_maintain(env_name):
         ).exists()
         if not has_maintain:
             return Alertmanager().set_maintain_by_env_name(env_name)
+        return "has_maintain"
     except Exception as e:
         logger.error(f"进入维护模式失败：{str(e)}")
     return None
 
 
-def update_data_json(operation_uuid, details):
+def del_alert_maintain(env_name):
+    try:
+        has_maintain = Maintain.objects.filter(
+            matcher_name="env", matcher_value=env_name
+        ).exists()
+        if has_maintain:
+            return Alertmanager().revoke_maintain_by_env_name(env_name)
+    except Exception as e:
+        logger.error(f"退出维护模式失败：{str(e)}")
 
+
+def update_data_json(operation_uuid, details):
     data_json = DataJsonUpdate(operation_uuid)
     try:
         data_json.create_json_file(details)
@@ -140,25 +151,25 @@ def upgrade_service(upgrade_history_id):
         upgrade_state=UpgradeStateChoices.UPGRADE_SUCCESS
     ).exclude(has_rollback=True)
 
-    if history.pre_upgrade_state != UpgradeStateChoices.UPGRADE_SUCCESS:
-        state, msg = update_data_json(
-            main_install.operation_uuid, upgrade_details)
-        # todo:后续优化
-        history.pre_upgrade_result = {
-            "update_data_json": {
-                "state": 2 if state else 3,
-                "message": msg,
-                "state_display": "升级成功" if state else "升级失败"
-            }
+    # if history.pre_upgrade_state != UpgradeStateChoices.UPGRADE_SUCCESS:
+    state, msg = update_data_json(
+        main_install.operation_uuid, upgrade_details)
+    # todo:后续优化
+    history.pre_upgrade_result = {
+        "update_data_json": {
+            "state": 2 if state else 3,
+            "message": msg,
+            "state_display": "升级成功" if state else "升级失败"
         }
-        if not state:
-            history.pre_upgrade_state = UpgradeStateChoices.UPGRADE_FAIL
-            history.upgrade_state = UpgradeStateChoices.UPGRADE_FAIL
-            history.save()
-            return
-        else:
-            history.pre_upgrade_state = UpgradeStateChoices.UPGRADE_SUCCESS
-            history.save()
+    }
+    if not state:
+        history.pre_upgrade_state = UpgradeStateChoices.UPGRADE_FAIL
+        history.upgrade_state = UpgradeStateChoices.UPGRADE_FAIL
+        history.save()
+        return
+    else:
+        history.pre_upgrade_state = UpgradeStateChoices.UPGRADE_SUCCESS
+        history.save()
 
     if history.upgrade_state != UpgradeStateChoices.UPGRADE_ING:
         history.upgrade_state = UpgradeStateChoices.UPGRADE_ING
@@ -168,7 +179,7 @@ def upgrade_service(upgrade_history_id):
     order_layer_details = computer_operation_sorted(upgrade_details)
 
     # 进入维护模式
-    set_alert_maintain(history.env.name)
+    has_maintain = set_alert_maintain(history.env.name)
 
     with ThreadPoolExecutor(THREAD_POOL_MAX_WORKERS) as executor:
         upgrade_state = UpgradeStateChoices.UPGRADE_SUCCESS
@@ -193,6 +204,8 @@ def upgrade_service(upgrade_history_id):
     history.save()
     app_ids = load_upgrade_service(history)
     update_product_version(app_ids)
+    if has_maintain != "has_maintain":
+        del_alert_maintain(history.env.name)
 
 
 @shared_task
@@ -217,17 +230,16 @@ def rollback_service(rollback_history_id):
     )
     order_layer_details = computer_operation_sorted(rollback_details)
 
-    set_alert_maintain(history.env.name)
+    has_maintain = set_alert_maintain(history.env.name)
 
-    main_install = MainInstallHistory.objects.order_by("-id").first()
+    # main_install = MainInstallHistory.objects.order_by("-id").first()
 
     with ThreadPoolExecutor(THREAD_POOL_MAX_WORKERS) as executor:
         rollback_state = RollbackStateChoices.ROLLBACK_SUCCESS
         for sort, details in order_layer_details:
             all_task = []
             for detail in details:
-                rollback_args = load_rollback_detail(
-                    detail, main_install.operation_uuid)
+                rollback_args = load_rollback_detail(detail)
                 future_obj = executor.submit(
                     handler_pipeline, rollback_handlers, rollback_args)
                 all_task.append(future_obj)
@@ -243,3 +255,5 @@ def rollback_service(rollback_history_id):
     history.save()
     app_ids = load_rollback_service(history)
     update_product_version(app_ids)
+    if has_maintain != "has_maintain":
+        del_alert_maintain(history.env.name)

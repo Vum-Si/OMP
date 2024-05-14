@@ -8,12 +8,25 @@ from db_models.models.execution import StateChoices
 
 def create_execution_record(instance, created=False, *args, **kwargs):
     module = instance.__class__.__name__
-    obj, _ = ExecutionRecord.objects.get_or_create(
-        module=module,
-        module_id=instance.module_id
-    )
+    if module == "MainInstallHistory":
+        obj, _ = ExecutionRecord.objects.get_or_create(
+            module=module,
+            module_id=instance.operation_uuid
+        )
+    else:
+        obj, _ = ExecutionRecord.objects.get_or_create(
+            module=module,
+            module_id=instance.id
+        )
     old_state = obj.state
-    state = f"{module.upper()}_{instance.execution_record_state}"
+    if module == "MainInstallHistory":
+        state = f"{module.upper()}_{instance.install_status}"
+    elif module == "UpgradeHistory":
+        state = f"{module.upper()}_{instance.upgrade_state}"
+    elif module == "RollbackHistory":
+        state = f"{module.upper()}_{instance.rollback_state}"
+    else:
+        state = f"{module.upper()}_{instance.execution_record_state}"
     obj.state = getattr(StateChoices, state)
     if isinstance(instance.operator, str):
         obj.operator = instance.operator
@@ -23,7 +36,10 @@ def create_execution_record(instance, created=False, *args, **kwargs):
     if ("SUCCESS" in obj.state or "FAIL" in obj.state) and \
             obj.state != old_state:
         obj.end_time = instance.modified
-    obj.count = instance.operate_count()
+    try:
+        obj.count = instance.operate_count()
+    finally:
+        obj.count = 1
     obj.save()
 
 

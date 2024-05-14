@@ -14,29 +14,21 @@ import getColumnsConfig from "./config/columns";
 import { SearchOutlined } from "@ant-design/icons";
 import moment from "moment";
 import { useHistory, useLocation } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const SelfHealingRecord = () => {
+const SelfHealingRecord = ({ locale }) => {
   const history = useHistory();
-
   const location = useLocation();
-
   const initIp = location.state?.ip;
-
   const [loading, setLoading] = useState(false);
-
   const [searchLoading, setSearchLoading] = useState(false);
-
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [ipListSource, setIpListSource] = useState([]);
-
   const [selectValue, setSelectValue] = useState(initIp);
-
   const [instanceSelectValue, setInstanceSelectValue] = useState();
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -44,19 +36,18 @@ const SelfHealingRecord = () => {
     ordering: "",
     searchParams: {},
   });
-
   // 筛选label
   const [labelControl, setLabelControl] = useState(
     initIp ? "ip" : "instance_name"
   );
-
   const [showIframe, setShowIframe] = useState({});
+  const context = locales[locale].common;
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams = {},
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.faultSelfHealing.querySelfHealingList, {
       params: {
@@ -86,7 +77,7 @@ const SelfHealingRecord = () => {
         fetchIPlist();
         //fetchNameList();
       });
-  }
+  };
 
   const fetchIPlist = () => {
     setSearchLoading(true);
@@ -112,7 +103,7 @@ const SelfHealingRecord = () => {
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          message.success("已读成功");
+          message.success(context.succeeded);
         });
       })
       .catch((e) => console.log(e))
@@ -133,6 +124,7 @@ const SelfHealingRecord = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部批量已读/过滤 -- */}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <Button
           type="primary"
@@ -142,7 +134,7 @@ const SelfHealingRecord = () => {
             updateAlertRead(ids);
           }}
         >
-          批量已读
+          {context.batchRead}
         </Button>
         <div style={{ display: "flex" }}>
           <OmpDatePicker
@@ -187,7 +179,7 @@ const SelfHealingRecord = () => {
             <Input.Group compact style={{ display: "flex" }}>
               <Select
                 value={labelControl}
-                style={{ width: 100 }}
+                style={{ minWidth: 100 }}
                 onChange={(e) => {
                   setLabelControl(e);
                   fetchData(
@@ -206,11 +198,14 @@ const SelfHealingRecord = () => {
                   setSelectValue();
                 }}
               >
-                <Select.Option value="ip"> IP地址</Select.Option>
-                <Select.Option value="instance_name">实例名称</Select.Option>
+                <Select.Option value="ip">{context.ipAddress}</Select.Option>
+                <Select.Option value="instance_name">
+                  {context.serviceInstance}
+                </Select.Option>
               </Select>
               {labelControl === "ip" && (
                 <OmpSelect
+                  placeholder={context.input + context.ln + context.ip}
                   searchLoading={searchLoading}
                   selectValue={selectValue}
                   listSource={ipListSource}
@@ -230,7 +225,9 @@ const SelfHealingRecord = () => {
               )}
               {labelControl === "instance_name" && (
                 <Input
-                  placeholder="输入实例名称"
+                  placeholder={
+                    context.input + context.ln + context.serviceInstance
+                  }
                   style={{ width: 200 }}
                   allowClear
                   value={instanceSelectValue}
@@ -301,11 +298,13 @@ const SelfHealingRecord = () => {
                 );
               }}
             >
-              刷新
+              {context.refresh}
             </Button>
           </div>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -335,7 +334,8 @@ const SelfHealingRecord = () => {
             },
             setShowIframe,
             updateAlertRead,
-            history
+            history,
+            context
           )}
           dataSource={dataSource}
           pagination={{
@@ -350,13 +350,15 @@ const SelfHealingRecord = () => {
                   lineHeight: 2.8,
                 }}
               >
-                <p>已选中 {checkedList.length} 条</p>
+                <p>
+                  {context.selected} {checkedList.length} {context.tiao}
+                </p>
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -366,7 +368,13 @@ const SelfHealingRecord = () => {
           checkedState={[checkedList, setCheckedList]}
         />
       </div>
-      <OmpDrawer showIframe={showIframe} setShowIframe={setShowIframe} />
+
+      {/* -- 监控面板 -- */}
+      <OmpDrawer
+        showIframe={showIframe}
+        setShowIframe={setShowIframe}
+        context={context}
+      />
     </OmpContentWrapper>
   );
 };

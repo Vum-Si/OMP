@@ -74,7 +74,8 @@ class UpgradeHistoryDetailSerializer(serializers.ModelSerializer):
         if hasattr(obj, key):
             return getattr(obj, key)
         details = obj.upgradedetail_set.filter(
-            service__isnull=False
+            service__isnull=False,
+            has_rollback=False
         )
         upgrade_details = UpgradeDetailSerializer(details, many=True).data
         # 合并服务
@@ -228,16 +229,18 @@ class UpgradeTryAgainSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if self.instance.upgrade_state != UpgradeStateChoices.UPGRADE_FAIL:
             raise ValidationError("该升级记录不支持重新再次升级!")
-        histories = UpgradeHistory.objects.filter(
-            upgrade_state__in=[
-                UpgradeStateChoices.UPGRADE_WAIT,
-                UpgradeStateChoices.UPGRADE_ING
-            ]
-        )
-        if histories.exists():
-            raise ValidationError("存在正在升级的服务，请稍后重试!")
-        if UpgradeHistory.objects.filter(id__gt=self.instance.id).exists():
-            raise ValidationError("历史记录不可再次升级!")
+        # histories = UpgradeHistory.objects.filter(
+        #    upgrade_state__in=[
+        #        UpgradeStateChoices.UPGRADE_WAIT,
+        #        UpgradeStateChoices.UPGRADE_ING
+        #    ]
+        # )
+        # if histories.exists():
+        #    raise ValidationError("存在正在升级的服务，请稍后重试!")
+        # if UpgradeHistory.objects.filter(id__gt=self.instance.id).exists():
+        #    raise ValidationError("历史记录不可再次升级!")
+        self.instance.upgrade_state = UpgradeStateChoices.UPGRADE_WAIT
+        self.instance.save()
         return True
 
 
@@ -251,8 +254,8 @@ class RollbackTryAgainSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if self.instance.rollback_state != RollbackStateChoices.ROLLBACK_FAIL:
             raise ValidationError("该回滚记录不支持重新再次回滚!")
-        if RollbackHistory.objects.filter(id__gt=self.instance.id).exists():
-            raise ValidationError("历史记录不可再次回滚!")
+        # if RollbackHistory.objects.filter(id__gt=self.instance.id).exists():
+        #    raise ValidationError("历史记录不可再次回滚!")
         return True
 
 

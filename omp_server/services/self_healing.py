@@ -38,11 +38,11 @@ class SelfHealing:
         data_dict = {}
         host_ls = []
         for d in alert_info:
-            if d.get("alert_service_name") and d.get("alert_instance_name") and \
+            if d.get("alert_instance_name") and \
                     d['alert_instance_name'] not in self.service_info:
                 data_dict.setdefault(d['alert_service_name'], []).append(d)
                 self.service_info.add(d['alert_instance_name'])
-            if not d.get("alert_service_name") and \
+            if not d.get("alert_instance_name") and \
                     d['alert_host_ip'] not in self.host_info:
                 self.host_info.add(d['alert_host_ip'])
                 host_ls.append(d)
@@ -80,15 +80,19 @@ class SelfHealing:
         """
         进行启动，请求接口查询状态，日志追加，状态变更
         """
+        # 初次检查如果没问题直接返回
+        res = self.check_health(ip, command, his_obj, "")
+        if res:
+            return True
         salt_obj = SaltClient()
         cmd_flag, cmd_msg = salt_obj.cmd(
             target=ip,
             command=command,
             timeout=60)
         healing_log = f"执行ip:{ip},执行cmd:{command},执行结果:{cmd_flag},执行详情:{cmd_msg},"
+        his_obj.healing_log = healing_log
+        his_obj.save()
         if not cmd_flag:
-            his_obj.healing_log = healing_log
-            his_obj.save()
             return False
         # 循环检测，超出检测时常后退出
         for _ in range(HEALTH_REQUEST_COUNT):
@@ -111,7 +115,9 @@ class SelfHealing:
             logger.info("monitor_agent_res_error 监控报错信息{}".format(e))
             return False
         if monitor_agent_res[0].get("status") == 1:
-            his_obj.healing_log = healing_log + "monitor_agent_res 服务状态查看正常更新服务状态"
+            his_obj.healing_log = healing_log + "monitor_agent_res 通过监控采集状态正常"
+            his_obj.state = SelfHealingHistory.HEALING_SUCCESS
+            his_obj.end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
             his_obj.save()
             return True
         return False
@@ -152,7 +158,7 @@ class SelfHealing:
             "alert_service_name": "service_name",
             "alert_time": "alert_time",
             # "fingerprint": "fingerprint",
-            # "monitor_log": "monitor_log",
+            "monitor_log": "monitor_log",
             "alert_describe": "alert_content",
             "alert_instance_name": "instance_name",
         }
@@ -184,14 +190,12 @@ class SelfHealing:
         identify_des = "monitor_agent进程丢失"
         ip = hosts_info["alert_host_ip"]
         if identify_des not in hosts_info.get('alert_describe'):
-            # 暂不支持的模式
             logger.info(f"暂不支持的模式{ip}")
             return True
-        ip = hosts_info["alert_host_ip"]
         host_ip = "".join(ip.split("."))
         healing_count = self.get_redis_count(host_ip)
         if healing_count > self.max_healing_count:
-            # 自愈实例超出限制个数
+            logger.info(f"自愈实例超出限制个数{ip}")
             return True
         # 写库
         his_obj = self.write_db(hosts_info, healing_count)
@@ -227,11 +231,21 @@ class SelfHealing:
 
 
 def get_enable_health(repairs):
-    h_ls = set(Host.objects.all().values_list("ip", flat=True))
+    result = []
+    component = []
+    service = []
+    host = list(set(Host.objects.all().values_list("ip", flat=True))) # NOQA
     for app in ApplicationHub.objects.filter(is_base_env=False):
-        if not app.extend_fields.get("affinity", "") == "tengine":
-            h_ls.add(app.app_name)
-    return list(h_ls - set(repairs))
+        if not app.extend_fields.get("affinity", "") == "tengine" \
+                and app.service_set.count() != 0:
+            if app.product:
+                service.append(app.app_name)
+            else:
+                component.append(app.app_name)
+    for item in repairs:
+        result += eval(item)
+
+    return result
 
 
 @shared_task
@@ -241,10 +255,13 @@ def self_healing(task_id):
     self_obj = SelfHealingSetting.objects.get(id=task_id)
     if not self_obj.used:
         return "该策略并未启用"
-    if "all" in self_obj.repair_instance:
-        data = self_obj.get_enable_health(list())
-    else:
-        data = list(self_obj.repair_instance)
+    # if "all" in self_obj.repair_instance:
+    #    data = get_enable_health(list())
+    # else:
+    #    data = list(self_obj.repair_instance)
+
+    data = get_enable_health(self_obj.repair_instance)
+
     wait_ser = WaitSelfHealing.objects.filter(service_name__in=data)
     if not wait_ser or wait_ser.filter(repair_status=1):
         return "存在正在自愈的服务或无需自愈的服务"
@@ -266,23 +283,20 @@ def self_healing(task_id):
                 future_list = []
                 for service in service_ls:
                     future_obj = executor.submit(
-                        getattr(health_obj,
-                                "service" if service['alert_type'] == "component" else service['alert_type']), service)
+                        getattr(health_obj, service['alert_type']), service)
                     future_list.append(future_obj)
                 for future in as_completed(future_list):
                     future.result()
     except Exception as e:
         logger.info(f"未知异常，需保护释放锁 {e}")
-        # 释放锁 ,防止惰性查询再次筛选
+    # 释放锁 ,防止惰性查询再次筛选
     WaitSelfHealing.objects.filter(id__in=list(repair_ser_dc)).delete()
 
 
 def self_healing_ssh_verification(host_self_healing_list, sudo_check_cmd):
     """
-        先留着吧暂时没啥用。
-        """
-
-    host_self_healing_list = host_self_healing_list
+    先留着吧暂时没啥用。
+    """
     aes_crypto = AESCryptor()
     host_list = Host.objects.filter(ip=host_self_healing_list).values_list("ip", "port", "username", "password")
     for i in range(len(host_list)):
@@ -294,7 +308,6 @@ def self_healing_ssh_verification(host_self_healing_list, sudo_check_cmd):
                                username=host_list[i][2], password=aes_crypto.decode(host_list[i][3]),
                                timeout=60)
                 """ 监控启动脚本 是否需要重启多次？"""
-                sudo_check_cmd = sudo_check_cmd
                 stdin, stdout, stderr = client.exec_command(sudo_check_cmd)
                 stdout = stdout.read().decode('utf-8')
                 stderr = stderr.read().decode('utf-8')
@@ -343,8 +356,6 @@ def get_service_status_direct(service_obj_list):
             status_url = f"http://{ii[0].get('ip')}:{monitor_agent_port}/service_status"  # NOQA
             response = requests.request(
                 "POST", status_url, headers=headers, data=json.dumps(ii))
-            logger.info("interface_monitor_agent监控接口返回数据:{}".format(response))
-            logger.info("interface_monitor_agent请求地址 {}".format(status_url))
             if response.status_code != 200:
                 continue
             logger.info("interface_monitor_agent 接口返回:{}".format(response.json()))

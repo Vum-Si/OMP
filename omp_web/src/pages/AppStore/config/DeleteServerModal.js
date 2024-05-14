@@ -1,23 +1,39 @@
-import { Modal, Cascader, message } from "antd";
+import { Modal, Cascader, message, Select, InputNumber } from "antd";
 import { useEffect, useState } from "react";
 //import BMF from "browser-md5-file";
 import { fetchPost, fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
-import { handleResponse } from "@/utils/utils";
+import { handleResponse, createDataByCascader } from "@/utils/utils";
+import { WarningOutlined } from "@ant-design/icons";
+
+const msgMap = {
+  "en-US": {
+    pkgMsg: "Existence time more than",
+    moreMsg: "Time",
+    rollbackMsg: "After the package is deleted, it cannot be rolled back",
+  },
+  "zh-CN": {
+    pkgMsg: "安装包存在时间",
+    moreMsg: "大于",
+    rollbackMsg: "安装包被删除后，将无法进行回滚",
+  },
+};
 
 const DeleteServerModal = ({
   deleteServerVisibility,
   setDeleteServerVisibility,
   tabKey,
   refresh,
+  context,
+  locale,
 }) => {
   const [loading, setLoading] = useState(false);
-
   const [options, setOptions] = useState([]);
-
   const [resApp, setResApp] = useState([]);
-
   const [initData, setInitData] = useState([]);
+  // 删除应用商店规则
+  const [delType, setDelType] = useState("name");
+  const [preDay, setPreDay] = useState(7);
 
   // 获取可删除选项
   const queryData = () => {
@@ -38,7 +54,7 @@ const DeleteServerModal = ({
                     {e.name.includes("|") ? (
                       <>
                         {e.name.split("|")[0]}
-                        <span style={{ float: "right", marginLeft: 20 }}>
+                        <span style={{ float: "right", marginLeft: 40 }}>
                           {e.name.split("|")[1]}
                         </span>
                       </>
@@ -53,12 +69,38 @@ const DeleteServerModal = ({
                     label: (
                       <>
                         {i.includes("|") ? (
-                          <>
-                            {i.split("|")[0]}
-                            <span style={{ float: "right", marginLeft: 20 }}>
-                              {i.split("|")[1]}
-                            </span>
-                          </>
+                          i.split("|").length === 2 ? (
+                            <>
+                              {i.split("|")[0]}
+                              <div
+                                style={{
+                                  marginTop: -6,
+                                  marginRight: -4,
+                                  fontSize: 8,
+                                  color: "rgba(0, 0, 0, 0.4)",
+                                }}
+                              >
+                                {i.split("|")[1]}
+                              </div>
+                            </>
+                          ) : (
+                            <div>
+                              {i.split("|")[0]}
+                              <span style={{ float: "right", marginLeft: 40 }}>
+                                {i.split("|")[1]}
+                              </span>
+                              <div
+                                style={{
+                                  marginTop: -6,
+                                  marginRight: -4,
+                                  fontSize: 8,
+                                  color: "rgba(0, 0, 0, 0.4)",
+                                }}
+                              >
+                                {i.split("|")[2]}
+                              </div>
+                            </div>
+                          )
                         ) : (
                           i
                         )}
@@ -80,42 +122,27 @@ const DeleteServerModal = ({
 
   // 删除操作
   const doDelete = () => {
-    if (resApp.length === 0) {
-      message.info("请先选择要删除的服务");
-      return;
-    }
-    const allList = [];
-    const someList = {};
-    const resData = [];
-    for (let i = 0; i < resApp.length; i++) {
-      const e = resApp[i];
-      if (e.length === 1) {
-        allList.push(e[0]);
-      } else {
-        if (someList.hasOwnProperty(e[0])) {
-          someList[e[0]].push(e[1]);
-        } else {
-          someList[e[0]] = [e[1]];
-        }
+    let body = {
+      type: tabKey === "component" ? "component" : "product",
+    };
+    if (delType === "time") {
+      if (preDay === null) {
+        message.info("请指定天数值");
+        return;
       }
-    }
-    for (let i = 0; i < initData.length; i++) {
-      const e = initData[i];
-      if (allList.includes(e.name)) {
-        resData.push(e);
-      } else if (someList.hasOwnProperty(e.name)) {
-        resData.push({
-          name: e.name,
-          versions: someList[e.name],
-        });
+      body["pre_day"] = preDay;
+      body["data"] = null;
+    } else {
+      if (resApp.length === 0) {
+        message.info("请先选择要删除的服务");
+        return;
       }
+      body["pre_day"] = null;
+      body["data"] = createDataByCascader(resApp, initData);
     }
     setLoading(true);
     fetchPost(apiRequest.appStore.deleteServer, {
-      body: {
-        type: tabKey === "component" ? "component" : "product",
-        data: resData,
-      },
+      body: body,
     })
       .then((res) => {
         handleResponse(res, (res) => {
@@ -142,7 +169,10 @@ const DeleteServerModal = ({
     <Modal
       zIndex={1000}
       title={
-        <span>删除{tabKey === "component" ? "基础组件" : "自研服务"}</span>
+        <span>
+          {context.delete + context.ln}
+          {tabKey === "component" ? context.component : context.application}
+        </span>
       }
       afterClose={() => {
         setResApp([]);
@@ -154,7 +184,7 @@ const DeleteServerModal = ({
       visible={deleteServerVisibility}
       width={480}
       confirmLoading={loading}
-      okText={loading ? "稍候" : "删除"}
+      okText={loading ? context.waiting : context.delete}
       bodyStyle={{
         paddingLeft: 30,
         paddingRight: 30,
@@ -162,24 +192,79 @@ const DeleteServerModal = ({
       destroyOnClose
       onOk={() => doDelete()}
     >
+      {/* -- 规则 -- */}
+      <div style={{ marginLeft: 10, display: "flex" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+          {context.rule + " :"}
+        </div>
+        <div style={{ flex: 6 }}>
+          <Select
+            style={{
+              marginLeft: 6,
+              minWidth: 160,
+            }}
+            value={delType}
+            onChange={(e) => setDelType(e)}
+          >
+            <Select.Option value="name">
+              {context.name + " & " + context.version}
+            </Select.Option>
+            <Select.Option value="time">{msgMap[locale].pkgMsg}</Select.Option>
+          </Select>
+        </div>
+      </div>
+
+      {/* -- 名称 / 时间 -- */}
       <div
         style={{
           marginLeft: 10,
-          marginBottom: 20,
+          marginTop: 10,
+          marginBottom: 12,
+          display: "flex",
         }}
       >
-        选择服务：
-        <Cascader
+        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+          {delType === "name"
+            ? context.name + " :"
+            : msgMap[locale].moreMsg + " :"}
+        </div>
+        <div style={{ flex: 6 }}>
+          {delType === "name" ? (
+            <Cascader
+              style={{ width: 300, marginLeft: 6 }}
+              options={options}
+              onChange={(value) => setResApp(value)}
+              multiple
+              maxTagCount="responsive"
+              placeholder={
+                tabKey === "component"
+                  ? context.select + context.ln + context.component
+                  : context.select + context.ln + context.application
+              }
+            />
+          ) : (
+            <InputNumber
+              min={1}
+              style={{ width: 130, marginLeft: 6 }}
+              addonAfter={context.day}
+              value={preDay}
+              onChange={(e) => setPreDay(e)}
+            />
+          )}
+        </div>
+      </div>
+      <div
+        style={{
+          marginLeft: 10,
+          color: "red",
+        }}
+      >
+        <WarningOutlined
           style={{
-            width: 300,
-            marginLeft: 6,
+            marginRight: 6,
           }}
-          options={options}
-          onChange={(value) => setResApp(value)}
-          multiple
-          maxTagCount="responsive"
-          placeholder={tabKey === "component" ? "选择基础组件" : "选择自研服务"}
-        />
+        />{" "}
+        {msgMap[locale].rollbackMsg}
       </div>
     </Modal>
   );

@@ -11,6 +11,7 @@ from db_models.mixins import RollbackStateChoices
 from db_models.models import RollbackDetail, Service, ServiceHistory
 from service_upgrade.handler.base import BaseHandler, StartOperationMixin, \
     StartServiceMixin
+from utils.parse_config import python_cmd_env
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,8 @@ class StartRollbackHandler(StartOperationMixin, RollbackBaseHandler):
         self.detail.rollback_state = RollbackStateChoices.ROLLBACK_ING
         self.detail.save()
         self.detail.refresh_from_db()
-        self.service.service_status = Service.SERVICE_STATUS_ROLLBACK
-        self.service.save()
+        # self.service.service_status = Service.SERVICE_STATUS_ROLLBACK
+        # self.service.save()
         self.service.refresh_from_db()
         for detail in self.relation_details:
             detail.rollback_state = RollbackStateChoices.ROLLBACK_ING
@@ -78,6 +79,7 @@ class StartRollbackHandler(StartOperationMixin, RollbackBaseHandler):
 
 
 class RollBackStopServiceHandler(RollbackBaseHandler):
+    # ToDo考虑该服务失败情况
     operation_type = "ROLLBACK"
     log_message = "服务实例{}: 停止服务{}"
     no_need_print = True
@@ -93,8 +95,43 @@ class RollBackStopServiceHandler(RollbackBaseHandler):
                 # 休眠5秒等待停止
                 time.sleep(5)
                 return True
+            # cloudwise 脚本定制化具备APP_HOME 意味着升级本身出现问题，
+            # sql未变更，仅需要将原目录移回即可,建议判定为升级表中日志为准
+            elif "APP_HOME" in message or "No such file or directory" in message:
+                return self.rollback_path()
             time.sleep(5)
         return True
+
+    def rollback_path(self):
+        # 当符合直接回滚原则则直接跳过执行脚本过程
+        rollback_file = self.detail.upgrade.path_info.get('backup_file_path')
+        if not rollback_file or not self.service.install_folder:
+            return True
+
+        rollback_backup_path = os.path.join(
+            os.path.dirname(self.service.install_folder),
+            'rollback_backup/{}'.format(datetime.today().strftime("%Y%m%d"))
+        )
+        time_str = datetime.now().strftime("%Y%m%d%H%M")
+        name = "{}.back-{}-{}".format(
+            self.service.service_instance_name, time_str, random.randint(1, 120)
+        )
+        backup_file = os.path.join(rollback_backup_path, name)
+
+        mv_cmd = f"mkdir -p {rollback_backup_path} && mv {self.service.install_folder} " \
+                 f"{backup_file} && mv {rollback_file} {self.service.install_folder}"
+
+        state, message = self.salt_client.cmd(
+            self.service.ip,
+            mv_cmd,
+            timeout=settings.SSH_CMD_TIMEOUT
+        )
+        self._log(f"移动备份路径命令 {mv_cmd} 状态 {state} 返回 {message}")
+
+        self.detail.rollback_state = RollbackStateChoices.ROLLBACK_SUCCESS if state else \
+            RollbackStateChoices.ROLLBACK_FAIL
+        self.detail.save()
+        return state
 
     def handler(self):
         if self.service.is_static:
@@ -118,6 +155,10 @@ class RollBackServiceHandler(RollbackBaseHandler):
         rollback_file = self.detail.upgrade.path_info.get('backup_file_path')
         if not rollback_file:
             return True
+        # 在前置执行过回滚条件下进行就不再执行rollback脚本
+        self.detail.refresh_from_db()
+        if self.detail.rollback_state == RollbackStateChoices.ROLLBACK_SUCCESS:
+            return True
         data_json_path = os.path.join(
             self.detail.data_path,
             f"omp_packages/{self.service._uuid}.json"
@@ -128,7 +169,7 @@ class RollBackServiceHandler(RollbackBaseHandler):
                 self.service.install_folder,
                 "scripts/rollback.py"
             )
-        cmd_str = f"python {rollback_path} " \
+        cmd_str = f"{python_cmd_env(data_json_path)} {rollback_path} " \
                   f"--local_ip {self.service.ip} " \
                   f"--data_json {data_json_path} " \
                   f"--version {self.detail.upgrade.current_app.app_version} " \

@@ -1,8 +1,10 @@
 import base64
 import hashlib
+import os
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5, AES
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from Crypto import Random
 
 from django.conf import settings
 
@@ -44,3 +46,23 @@ def decrypt_rsa(encrypt_str, private_key=settings.PRIVATE_KEY):
     cipher = PKCS1_v1_5.new(rsakey)
     st = base64.b64decode(encrypt_str.encode())
     return cipher.decrypt(st, sentinel="").decode()
+
+
+def rsa_utils(plain_text, action="public"):
+    """
+    action: public 加密  private解密
+    """
+    # 伪随机数生成器
+    if action not in ["public", "private"]:
+        return False
+    random_generator = Random.new().read
+    pem_file = os.path.join(settings.PROJECT_DIR, f'config/{action}.pem')
+    with open(pem_file) as f1:
+        key1 = f1.read()
+        key = RSA.import_key(key1)
+    cipher_rsa = PKCS1_v1_5.new(key)
+    if action == "public":
+        cipher_text = base64.b64encode(cipher_rsa.encrypt(plain_text.encode('utf-8')))
+    else:
+        cipher_text = cipher_rsa.decrypt(base64.b64decode(plain_text), random_generator)
+    return cipher_text.decode('utf-8')

@@ -26,7 +26,6 @@ import {
   CloseCircleFilled,
 } from "@ant-design/icons";
 import {
-  MessageTip,
   isChineseChar,
   isNumberChar,
   isValidIpChar,
@@ -41,22 +40,123 @@ import { useState, useRef } from "react";
 import star from "./asterisk.svg";
 import XLSX from "xlsx";
 import { OmpTable } from "@/components";
-// import BMF from 'browser-md5-file';
 
-// let bmf = new BMF()
-// const [modalForm] = Form.useForm();
+const msgMap = {
+  "en-US": {
+    dataFolderMsg: "Please ensure sufficient disk space",
+    usernameMsg: (
+      <span style={{ fontSize: 10 }}>
+        When using a
+        <strong
+          style={{
+            fontWeight: 700,
+            color: "#595959",
+            margin: "0 2px 0 2px",
+          }}
+        >
+          user without sudo
+        </strong>
+        , please click
+        <a
+          style={{
+            fontWeight: 700,
+            margin: "0 2px 0 2px",
+          }}
+          onClick={() => {
+            let a = document.createElement("a");
+            a.href = apiRequest.machineManagement.downInitScript;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+        >
+          here
+        </a>
+        to download the init host script and execute it
+      </span>
+    ),
+    userMsg: "After adding, users cannot modify it",
+    uploadMsg: "Click or drag the file here to upload",
+    verifyFiled: "Data verification failed",
+    verifyPassd: "Data verification passed",
+    pleaseEdit: "Please modify the template and upload again",
+    addSuccess: "Successfully added host",
+    addTotalLeft: "Add a total of",
+    addTotalRight: "hosts",
+    invalidMsg: "Data is invalid",
+    existsMsg: "Already exists",
+    lengthMsg: "Length from 4 to 64",
+    fileTureMsg: "File parsing succeed",
+    fileFalseMsg: "File parsing failed",
+    fileSizeMsg: "File size must be less than 10M",
+    fileFormatMsg: "File format must be xlsx",
+    fileNoDataMsg:
+      "There is no valid data in the file parsing result. Please check the file content",
+  },
+  "zh-CN": {
+    dataFolderMsg: "请确保磁盘空间充足",
+    usernameMsg: (
+      <span style={{ fontSize: 10 }}>
+        使用
+        <strong
+          style={{
+            fontWeight: 700,
+            color: "#595959",
+            margin: "0 1px 0 1px",
+          }}
+        >
+          无sudo权限普通用户
+        </strong>
+        时，请点击
+        <a
+          style={{
+            fontWeight: 700,
+            margin: "0 1px 0 1px",
+          }}
+          onClick={() => {
+            let a = document.createElement("a");
+            a.href = apiRequest.machineManagement.downInitScript;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+        >
+          这里
+        </a>
+        下载主机初始化脚本，并手动执行
+      </span>
+    ),
+    userMsg: "添加主机后用户不可修改",
+    uploadMsg: "点击或将文件拖拽到这里上传",
+    verifyFiled: "数据校验失败",
+    verifyPassd: "数据校验通过",
+    pleaseEdit: "请修改模板后重新上传",
+    addSuccess: "添加主机成功",
+    addTotalLeft: "添加共计",
+    addTotalRight: "台主机",
+    invalidMsg: "数据非法",
+    existsMsg: "已存在",
+    lengthMsg: "长度 4 ～ 64",
+    fileTureMsg: "文件解析成功",
+    fileFalseMsg: "文件解析失败",
+    fileSizeMsg: "文件大小必须小于10M",
+    fileFormatMsg: "文件格式必须为xlsx",
+    fileNoDataMsg: "文件解析结果中无有效数据，请检查文件内容",
+  },
+};
 
+// 添加主机 modal
 export const AddMachineModal = ({
   loading,
   visibleHandle,
-  onFinish,
   createHost,
-  msgInfo,
   setLoading,
+  context,
+  locale,
 }) => {
   const [modalForm] = Form.useForm();
   const [modalLoading, setmodalLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   const timer = useRef(null);
   const timer2 = useRef(null);
@@ -65,16 +165,19 @@ export const AddMachineModal = ({
       loading={modalLoading ? modalLoading : loading}
       setLoading={setLoading}
       visibleHandle={visibleHandle}
-      okBtnText={modalLoading ? "校验中" : loading ? "创建中" : null}
+      okBtnText={
+        modalLoading ? context.verifying : loading ? context.creating : null
+      }
       title={
         <span>
           <span style={{ position: "relative", left: "-10px" }}>
             <PlusSquareOutlined />
           </span>
-          <span>创建主机信息</span>
+          <span>{context.add + context.ln + context.host}</span>
         </span>
       }
       form={modalForm}
+      context={context}
       onFinish={(data) => {
         createHost(data);
         //onFinish("post", data);
@@ -84,29 +187,23 @@ export const AddMachineModal = ({
         port: 22,
         operate_system: "CentOS",
         username: "root",
-        use_ntpd: true,
+        use_ntpd: false,
       }}
     >
-      <MessageTip
-        msg={msgInfo.msg}
-        setMsgShow={msgInfo.setMsgShow}
-        msgShow={msgInfo.msgShow}
-      />
       <div
         style={{
           transition: "all .2s ease-in",
           position: "relative",
-          top: msgInfo.msgShow ? 0 : -24,
         }}
       >
         <Form.Item
-          label="实例名称"
+          label={context.instanceName}
           name="instance_name"
           key="instance_name"
           rules={[
             {
               required: true,
-              message: "请输入实例名称",
+              message: context.input + context.ln + context.instanceName,
             },
             {
               validator: (rule, value, callback) => {
@@ -122,13 +219,13 @@ export const AddMachineModal = ({
                 ) {
                   if (!isExpression(value)) {
                     if (isChineseChar(value)) {
-                      return Promise.reject(`实例名称不支持中文`);
+                      return Promise.reject(msgMap[locale].invalidMsg);
                     } else {
                       if (value.length > 16) {
                         return Promise.resolve("success");
                       } else {
                         if (isSpace(value)) {
-                          return Promise.reject("实例名称不支持空格");
+                          return Promise.reject(msgMap[locale].invalidMsg);
                         }
                         return new Promise((resolve, rej) => {
                           if (timer.current) {
@@ -146,7 +243,7 @@ export const AddMachineModal = ({
                                   if (res.data.data) {
                                     resolve("success");
                                   } else {
-                                    rej(`实例名称已存在`);
+                                    rej(msgMap[locale].existsMsg);
                                   }
                                 }
                               })
@@ -159,48 +256,49 @@ export const AddMachineModal = ({
                       }
                     }
                   } else {
-                    return Promise.reject("实例名称不支持表情");
+                    return Promise.reject(msgMap[locale].invalidMsg);
                   }
                 } else {
-                  return Promise.reject(`实例名称开头只支持字母、数字或"-"`);
+                  return Promise.reject(msgMap[locale].invalidMsg);
                 }
               },
             },
           ]}
         >
-          <Input maxLength={16} placeholder={"请输入实例名称"} />
+          <Input
+            maxLength={16}
+            placeholder={context.input + context.ln + context.instanceName}
+          />
         </Form.Item>
 
         <Form.Item
-          label="系统平台"
+          label={context.system}
           name="operate_system"
           key="operate_system"
           rules={[
             {
               required: true,
-              message: "请选择系统平台",
+              message: context.select + context.ln + context.system,
             },
           ]}
         >
-          <Select placeholder={"请选择系统平台"}>
+          <Select placeholder={context.select + context.ln + context.system}>
             <Select.Option value="CentOS">CentOS</Select.Option>
             <Select.Option value="RedHat">RedHat</Select.Option>
           </Select>
         </Form.Item>
 
         <Form.Item
-          label="数据分区"
+          label={context.dataFolder}
           name="data_folder"
           key="data_folder"
           extra={
-            <span style={{ fontSize: 10 }}>
-              应用组件默认安装到数据分区,请确保具有足够空间
-            </span>
+            <span style={{ fontSize: 10 }}>{msgMap[locale].dataFolderMsg}</span>
           }
           rules={[
             {
               required: true,
-              message: "请输入数据分区",
+              message: context.input + context.ln + context.dataFolder,
             },
             {
               validator: (rule, value, callback) => {
@@ -213,24 +311,23 @@ export const AddMachineModal = ({
                       if (!reg.test(value)) {
                         return Promise.resolve("success");
                       } else {
-                        return Promise.reject(
-                          `数据分区只支持字母、数字、"/"、"-"和"_"`
-                        );
+                        return Promise.reject(msgMap[locale].invalidMsg);
                       }
                     } else {
-                      return Promise.reject(
-                        `数据分区只支持字母、数字、"/"、"-"和"_"`
-                      );
+                      return Promise.reject(msgMap[locale].invalidMsg);
                     }
                   } else {
-                    return Promise.reject(`数据分区开头必须为"/"`);
+                    return Promise.reject(msgMap[locale].invalidMsg);
                   }
                 }
               },
             },
           ]}
         >
-          <Input maxLength={255} placeholder={"请输入数据分区"} />
+          <Input
+            maxLength={255}
+            placeholder={context.input + context.ln + context.dataFolder}
+          />
         </Form.Item>
 
         <Form.Item
@@ -242,24 +339,32 @@ export const AddMachineModal = ({
                 src={star}
                 style={{ position: "relative", top: -2, left: -3 }}
               />
-              IP地址
+              {context.ip + " & " + context.port}
             </span>
           }
           useforminstanceinvalidator="true"
           rules={[
-            // {
-            //   required: true,
-            //   message: "请输入IP地址或端口号",
-            // },
             {
               validator: (rule, v, callback) => {
                 let value = modalForm.getFieldValue("IPtext");
                 let portValue = modalForm.getFieldValue("port");
                 if (!value) {
-                  return Promise.reject("请输入IP地址或端口号");
+                  return Promise.reject(
+                    context.input +
+                      context.ln +
+                      context.ip +
+                      " & " +
+                      context.port
+                  );
                 }
                 if (!portValue) {
-                  return Promise.reject("请输入IP地址或端口号");
+                  return Promise.reject(
+                    context.input +
+                      context.ln +
+                      context.ip +
+                      " & " +
+                      context.port
+                  );
                 }
                 if (isValidIpChar(value)) {
                   return new Promise((resolve, rej) => {
@@ -278,7 +383,7 @@ export const AddMachineModal = ({
                             if (res.data.data) {
                               resolve("success");
                             } else {
-                              rej(`ip地址已存在`);
+                              rej(msgMap[locale].existsMsg);
                             }
                           }
                         })
@@ -289,7 +394,7 @@ export const AddMachineModal = ({
                     }, 600);
                   });
                 } else {
-                  return Promise.reject("请输入正确格式的IP地址");
+                  return Promise.reject(msgMap[locale].invalidMsg);
                 }
               },
             },
@@ -303,16 +408,14 @@ export const AddMachineModal = ({
                 noStyle
                 seforminstanceinvalidator="true"
               >
-                <Input placeholder={"例如: 192.168.10.10"} />
+                <Input placeholder={context.input + context.ln + context.ip} />
               </Form.Item>
             </Col>
             <span style={{ display: "flex", alignItems: "center" }}>:</span>
             <Col span={4}>
               <Form.Item name="port" key="port" noStyle>
                 <InputNumber
-                  onChange={() => {
-                    modalForm.validateFields(["ip"]);
-                  }}
+                  onChange={() => modalForm.validateFields(["ip"])}
                   style={{ width: 82 }}
                   min={1}
                   max={65535}
@@ -323,44 +426,14 @@ export const AddMachineModal = ({
         </Form.Item>
 
         <Form.Item
-          label="用户名"
+          label={context.username}
           name="username"
           key="username"
-          extra={
-            <span style={{ fontSize: 10 }}>
-              使用
-              <strong
-                style={{
-                  fontWeight: 700,
-                  color: "#595959",
-                  margin: "0 1px 0 1px",
-                }}
-              >
-                普通用户
-              </strong>
-              纳管主机时，为确保正常安装服务，请
-              <a
-                style={{
-                  fontWeight: 700,
-                  margin: "0 1px 0 1px",
-                }}
-                onClick={() => {
-                  let a = document.createElement("a");
-                  a.href = apiRequest.machineManagement.downInitScript;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                }}
-              >
-                下载
-              </a>
-              主机初始化脚本，并手动执行
-            </span>
-          }
+          extra={msgMap[locale].usernameMsg}
           rules={[
             {
               required: true,
-              message: "请输入用户名",
+              message: context.input + context.ln + context.username,
             },
             {
               validator: (rule, value, callback) => {
@@ -370,18 +443,16 @@ export const AddMachineModal = ({
                   let startChar = value.slice(0, 1);
                   if (!startReg.test(startChar)) {
                     if (isChineseChar(value)) {
-                      return Promise.reject(`用户名只支持数字、字母、"-"或"_"`);
+                      return Promise.reject(msgMap[locale].invalidMsg);
                     } else {
                       if (!reg.test(value)) {
                         return Promise.resolve("success");
                       } else {
-                        return Promise.reject(
-                          `用户名只支持数字、字母、"-"或"_"`
-                        );
+                        return Promise.reject(msgMap[locale].invalidMsg);
                       }
                     }
                   } else {
-                    return Promise.reject(`用户名开头只支持数字、字母、或"_"`);
+                    return Promise.reject(msgMap[locale].invalidMsg);
                   }
                 } else {
                   return Promise.resolve("success");
@@ -391,43 +462,43 @@ export const AddMachineModal = ({
           ]}
         >
           <Input
-            // suffix={
-            //   <Tooltip title="请使用root或具有sudo免密码权限的用户">
-            //     <InfoCircleOutlined style={{ color: "rgba(0,0,0,.45)" }} />
-            //   </Tooltip>
-            // }
             maxLength={16}
-            placeholder={"请输入用户名"}
+            placeholder={context.input + context.ln + context.username}
+            suffix={
+              <Tooltip title={msgMap[locale].userMsg}>
+                <InfoCircleOutlined style={{ color: "rgba(0,0,0,.45)" }} />
+              </Tooltip>
+            }
           />
         </Form.Item>
 
         <Form.Item
-          label="密码"
+          label={context.password}
           name="password"
           key="password"
           rules={[
             {
               required: true,
-              message: "请输入密码",
+              message: context.input + context.ln + context.password,
             },
             {
               validator: (rule, value, callback) => {
                 if (value) {
                   if (!isExpression(value)) {
                     if (isChineseChar(value)) {
-                      return Promise.reject("密码不支持中文");
+                      return Promise.reject(msgMap[locale].invalidMsg);
                     } else {
-                      if (value.length < 8) {
-                        return Promise.reject("密码长度为8到64位");
+                      if (value.length < 4) {
+                        return Promise.reject(msgMap[locale].lengthMsg);
                       } else {
                         if (isSpace(value)) {
-                          return Promise.reject("密码不支持空格");
+                          return Promise.reject(msgMap[locale].invalidMsg);
                         }
                         return Promise.resolve("success");
                       }
                     }
                   } else {
-                    return Promise.reject(`密码不支持输入表情`);
+                    return Promise.reject(msgMap[locale].invalidMsg);
                   }
                 } else {
                   return Promise.resolve("success");
@@ -436,33 +507,38 @@ export const AddMachineModal = ({
             },
           ]}
         >
-          <Input.Password maxLength={64} placeholder={"请输入密码"} />
+          <Input.Password
+            maxLength={64}
+            placeholder={context.input + context.ln + context.password}
+          />
         </Form.Item>
+
         <Form.Item
-          label="安装时间同步服务"
+          label={context.install + context.ln + context.ntpdate}
           name="use_ntpd"
           key="use_ntpd"
           valuePropName="checked"
-          extra={
-            <span style={{ fontSize: 10 }}>
-              开启后，将对纳管主机安装ntpdate服务
-            </span>
-          }
         >
           <Switch
             style={{ borderRadius: "10px" }}
             onChange={(e) => setIsOpen(e)}
           />
         </Form.Item>
+
         {isOpen && (
           <Form.Item
-            label="时间同步服务器"
+            label={context.ntpdate + context.ln + context.ip}
             name="ntpd_server"
             key="ntpd_server"
             rules={[
               {
                 required: true,
-                message: "请输入时间同步服务器",
+                message:
+                  context.input +
+                  context.ln +
+                  context.ntpdate +
+                  context.ln +
+                  context.ip,
               },
               {
                 validator: (rule, value, callback) => {
@@ -470,7 +546,7 @@ export const AddMachineModal = ({
                     if (isValidIpChar(value)) {
                       return Promise.resolve("success");
                     } else {
-                      return Promise.reject("请输入正确格式的IP地址");
+                      return Promise.reject(msgMap[locale].invalidMsg);
                     }
                   } else {
                     return Promise.resolve("success");
@@ -479,7 +555,15 @@ export const AddMachineModal = ({
               },
             ]}
           >
-            <Input placeholder={"例如: 192.168.10.10"} />
+            <Input
+              placeholder={
+                context.input +
+                context.ln +
+                context.ntpdate +
+                context.ln +
+                context.ip
+              }
+            />
           </Form.Item>
         )}
       </div>
@@ -487,39 +571,38 @@ export const AddMachineModal = ({
   );
 };
 
+// 编辑主机 modal
 export const UpDateMachineModal = ({
   loading,
   visibleHandle,
-  onFinish,
   createHost,
-  msgInfo,
   row,
   setLoading,
+  context,
+  locale,
 }) => {
   const [modalForm] = Form.useForm();
-  // console.log(row)
   const [modalLoading, setmodalLoading] = useState(false);
   const timer = useRef(null);
-  const timer2 = useRef(null);
   return (
     <OmpModal
       loading={modalLoading ? modalLoading : loading}
       setLoading={setLoading}
-      okBtnText={modalLoading ? "校验中" : loading ? "修改中" : null}
+      okBtnText={
+        modalLoading ? context.verifying : loading ? context.edit : null
+      }
       visibleHandle={visibleHandle}
       title={
         <span>
           <span style={{ position: "relative", left: "-10px" }}>
             <FormOutlined />
           </span>
-          <span>修改主机信息</span>
+          <span>{context.edit + context.ln + context.host}</span>
         </span>
       }
       form={modalForm}
-      onFinish={(data) => {
-        createHost(data);
-        //onFinish("post", data);
-      }}
+      context={context}
+      onFinish={(data) => createHost(data)}
       initialValues={{
         instance_name: row.instance_name,
         IPtext: row.ip,
@@ -531,26 +614,20 @@ export const UpDateMachineModal = ({
         password: row.password && window.atob(row.password),
       }}
     >
-      <MessageTip
-        msg={msgInfo.msg}
-        setMsgShow={msgInfo.setMsgShow}
-        msgShow={msgInfo.msgShow}
-      />
       <div
         style={{
           transition: "all .2s ease-in",
           position: "relative",
-          top: msgInfo.msgShow ? 0 : -24,
         }}
       >
         <Form.Item
-          label="实例名称"
+          label={context.instanceName}
           name="instance_name"
           key="instance_name"
           rules={[
             {
               required: true,
-              message: "请输入实例名称",
+              message: context.input + context.ln + context.instanceName,
             },
             {
               validator: (rule, value, callback) => {
@@ -566,13 +643,13 @@ export const UpDateMachineModal = ({
                 ) {
                   if (!isExpression(value)) {
                     if (isChineseChar(value)) {
-                      return Promise.reject(`实例名称不支持中文`);
+                      return Promise.reject(msgMap[locale].invalidMsg);
                     } else {
                       if (value.length > 16) {
                         return Promise.resolve("success");
                       } else {
                         if (isSpace(value)) {
-                          return Promise.reject("实例名称不支持空格");
+                          return Promise.reject(msgMap[locale].invalidMsg);
                         }
                         return new Promise((resolve, rej) => {
                           if (timer.current) {
@@ -591,7 +668,7 @@ export const UpDateMachineModal = ({
                                   if (res.data.data) {
                                     resolve("success");
                                   } else {
-                                    rej(res.data.message);
+                                    rej(msgMap[locale].existsMsg);
                                   }
                                 }
                               })
@@ -604,48 +681,49 @@ export const UpDateMachineModal = ({
                       }
                     }
                   } else {
-                    return Promise.reject("实例名称不支持表情");
+                    return Promise.reject(msgMap[locale].invalidMsg);
                   }
                 } else {
-                  return Promise.reject(`实例名称开头只支持字母、数字或"-"`);
+                  return Promise.reject(msgMap[locale].invalidMsg);
                 }
               },
             },
           ]}
         >
-          <Input maxLength={16} placeholder={"请输入实例名称"} />
+          <Input
+            maxLength={16}
+            placeholder={context.input + context.ln + context.instanceName}
+          />
         </Form.Item>
 
         <Form.Item
-          label="系统平台"
+          label={context.system}
           name="operate_system"
           key="operate_system"
           rules={[
             {
               required: true,
-              message: "请选择系统平台",
+              message: context.select + context.ln + context.system,
             },
           ]}
         >
-          <Select placeholder={"请选择系统平台"}>
+          <Select placeholder={context.select + context.ln + context.system}>
             <Select.Option value="CentOS">CentOS</Select.Option>
             <Select.Option value="RedHat">RedHat</Select.Option>
           </Select>
         </Form.Item>
 
         <Form.Item
-          label="数据分区"
+          label={context.dataFolder}
           name="data_folder"
           key="data_folder"
           extra={
-            <span style={{ fontSize: 10 }}>
-              应用组件默认安装到数据分区,请确保具有足够空间
-            </span>
+            <span style={{ fontSize: 10 }}>{msgMap[locale].dataFolderMsg}</span>
           }
           rules={[
             {
               required: true,
-              message: "请输入数据分区",
+              message: context.input + context.ln + context.dataFolder,
             },
             {
               validator: (rule, value, callback) => {
@@ -658,24 +736,23 @@ export const UpDateMachineModal = ({
                       if (!reg.test(value)) {
                         return Promise.resolve("success");
                       } else {
-                        return Promise.reject(
-                          `数据分区只支持字母、数字、"/"、"-"和"_"`
-                        );
+                        return Promise.reject(msgMap[locale].invalidMsg);
                       }
                     } else {
-                      return Promise.reject(
-                        `数据分区只支持字母、数字、"/"、"-"和"_"`
-                      );
+                      return Promise.reject(msgMap[locale].invalidMsg);
                     }
                   } else {
-                    return Promise.reject(`数据分区开头必须为"/"`);
+                    return Promise.reject(msgMap[locale].invalidMsg);
                   }
                 }
               },
             },
           ]}
         >
-          <Input maxLength={255} placeholder={"请输入数据分区"} />
+          <Input
+            maxLength={255}
+            placeholder={context.input + context.ln + context.dataFolder}
+          />
         </Form.Item>
 
         <Form.Item
@@ -687,7 +764,7 @@ export const UpDateMachineModal = ({
                 src={star}
                 style={{ position: "relative", top: -2, left: -3 }}
               />
-              IP地址
+              {context.ip + " & " + context.port}
             </span>
           }
           rules={[
@@ -696,10 +773,22 @@ export const UpDateMachineModal = ({
                 let value = modalForm.getFieldValue("IPtext");
                 let portValue = modalForm.getFieldValue("port");
                 if (!value) {
-                  return Promise.reject("请输入IP地址或端口号");
+                  return Promise.reject(
+                    context.input +
+                      context.ln +
+                      context.ip +
+                      " & " +
+                      context.port
+                  );
                 }
                 if (!portValue) {
-                  return Promise.reject("请输入IP地址或端口号");
+                  return Promise.reject(
+                    context.input +
+                      context.ln +
+                      context.ip +
+                      " & " +
+                      context.port
+                  );
                 }
                 if (isValidIpChar(value)) {
                   return new Promise((resolve, rej) => {
@@ -715,7 +804,7 @@ export const UpDateMachineModal = ({
                           if (res.data.data) {
                             resolve("success");
                           } else {
-                            rej(res.data.message);
+                            rej(msgMap[locale].existsMsg);
                           }
                         }
                       })
@@ -725,7 +814,7 @@ export const UpDateMachineModal = ({
                       });
                   });
                 } else {
-                  return Promise.reject("请输入正确格式的IP地址");
+                  return Promise.reject(msgMap[locale].invalidMsg);
                 }
               },
             },
@@ -744,9 +833,7 @@ export const UpDateMachineModal = ({
                   style={{ width: 82 }}
                   min={1}
                   max={65535}
-                  onChange={() => {
-                    modalForm.validateFields(["ip"]);
-                  }}
+                  onChange={() => modalForm.validateFields(["ip"])}
                 />
               </Form.Item>
             </Col>
@@ -754,7 +841,7 @@ export const UpDateMachineModal = ({
         </Form.Item>
 
         <Form.Item
-          label="用户名"
+          label={context.username}
           name="username"
           key="username"
           rules={[
@@ -762,39 +849,14 @@ export const UpDateMachineModal = ({
               required: true,
               message: "请输入用户名",
             },
-            {
-              validator: (rule, value, callback) => {
-                var reg = /[^a-zA-Z0-9\_\-]/g;
-                var startReg = /[^a-zA-Z0-9\_]/g;
-                if (value) {
-                  let startChar = value.slice(0, 1);
-                  if (!startReg.test(startChar)) {
-                    if (isChineseChar(value)) {
-                      return Promise.reject(`用户名只支持数字、字母、"-"或"_"`);
-                    } else {
-                      if (!reg.test(value)) {
-                        return Promise.resolve("success");
-                      } else {
-                        return Promise.reject(
-                          `用户名只支持数字、字母、"-"或"_"`
-                        );
-                      }
-                    }
-                  } else {
-                    return Promise.reject(`用户名开头只支持数字、字母、或"_"`);
-                  }
-                } else {
-                  return Promise.resolve("success");
-                }
-              },
-            },
           ]}
         >
           <Input
             maxLength={16}
-            placeholder={"请输入用户名"}
+            placeholder={context.input + context.ln + context.username}
+            disabled
             suffix={
-              <Tooltip title="请使用root或具有sudo免密码权限的用户">
+              <Tooltip title={msgMap[locale].userMsg}>
                 <InfoCircleOutlined style={{ color: "rgba(0,0,0,.45)" }} />
               </Tooltip>
             }
@@ -802,32 +864,32 @@ export const UpDateMachineModal = ({
         </Form.Item>
 
         <Form.Item
-          label="密码"
+          label={context.password}
           name="password"
           key="password"
           rules={[
             {
               required: true,
-              message: "请输入密码",
+              message: context.input + context.ln + context.password,
             },
             {
               validator: (rule, value, callback) => {
                 if (value) {
                   if (!isExpression(value)) {
                     if (isChineseChar(value)) {
-                      return Promise.reject("密码不支持中文");
+                      return Promise.reject(msgMap[locale].invalidMsg);
                     } else {
-                      if (value.length < 8) {
-                        return Promise.reject("密码长度为8到64位");
+                      if (value.length < 4) {
+                        return Promise.reject(msgMap[locale].lengthMsg);
                       } else {
                         if (isSpace(value)) {
-                          return Promise.reject("密码不支持空格");
+                          return Promise.reject(msgMap[locale].invalidMsg);
                         }
                         return Promise.resolve("success");
                       }
                     }
                   } else {
-                    return Promise.reject(`密码不支持输入表情`);
+                    return Promise.reject(msgMap[locale].invalidMsg);
                   }
                 } else {
                   return Promise.resolve("success");
@@ -836,7 +898,10 @@ export const UpDateMachineModal = ({
             },
           ]}
         >
-          <Input.Password maxLength={64} placeholder={"请输入密码"} />
+          <Input.Password
+            maxLength={64}
+            placeholder={context.input + context.ln + context.password}
+          />
         </Form.Item>
       </div>
     </OmpModal>
@@ -879,35 +944,26 @@ class UploadExcelComponent extends React.Component {
       onChange(info) {
         const { status } = info.file;
         if (status === "done") {
-          //console.log(info.file);
-          message.success(`${info.file.name} 文件解析成功`);
+          message.success(msgMap[_this.props.locale].fileTureMsg);
         } else if (status === "error") {
-          message.error(
-            `${info.file.name} 文件解析失败, 请确保文件内容格式符合规范后重新上传`
-          );
+          message.error(msgMap[_this.props.locale].fileFalseMsg);
         }
       },
       beforeUpload(file, fileList) {
-        //console.log(file);
-        // bmf.md5(file,(err,md5)=>{
-        //   console.log(err,md5,"=====?---")
-        // })
         // 校验文件大小
         const fileSize = file.size / 1024 / 1024; //单位是M
-        //console.log(fileSize);
         if (Math.ceil(fileSize) > 10) {
-          message.error("仅支持传入10M以内文件");
+          message.error(msgMap[_this.props.locale].fileSizeMsg);
           return Upload.LIST_IGNORE;
         }
         if (!/\.(xlsx)$/.test(file.name)) {
-          message.error("仅支持传入.xlsx文件");
+          message.error(msgMap[_this.props.locale].fileFormatMsg);
           return Upload.LIST_IGNORE;
         }
       },
       customRequest(e) {
         _this.readerData(e.file).then(
           (msg) => {
-            //console.log(e);
             e.onSuccess();
           },
           () => {
@@ -932,7 +988,6 @@ class UploadExcelComponent extends React.Component {
           const worksheet = workbook.Sheets[firstSheetName];
           const header = getHeaderRow(worksheet);
           const results = XLSX.utils.sheet_to_json(worksheet);
-          //console.log(header, results, "====");
           this.generateData({ header, results });
           resolve();
         } catch (error) {
@@ -956,7 +1011,7 @@ class UploadExcelComponent extends React.Component {
             <CloudUploadOutlined />
           </p>
           <p style={{ textAlign: "center", color: "#575757" }}>
-            点击或将文件拖拽到这里上传
+            {msgMap[this.props.locale].uploadMsg}
           </p>
           <p
             style={{
@@ -966,7 +1021,7 @@ class UploadExcelComponent extends React.Component {
               paddingTop: 10,
             }}
           >
-            支持扩展名: .xlsx
+            {this.props.context.fileExtension + ": .xlsx"}
           </p>
         </Upload.Dragger>
       </div>
@@ -974,43 +1029,40 @@ class UploadExcelComponent extends React.Component {
   }
 }
 
-/* 批量导入主机 */
+// 批量添加主机
 export const BatchImportMachineModal = ({
   batchImport,
   setBatchImport,
   refreshData,
+  context,
+  locale,
 }) => {
   const [dataSource, setDataSource] = useState([]);
   const [columns, setColumns] = useState([]);
-
   // 校验后的表格的colums和dataSource也是不确定的
   // 因为不单是在表格展示中需要区分校验成功与否，在这里定义多个数据源用以区分是否成功
   const [tableCorrectData, setTableCorrectData] = useState([]);
   const [tableErrorData, setTableErrorData] = useState([]);
   const [tableColumns, setTableColumns] = useState([]);
-
   const [stepNum, setStepNum] = useState(0);
-
   const [loading, setLoading] = useState(false);
 
   // 失败的columns
   const errorColumns = [
     {
-      title: "行数",
+      title: context.row,
       key: "row",
       dataIndex: "row",
       align: "center",
-      //render: nonEmptyProcessing,
       width: 60,
       ellipsis: true,
       fixed: "left",
     },
     {
-      title: "实例名称",
+      title: context.instanceName,
       key: "instance_name",
       dataIndex: "instance_name",
       align: "center",
-      //render: nonEmptyProcessing,
       width: 140,
       ellipsis: true,
       //fixed: "left",
@@ -1023,11 +1075,9 @@ export const BatchImportMachineModal = ({
       },
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "ip",
       dataIndex: "ip",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 140,
       render: (text) => {
@@ -1038,14 +1088,11 @@ export const BatchImportMachineModal = ({
         );
       },
       ellipsis: true,
-      //fixed: "left"
     },
     {
-      title: "端口",
+      title: context.port,
       key: "port",
       dataIndex: "port",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 80,
       render: (text) => {
@@ -1055,14 +1102,11 @@ export const BatchImportMachineModal = ({
           </Tooltip>
         );
       },
-      //ellipsis: true,
     },
     {
-      title: "数据分区",
+      title: context.dataFolder,
       key: "data_folder",
       dataIndex: "data_folder",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 180,
       render: (text) => {
@@ -1075,20 +1119,22 @@ export const BatchImportMachineModal = ({
       ellipsis: true,
     },
     {
-      title: "是否安装时间同步",
+      title: context.install + context.ln + context.ntpdate,
       key: "use_ntpd",
       dataIndex: "use_ntpd",
       align: "center",
       width: 120,
       render: (text) => {
         return (
-          <span>{text === false ? "否" : text === true ? "是" : "-"}</span>
+          <span>
+            {text === false ? context.no : text === true ? context.yes : "-"}
+          </span>
         );
       },
       ellipsis: true,
     },
     {
-      title: "时间同步服务器",
+      title: context.ntpdate + context.ln + context.ip,
       key: "ntpd_server",
       dataIndex: "ntpd_server",
       align: "center",
@@ -1103,12 +1149,10 @@ export const BatchImportMachineModal = ({
       ellipsis: true,
     },
     {
-      title: "失败原因",
+      title: context.error + context.ln + context.description,
       key: "validate_error",
       dataIndex: "validate_error",
       fixed: "right",
-      // sorter: (a, b) => a.ip - b.ip,
-      // sortDirections: ["descend", "ascend"],
       align: "center",
       width: 240,
       render: (text) => {
@@ -1125,11 +1169,10 @@ export const BatchImportMachineModal = ({
   // 成功的columns
   const correctColumns = [
     {
-      title: "实例名称",
+      title: context.instanceName,
       key: "instance_name",
       dataIndex: "instance_name",
       align: "center",
-      //render: nonEmptyProcessing,
       width: 140,
       ellipsis: true,
       fixed: "left",
@@ -1142,7 +1185,7 @@ export const BatchImportMachineModal = ({
       },
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "ip",
       dataIndex: "ip",
       align: "center",
@@ -1157,7 +1200,7 @@ export const BatchImportMachineModal = ({
       ellipsis: true,
     },
     {
-      title: "端口",
+      title: context.port,
       key: "port",
       dataIndex: "port",
       align: "center",
@@ -1171,7 +1214,7 @@ export const BatchImportMachineModal = ({
       },
     },
     {
-      title: "数据分区",
+      title: context.dataFolder,
       key: "data_folder",
       dataIndex: "data_folder",
       align: "center",
@@ -1186,7 +1229,7 @@ export const BatchImportMachineModal = ({
       ellipsis: true,
     },
     {
-      title: "用户名",
+      title: context.username,
       key: "username",
       dataIndex: "username",
       align: "center",
@@ -1201,7 +1244,7 @@ export const BatchImportMachineModal = ({
       ellipsis: true,
     },
     {
-      title: "密码",
+      title: context.password,
       key: "password",
       dataIndex: "password",
       align: "center",
@@ -1216,7 +1259,7 @@ export const BatchImportMachineModal = ({
       ellipsis: true,
     },
     {
-      title: "是否安装时间同步",
+      title: context.install + context.ln + context.ntpdate,
       key: "use_ntpd",
       dataIndex: "use_ntpd",
       align: "center",
@@ -1229,7 +1272,7 @@ export const BatchImportMachineModal = ({
       ellipsis: true,
     },
     {
-      title: "时间同步服务器",
+      title: context.ntpdate + context.ln + context.ip,
       key: "ntpd_server",
       dataIndex: "ntpd_server",
       align: "center",
@@ -1244,7 +1287,7 @@ export const BatchImportMachineModal = ({
       ellipsis: true,
     },
     {
-      title: "系统",
+      title: context.system,
       key: "operate_system",
       dataIndex: "operate_system",
       align: "center",
@@ -1264,9 +1307,7 @@ export const BatchImportMachineModal = ({
   // 校验数据接口
   const fetchBatchValidate = () => {
     if (dataSource.length == 0) {
-      message.warning(
-        "解析结果中无有效数据，请确保文件内容格式符合规范后重新上传"
-      );
+      message.warning(msgMap[locale].fileNoDataMsg);
       return;
     }
     setLoading(true);
@@ -1298,6 +1339,7 @@ export const BatchImportMachineModal = ({
             result.port = item[key];
             break;
           case "时间同步服务器":
+            if (item[key] === "") break;
             result.use_ntpd = true;
             result.ntpd_server = item[key];
             break;
@@ -1313,7 +1355,7 @@ export const BatchImportMachineModal = ({
         row: item.key,
       };
     });
-    // console.log(queryBody)
+
     // 校验数据
     fetchPost(apiRequest.machineManagement.batchValidate, {
       body: {
@@ -1388,24 +1430,24 @@ export const BatchImportMachineModal = ({
           <span style={{ position: "relative", left: "-10px" }}>
             <ImportOutlined />
           </span>
-          <span>批量创建主机</span>
+          <span>
+            {context.batch +
+              context.ln +
+              context.add +
+              context.ln +
+              context.host}
+          </span>
         </span>
       }
       visible={batchImport}
       footer={null}
       width={800}
       loading={loading}
-      // onFinish={(data) => {
-      //   createHost(data);
-      //   //onFinish("post", data);
-      // }}
       bodyStyle={{
         paddingLeft: 30,
         paddingRight: 30,
       }}
-      onCancel={() => {
-        setBatchImport(false);
-      }}
+      onCancel={() => setBatchImport(false)}
       afterClose={() => {
         setDataSource([]);
         setTableCorrectData([]);
@@ -1413,16 +1455,18 @@ export const BatchImportMachineModal = ({
         setTableColumns([]);
         setStepNum(0);
         setColumns([]);
-        refreshData();
       }}
       destroyOnClose
     >
+      {/* -- 顶部步骤条 -- */}
       <Steps size="small" current={stepNum}>
-        <Steps.Step title="上传文件" />
-        <Steps.Step title="数据校验" />
-        <Steps.Step title="创建结果" />
+        <Steps.Step title={context.upload + context.ln + context.file} />
+        <Steps.Step title={context.verify + context.ln + context.data} />
+        <Steps.Step title={context.result} />
       </Steps>
-      <div style={{ paddingLeft: 30, paddingTop: 30 }}>
+
+      {/* -- step0 上传文件 -- */}
+      <div style={{ paddingLeft: 10, paddingTop: 30 }}>
         <div
           style={{
             visibility: stepNum == 0 ? "visible" : "hidden",
@@ -1430,9 +1474,18 @@ export const BatchImportMachineModal = ({
             overflow: "hidden",
           }}
         >
+          {/* -- 下载模板 -- */}
           <div style={{ display: "flex", alignItems: "center" }}>
-            <div style={{ flex: 1, fontWeight: 500 }}>下载模版: </div>
-            <div style={{ flex: 10, paddingLeft: 20 }}>
+            <div
+              style={{
+                flex: 2,
+                fontWeight: 500,
+                textAlign: "right",
+              }}
+            >
+              {context.downloadTemplate + ":"}
+            </div>
+            <div style={{ flex: 16, paddingLeft: 20 }}>
               <Button
                 icon={<DownloadOutlined />}
                 size="middle"
@@ -1445,15 +1498,27 @@ export const BatchImportMachineModal = ({
                   document.body.removeChild(a);
                 }}
               >
-                点击下载
+                {context.template}
               </Button>
             </div>
           </div>
+
+          {/* -- 上传文件 -- */}
           <div style={{ display: "flex", marginTop: 30 }}>
-            <div style={{ flex: 1, fontWeight: 500 }}>上传文件: </div>
-            <div style={{ flex: 10, paddingLeft: 20 }}>
+            <div
+              style={{
+                flex: 2,
+                fontWeight: 500,
+                textAlign: "right",
+              }}
+            >
+              {context.uploadFile + ":"}
+            </div>
+            <div style={{ flex: 16, paddingLeft: 20 }}>
               {batchImport && (
                 <UploadExcelComponent
+                  context={context}
+                  locale={locale}
                   onRemove={() => {
                     setDataSource([]);
                     setColumns([]);
@@ -1462,7 +1527,6 @@ export const BatchImportMachineModal = ({
                     setTableColumns([]);
                   }}
                   uploadSuccess={({ results, header }) => {
-                    //console.log(results, header);
                     let dataS = results
                       .filter((item) => {
                         if (item["字段名称(请勿编辑)"]?.includes("请勿编辑")) {
@@ -1506,12 +1570,14 @@ export const BatchImportMachineModal = ({
                   type="primary"
                   disabled={columns.length == 0}
                 >
-                  校验
+                  {context.verify}
                 </Button>
               </div>
             </div>
           </div>
         </div>
+
+        {/* -- step1 校验数据 -- */}
         {stepNum == 1 && (
           <>
             {tableErrorData.length > 0 ? (
@@ -1535,9 +1601,9 @@ export const BatchImportMachineModal = ({
                   <CloseCircleFilled
                     style={{ color: "#f73136", fontSize: 30, marginRight: 10 }}
                   />
-                  数据校验失败 !
+                  {msgMap[locale].verifyFiled + " !"}
                 </p>
-                <p style={{ fontSize: 13 }}>请核对并修改信息后，再重新提交</p>
+                <p style={{ fontSize: 13 }}>{msgMap[locale].pleaseEdit}</p>
               </div>
             ) : (
               <div
@@ -1558,7 +1624,7 @@ export const BatchImportMachineModal = ({
                   <CheckCircleFilled
                     style={{ color: "#52c41a", fontSize: 30, marginRight: 10 }}
                   />
-                  数据校验成功 !
+                  {msgMap[locale].verifyPassd + " !"}
                 </p>
               </div>
             )}
@@ -1570,9 +1636,7 @@ export const BatchImportMachineModal = ({
               dataSource={
                 tableErrorData.length > 0 ? tableErrorData : tableCorrectData
               }
-              pagination={{
-                pageSize: 5,
-              }}
+              pagination={{ pageSize: 5 }}
             />
             <div
               style={{
@@ -1582,28 +1646,23 @@ export const BatchImportMachineModal = ({
                 marginTop: 40,
               }}
             >
-              <Button
-                style={{ marginRight: 16 }}
-                onClick={() => {
-                  setStepNum(0);
-                }}
-              >
-                上一步
+              <Button style={{ marginRight: 16 }} onClick={() => setStepNum(0)}>
+                {context.previous}
               </Button>
               <Button
                 loading={loading}
                 type="primary"
                 htmlType="submit"
-                onClick={() => {
-                  fetchBatchImport();
-                }}
+                onClick={() => fetchBatchImport()}
                 disabled={tableErrorData.length > 0}
               >
-                创建
+                {context.add}
               </Button>
             </div>
           </>
         )}
+
+        {/* -- step2 结果 -- */}
         {stepNum == 2 && (
           <>
             <div
@@ -1621,11 +1680,15 @@ export const BatchImportMachineModal = ({
                 <CheckCircleFilled
                   style={{ color: "#52c41a", fontSize: 30, marginRight: 10 }}
                 />
-                主机创建完成 !
+                {msgMap[locale].addSuccess + " !"}
               </p>
             </div>
             <p style={{ textAlign: "center" }}>
-              本次共创建 {tableCorrectData.length} 台主机
+              {msgMap[locale].addTotalLeft +
+                " " +
+                tableCorrectData.length +
+                " " +
+                msgMap[locale].addTotalRight}
             </p>
             <div
               style={{
@@ -1640,10 +1703,11 @@ export const BatchImportMachineModal = ({
                 type="primary"
                 htmlType="submit"
                 onClick={() => {
+                  refreshData();
                   setBatchImport(false);
                 }}
               >
-                完成
+                {context.ok}
               </Button>
             </div>
           </>

@@ -15,32 +15,52 @@ import { apiRequest } from "@/config/requestApi";
 import { handleResponse } from "@/utils/utils";
 import { OmpMessageModal } from "@/components";
 
-//let bmf = new BMF();
+const msgMap = {
+  "en-US": {
+    uploadMsg: "Click or drag the file here to upload",
+    sizeMsg:
+      "The file size does not exceed 4G, and a maximum of 5 files can be uploaded",
+    verifyMsg:
+      "Installation packages that fail verification will not be created",
+    publishLeft: "Publish a total of",
+    publishRight: "services",
+    pathMsg: "Package storage path after publication",
+    exitMsg: "Are you sure to interrupt publishing ?",
+    exitDetailMsg:
+      "Closing will interrupt, and this operation is irreversible.",
+  },
+  "zh-CN": {
+    uploadMsg: "点击或将文件拖拽到这里上传",
+    sizeMsg: "文件大小不超过4G，最多上传5个文件",
+    verifyMsg: "校验失败的安装包不会在应用商店创建",
+    publishLeft: "共计发布",
+    publishRight: "个服务",
+    pathMsg: "发布后的安装包存放路径",
+    exitMsg: "确认中断发布操作吗 ?",
+    exitDetailMsg: "正在进行发布操作，关闭窗口将会中断，此操作不可逆",
+  },
+};
 
 const ReleaseModal = ({
   setReleaseModalVisibility,
   releaseModalVisibility,
   timeUnix,
   refresh,
+  context,
+  locale,
 }) => {
   const [loading, setLoading] = useState(false);
-
   const [filesList, setFilesList] = useState([]);
-
   const [deleteModal, setDeleteModal] = useState(false);
-
   const [dataSource, setDataSource] = useState([]);
-
   const [stepNum, setStepNum] = useState(0);
-
   const isRun = useRef(null);
-
   const timer = useRef(null);
 
   // 失败时的轮训次数标识
   const trainingInRotationNum = useRef(0);
 
-  function checkData() {
+  const checkData = () => {
     // 防止在弹窗关闭后还继续轮训
     if (!isRun.current) {
       return;
@@ -89,10 +109,10 @@ const ReleaseModal = ({
         }
       })
       .finally((e) => {});
-  }
+  };
 
   // 发布的查询
-  function publishCheckData() {
+  const publishCheckData = () => {
     // 防止在弹窗关闭后还继续轮训
     if (!isRun.current) {
       return;
@@ -122,7 +142,6 @@ const ReleaseModal = ({
           });
       })
       .catch((e) => {
-        console.log(e);
         trainingInRotationNum.current++;
         if (trainingInRotationNum.current < 3) {
           setTimeout(() => {
@@ -141,7 +160,7 @@ const ReleaseModal = ({
         }
       })
       .finally((e) => {});
-  }
+  };
 
   // 发布
   const publishApp = () => {
@@ -178,7 +197,7 @@ const ReleaseModal = ({
             <span style={{ position: "relative", left: "-10px" }}>
               <SendOutlined />
             </span>
-            <span>发布</span>
+            <span>{context.upload + context.ln + context.publish}</span>
           </span>
         }
         afterClose={() => {
@@ -212,11 +231,14 @@ const ReleaseModal = ({
         }}
         destroyOnClose
       >
+        {/* -- 顶部步骤条 -- */}
         <Steps size="small" current={stepNum}>
-          <Steps.Step title="上传文件" />
-          <Steps.Step title="数据校验" />
-          <Steps.Step title="发布结果" />
+          <Steps.Step title={context.upload + context.ln + context.file} />
+          <Steps.Step title={context.verify + context.ln + context.data} />
+          <Steps.Step title={context.result} />
         </Steps>
+
+        {/* -- step0 上传文件 -- */}
         {stepNum == 0 && (
           <div style={{ paddingLeft: 30, paddingTop: 30 }}>
             <div
@@ -312,7 +334,7 @@ const ReleaseModal = ({
                       <CloudUploadOutlined />
                     </p>
                     <p style={{ textAlign: "center", color: "#575757" }}>
-                      点击或将文件拖拽到这里上传
+                      {msgMap[locale].uploadMsg}
                     </p>
                     <p
                       style={{
@@ -322,7 +344,7 @@ const ReleaseModal = ({
                         paddingTop: 10,
                       }}
                     >
-                      支持扩展名: .tar 或 .tar.gz 文件大小不超过4G
+                      {context.fileExtension}: .tar / .tar.gz
                     </p>
                     <p
                       style={{
@@ -332,7 +354,7 @@ const ReleaseModal = ({
                         paddingTop: 10,
                       }}
                     >
-                      最多上传5个文件
+                      {msgMap[locale].sizeMsg}
                     </p>
                   </div>
                 </Upload.Dragger>
@@ -357,16 +379,16 @@ const ReleaseModal = ({
                   checkData();
                 }}
               >
-                校验
+                {context.verify}
               </Button>
             </div>
           </div>
         )}
+
+        {/* -- step1 校验数据 -- */}
         {stepNum == 1 && (
           <div style={{ paddingLeft: 30, paddingTop: 30 }}>
-            <p style={{ marginBottom: 30 }}>
-              校验失败的安装包不会在应用商店创建，如相同名称应用已存在，发布后会替换原有安装包
-            </p>
+            <p style={{ marginBottom: 30 }}>{msgMap[locale].verifyMsg}</p>
             {dataSource.map((item, idx) => {
               return (
                 <div
@@ -380,9 +402,10 @@ const ReleaseModal = ({
                 >
                   <div style={{ flex: 2 }}>{item.package_name}</div>
                   <div style={{ flex: 1, textAlign: "right" }}>
+                    {/* -- 通过 -- */}
                     {item.package_status == 0 && (
                       <span style={{ color: "#3cbd35" }}>
-                        校验通过
+                        {context.passed}
                         <CheckCircleFilled
                           style={{
                             fontSize: 18,
@@ -394,9 +417,10 @@ const ReleaseModal = ({
                         />
                       </span>
                     )}
+                    {/* -- 失败 -- */}
                     {item.package_status == 1 && (
                       <span style={{ color: "#fe1937" }}>
-                        校验失败
+                        {context.failed}
                         <CloseCircleFilled
                           style={{
                             fontSize: 18,
@@ -408,27 +432,25 @@ const ReleaseModal = ({
                         />
                       </span>
                     )}
-
+                    {/* -- 校验中 -- */}
                     {item.package_status == 2 && (
                       <span>
-                        校验中...
+                        {context.verifying + "..."}
                         <SyncOutlined
                           spin
                           style={{
                             fontSize: 16,
                             position: "relative",
                             top: 1,
-
                             marginLeft: 10,
-                            //color: "#fe1937",
                           }}
                         />
                       </span>
                     )}
-
+                    {/* -- 网络错误 -- */}
                     {item.package_status == 9 && (
                       <span style={{ color: "#fe1937" }}>
-                        网络错误
+                        {context.network + context.ln + context.error}
                         <CloseCircleFilled
                           style={{
                             fontSize: 18,
@@ -444,7 +466,7 @@ const ReleaseModal = ({
                   <Tooltip placement="right" title={item.error_msg}>
                     <div
                       style={{
-                        flex: 3,
+                        flex: 4,
                         textAlign: "right",
                         overflow: "hidden",
                         paddingLeft: 20,
@@ -474,15 +496,15 @@ const ReleaseModal = ({
                   dataSource.filter((i) => i.package_status == 2).length !== 0
                 }
                 loading={loading}
-                onClick={() => {
-                  publishApp();
-                }}
+                onClick={() => publishApp()}
               >
-                发布
+                {context.publish}
               </Button>
             </div>
           </div>
         )}
+
+        {/* -- step2 结果 -- */}
         {stepNum == 2 && (
           <div style={{ paddingLeft: 30, paddingTop: 30 }}>
             {dataSource.filter((item) => item.package_status == 5).length >
@@ -504,7 +526,7 @@ const ReleaseModal = ({
                       top: 1,
                     }}
                   />
-                  发布中
+                  {context.publishing}
                 </p>
               </div>
             ) : (
@@ -525,15 +547,18 @@ const ReleaseModal = ({
                       top: 1,
                     }}
                   />
-                  发布完成
+                  {context.publish + context.ln + context.completed}
                 </p>
                 <p style={{ textAlign: "center" }}>
-                  本次成功发布{" "}
-                  {dataSource.filter((item) => item.package_status == 3).length}
-                  个 服务
+                  {msgMap[locale].publishLeft +
+                    " " +
+                    dataSource.filter((item) => item.package_status == 3)
+                      .length +
+                    " " +
+                    msgMap[locale].publishRight}
                 </p>
                 <p style={{ textAlign: "center" }}>
-                  发布完成的安装包存放路径:{" "}
+                  {msgMap[locale].pathMsg + ": "}
                   <span style={{ fontWeight: 500, color: "rgba(0,0,0,0.8)" }}>
                     omp/package_hub/verified/
                   </span>{" "}
@@ -658,6 +683,8 @@ const ReleaseModal = ({
           </div>
         )}
       </Modal>
+
+      {/* -- 退出提示 -- */}
       <OmpMessageModal
         zIndex={1100}
         style={{ top: 160 }}
@@ -673,10 +700,9 @@ const ReleaseModal = ({
                 top: 2,
               }}
             />
-            提示
+            {context.reminder}
           </span>
         }
-        //loading={loading}
         onFinish={() => {
           let updatedFile = filesList.filter(
             (i) => i.response && i.response.code == 0
@@ -703,10 +729,8 @@ const ReleaseModal = ({
         }}
       >
         <div style={{ padding: "20px" }}>
-          <p style={{ fontWeight: 500 }}>确认要中断发布操作吗 ？</p>
-          <p style={{ paddingLeft: 20 }}>
-            正在进行发布操作，关闭窗口将会中断，此操作不可逆。
-          </p>
+          <p style={{ fontWeight: 500 }}>{msgMap[locale].exitMsg}</p>
+          <p>{msgMap[locale].exitDetailMsg}</p>
         </div>
       </OmpMessageModal>
     </>

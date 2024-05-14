@@ -161,7 +161,7 @@ def update_config(update_file_folder):
     _run_user = new_config_dic.get("global_user")
 
     # 更新配置文件
-    cmd("{0} {1} {2} {3}".format(
+    cmd("{0} {1} {2} {3} all".format(
         OMP_PYTHON_PATH, OMP_UPDATE_CONFIG_FILE,
         _local_ip, _run_user)
         )

@@ -75,6 +75,7 @@ class OperationLogMiddleware(MiddlewareMixin):
             _username = "匿名用户"
         if _url == reverse("login"):
             _desc = "用户登录"
+            response_toke_user = None
             request_result = ""
             _token = None
             if "token" in response.data:

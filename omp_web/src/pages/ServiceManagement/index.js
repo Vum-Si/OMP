@@ -11,47 +11,47 @@ import { handleResponse, _idxInit, refreshTime } from "@/utils/utils";
 import { fetchGet, fetchPost } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 import { useDispatch } from "react-redux";
-import getColumnsConfig, { DetailHost } from "./config/columns";
+import getColumnsConfig, { DetailService, UrlInfo } from "./config/columns";
 import {
   DownOutlined,
   ExclamationCircleOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import { useHistory, useLocation } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const ServiceManagement = () => {
+const msgMap = {
+  "en-US": {
+    exeLeft: "Are you sure to execute",
+    exeMid: "for a total of",
+    exeRight: "services?",
+  },
+  "zh-CN": {
+    exeLeft: "确认下发",
+    exeMid: "命令到总计",
+    exeRight: "个服务吗?",
+  },
+};
+
+const ServiceManagement = ({ locale }) => {
   const location = useLocation();
-
   const initIp = location.state?.ip;
-
-  console.log(initIp);
-
   const history = useHistory();
-
   const dispatch = useDispatch();
-
   const [loading, setLoading] = useState(false);
-
   const [searchLoading, setSearchLoading] = useState(false);
-
   //选中的数据
   const [checkedList, setCheckedList] = useState([]);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
   const [ipListSource, setIpListSource] = useState([]);
   const [selectValue, setSelectValue] = useState(initIp);
-
   const [labelsData, setLabelsData] = useState([]);
-
   const [instanceSelectValue, setInstanceSelectValue] = useState("");
-
   const [labelControl, setLabelControl] = useState(
     initIp ? "ip" : "instance_name"
   );
-
   const [installationRecordModal, setInstallationRecordModal] = useState(false);
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -59,53 +59,51 @@ const ServiceManagement = () => {
     ordering: "",
     searchParams: {},
   });
-
   const [isShowDrawer, setIsShowDrawer] = useState({
     isOpen: false,
     src: "",
     record: {},
   });
-
   const [showIframe, setShowIframe] = useState({});
-
   // 定义row存数据
   const [row, setRow] = useState({});
-
   // 服务详情历史数据
   const [historyData, setHistoryData] = useState([]);
-
   // 服务详情loading
   const [historyLoading, setHistoryLoading] = useState([]);
-
   //const [showIframe, setShowIframe] = useState({});
-
   const [serviceAcitonModal, setServiceAcitonModal] = useState(false);
   const [currentSerAcitonModal, setCurrentSerAcitonModal] = useState(false);
-
-  // 1启动，2停止，3重启，4删除
-  let operateObj = {
-    1: "启动",
-    2: "停止",
-    3: "重启",
-    4: "删除",
-  };
   const [operateAciton, setOperateAciton] = useState(1);
-
   // 删除操作的提示语
   const [deleteMsg, setDeleteMsg] = useState("");
-
   // 删除操作的再次确认
   const [confirmDeletion, setConfirmDeletion] = useState(false);
-
   // 确认删除的维度
   const [deleteDimension, setDeleteDimension] = useState(false);
+  // 平台访问 url 入口
+  const [isShowUrl, setIsShowUrl] = useState(false);
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlData, setUrlData] = useState([]);
+  const containerRef = useRef(null);
+  const t = useRef(null);
+  const timer = useRef(null);
+  const [log, setLog] = useState("");
+  const context = locales[locale].common;
+  // 1启动，2停止，3重启，4删除
+  let operateObj = {
+    1: context.start,
+    2: context.stop,
+    3: context.restart,
+    4: context.delete,
+  };
 
   // 列表查询
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.appStore.services, {
       params: {
@@ -135,7 +133,7 @@ const ServiceManagement = () => {
         fetchIPlist();
         fetchSearchlist();
       });
-  }
+  };
 
   const fetchIPlist = () => {
     setSearchLoading(true);
@@ -153,18 +151,14 @@ const ServiceManagement = () => {
 
   // 功能模块筛选
   const fetchSearchlist = () => {
-    //setSearchLoading(true);
     fetchGet(apiRequest.appStore.queryLabels)
       .then((res) => {
         handleResponse(res, (res) => {
           setLabelsData(res.data);
-          //console.log(res.data);
         });
       })
       .catch((e) => console.log(e))
-      .finally(() => {
-        //setSearchLoading(false);
-      });
+      .finally(() => {});
   };
 
   const fetchHistoryData = (id) => {
@@ -185,8 +179,6 @@ const ServiceManagement = () => {
       });
   };
 
-  const t = useRef(null);
-
   // 服务的启动｜停止｜重启
   const operateService = (data, operate, del_file) => {
     setLoading(true);
@@ -201,9 +193,10 @@ const ServiceManagement = () => {
       },
     })
       .then((res) => {
-        //console.log(operateObj[operateAciton])
         handleResponse(res, (res) => {
-          message.success(`${operateObj[operateAciton]}操作下发成功`);
+          message.success(
+            operateObj[operateAciton] + context.ln + context.succeeded
+          );
         });
       })
       .catch((e) => console.log(e))
@@ -211,7 +204,6 @@ const ServiceManagement = () => {
         setLoading(false);
         setServiceAcitonModal(false);
         setCurrentSerAcitonModal(false);
-        // setRestartHostAgentModal(false);
         setCheckedList([]);
         setRow({});
         setLoading(true);
@@ -228,12 +220,6 @@ const ServiceManagement = () => {
         }, 1500);
       });
   };
-
-  const containerRef = useRef(null);
-
-  const timer = useRef(null);
-
-  const [log, setLog] = useState("");
 
   const queryServiceInstallHistoryDetail = (id) => {
     fetchGet(apiRequest.appStore.serviceInstallHistoryDetail, {
@@ -272,7 +258,6 @@ const ServiceManagement = () => {
       },
     })
       .then((res) => {
-        //console.log(operateObj[operateAciton])
         handleResponse(res, (res) => {
           if (res && res.data) {
             let key = res.data?.split(":")[0];
@@ -299,6 +284,22 @@ const ServiceManagement = () => {
       .finally(() => {});
   };
 
+  // 查询平台访问 url 信息
+  const getUrlInfo = () => {
+    setUrlLoading(true);
+    fetchGet(apiRequest.appStore.getUrl)
+      .then((res) => {
+        handleResponse(res, (res) => {
+          setUrlData(res.data);
+          setIsShowUrl(true);
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        setUrlLoading(false);
+      });
+  };
+
   useEffect(() => {
     fetchData(
       { current: pagination.current, pageSize: pagination.pageSize },
@@ -317,15 +318,19 @@ const ServiceManagement = () => {
 
   return (
     <OmpContentWrapper>
+      {/* -- 顶部区域 -- */}
       <div style={{ display: "flex" }}>
+        {/* -- 安装 -- */}
         <Button
           type="primary"
           onClick={() => {
             history.push("/application_management/app_store");
           }}
         >
-          安装
+          {context.install}
         </Button>
+
+        {/* -- 启动 -- */}
         <Button
           type="primary"
           style={{ marginLeft: 10 }}
@@ -335,11 +340,11 @@ const ServiceManagement = () => {
             setServiceAcitonModal(true);
           }}
         >
-          启动
+          {context.start}
         </Button>
 
+        {/* -- 更多 -- */}
         <Dropdown
-          //placement="bottomLeft"
           overlay={
             <Menu>
               {/* <Menu.Item
@@ -370,7 +375,7 @@ const ServiceManagement = () => {
                   setServiceAcitonModal(true);
                 }}
               >
-                停止
+                {context.stop}
               </Menu.Item>
               <Menu.Item
                 key="reStartHost"
@@ -385,7 +390,7 @@ const ServiceManagement = () => {
                   setServiceAcitonModal(true);
                 }}
               >
-                重启
+                {context.restart}
               </Menu.Item>
               <Menu.Item
                 key="reStartMonitor"
@@ -399,24 +404,35 @@ const ServiceManagement = () => {
                   setDeleteDimension(false);
                 }}
               >
-                删除
+                {context.delete}
               </Menu.Item>
             </Menu>
           }
           placement="bottomCenter"
         >
           <Button style={{ marginLeft: 10, paddingRight: 10, paddingLeft: 15 }}>
-            更多
+            {context.more}
             <DownOutlined />
           </Button>
         </Dropdown>
 
+        {/* -- 平台访问 -- */}
+        <Button
+          type="primary"
+          style={{ marginLeft: 10 }}
+          onClick={() => getUrlInfo()}
+          loading={urlLoading}
+        >
+          {context.platformAccess}
+        </Button>
+
+        {/* -- 搜索刷新 -- */}
         <div style={{ display: "flex", marginLeft: "auto" }}>
           <Input.Group compact style={{ display: "flex" }}>
             <Select
               value={labelControl}
               defaultValue="ip"
-              style={{ width: 100 }}
+              style={{ minWidth: 100 }}
               onChange={(e) => {
                 setLabelControl(e);
                 fetchData(
@@ -435,11 +451,14 @@ const ServiceManagement = () => {
                 setSelectValue();
               }}
             >
-              <Select.Option value="ip"> IP地址</Select.Option>
-              <Select.Option value="instance_name">实例名称</Select.Option>
+              <Select.Option value="ip">{context.ipAddress}</Select.Option>
+              <Select.Option value="instance_name">
+                {context.serviceInstance}
+              </Select.Option>
             </Select>
             {labelControl === "ip" && (
               <OmpSelect
+                placeholder={context.input + context.ln + context.ip}
                 searchLoading={searchLoading}
                 selectValue={selectValue}
                 listSource={ipListSource}
@@ -455,7 +474,9 @@ const ServiceManagement = () => {
             )}
             {labelControl === "instance_name" && (
               <Input
-                placeholder="输入实例名称"
+                placeholder={
+                  context.input + context.ln + context.serviceInstance
+                }
                 style={{ width: 200 }}
                 allowClear
                 value={instanceSelectValue}
@@ -475,8 +496,8 @@ const ServiceManagement = () => {
                     );
                   }
                 }}
-                onBlur={() => {
-                  if (instanceSelectValue) {
+                onBlur={(e) => {
+                  if (e.target.value !== instanceSelectValue) {
                     fetchData(
                       {
                         current: 1,
@@ -529,10 +550,12 @@ const ServiceManagement = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -570,6 +593,7 @@ const ServiceManagement = () => {
             setOperateAciton,
             setCurrentSerAcitonModal,
             queryDeleteMsg,
+            context,
             () => {
               setConfirmDeletion(true);
               setDeleteDimension(false);
@@ -596,13 +620,15 @@ const ServiceManagement = () => {
                   lineHeight: 2.8,
                 }}
               >
-                <p>已选中 {checkedList.length} 条</p>
+                <p>
+                  {context.selected} {checkedList.length} {context.tiao}
+                </p>
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -612,8 +638,16 @@ const ServiceManagement = () => {
           checkedState={[checkedList, setCheckedList]}
         />
       </div>
-      <OmpDrawer showIframe={showIframe} setShowIframe={setShowIframe} />
-      <DetailHost
+
+      {/* -- 监控面板 -- */}
+      <OmpDrawer
+        showIframe={showIframe}
+        setShowIframe={setShowIframe}
+        context={context}
+      />
+
+      {/* -- 服务详情 -- */}
+      <DetailService
         isShowDrawer={isShowDrawer}
         setIsShowDrawer={setIsShowDrawer}
         loading={historyLoading}
@@ -622,24 +656,21 @@ const ServiceManagement = () => {
         queryServiceInstallHistoryDetail={(id) =>
           queryServiceInstallHistoryDetail(id)
         }
+        context={context}
       />
+
+      {/* -- 平台访问 -- */}
+      <UrlInfo
+        isShowDrawer={isShowUrl}
+        setIsShowDrawer={setIsShowUrl}
+        urlData={urlData}
+        context={context}
+      />
+
+      {/* -- 服务管控 -- */}
       <OmpMessageModal
         visibleHandle={[serviceAcitonModal, setServiceAcitonModal]}
-        // disabled={operateAciton == 4 ? confirmDeletion:false}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
         onFinish={() => {
           let data = null;
@@ -651,99 +682,91 @@ const ServiceManagement = () => {
             });
           }
           operateService(data, operateAciton, deleteDimension);
-          // fetchMaintainChange(false, [row]);
         }}
       >
         <div style={{ padding: "20px", paddingBottom: "10px" }}>
-          确定要对{" "}
-          <span style={{ fontWeight: 500 }}> {checkedList.length}</span> 个
-          服务下发{" "}
-          <span style={{ fontWeight: 500 }}>{operateObj[operateAciton]}</span>{" "}
-          操作？
+          {msgMap[locale].exeLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {operateObj[operateAciton]}{" "}
+          </span>
+          {msgMap[locale].exeMid}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {checkedList.length}{" "}
+          </span>
+          {msgMap[locale].exeRight}
           {operateAciton == 4 && deleteMsg && (
             <>
-              <div style={{ paddingTop: 10 }}>{deleteMsg}</div>
+              {/* <div style={{ paddingTop: 10 }}>{deleteMsg}</div> */}
               <div style={{ position: "relative", top: 15 }}>
                 <Checkbox
                   checked={deleteDimension}
-                  onChange={(e) => {
-                    setDeleteDimension(e.target.checked);
-                  }}
+                  onChange={(e) => setDeleteDimension(e.target.checked)}
                 >
-                  <span style={{ fontSize: 14 }}>同时卸载服务</span>
+                  <span style={{ fontSize: 14 }}>
+                    {context.uninstall +
+                      context.ln +
+                      context.service +
+                      context.ln +
+                      context.entity}
+                  </span>
                 </Checkbox>
               </div>
-              {/* <div style={{ position:"relative", top:15, display:"flex", justifyContent:"center" }}>
-                <Checkbox checked={!confirmDeletion}
-                  onChange={(e)=>{
-                    setConfirmDeletion(!e.target.checked)
-                  }}
-                ><span style={{fontSize:14}}>确认删除</span></Checkbox>
-              </div> */}
             </>
           )}
         </div>
       </OmpMessageModal>
+
+      {/* -- 删除单个服务 -- */}
       <OmpMessageModal
-        // disabled={operateAciton == 4 ? confirmDeletion:false}
         visibleHandle={[currentSerAcitonModal, setCurrentSerAcitonModal]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
+        context={context}
         loading={loading}
         onFinish={() => {
           operateService([row], operateAciton, deleteDimension);
         }}
       >
         <div style={{ padding: "20px" }}>
-          确定要对 <span style={{ fontWeight: 500 }}>当前</span> 服务下发{" "}
-          <span style={{ fontWeight: 500 }}>{operateObj[operateAciton]}</span>{" "}
-          操作？
+          {msgMap[locale].exeLeft}
+          <span style={{ fontWeight: 600, color: "red" }}>
+            {" "}
+            {operateObj[operateAciton]}{" "}
+          </span>
+          {msgMap[locale].exeMid}
+          <span style={{ fontWeight: 600, color: "red" }}> 1 </span>
+          {msgMap[locale].exeRight}
           {operateAciton == 4 && deleteMsg && (
             <>
-              <div style={{ paddingTop: 10 }}>{deleteMsg}</div>
               <div style={{ position: "relative", top: 15 }}>
                 <Checkbox
                   checked={deleteDimension}
-                  onChange={(e) => {
-                    setDeleteDimension(e.target.checked);
-                  }}
+                  onChange={(e) => setDeleteDimension(e.target.checked)}
                 >
-                  <span style={{ fontSize: 14 }}>同时卸载服务</span>
+                  <span style={{ fontSize: 14 }}>
+                    {context.uninstall +
+                      context.ln +
+                      context.service +
+                      context.ln +
+                      context.entity}
+                  </span>
                 </Checkbox>
               </div>
-              {/* <div style={{ position:"relative", top:15, display:"flex", justifyContent:"center" }}>
-              <Checkbox checked={!confirmDeletion}
-                onChange={(e)=>{
-                  setConfirmDeletion(!e.target.checked)
-                }}
-              ><span style={{fontSize:14}}>确认删除</span></Checkbox>
-            </div> */}
             </>
           )}
         </div>
       </OmpMessageModal>
+
+      {/* -- 安装记录 -- */}
       <OmpMessageModal
-        title="安装记录"
+        title={context.install + context.ln + context.record}
         bodyStyle={{
           backgroundColor: "#000",
           color: "#fff",
           padding: 0,
         }}
-        style={{
-          top: 200,
-        }}
+        style={{ top: 180 }}
+        width={800}
         afterClose={() => {
           if (timer.current) {
             clearTimeout(timer.current);
@@ -756,12 +779,8 @@ const ServiceManagement = () => {
           ref={containerRef}
           style={{
             padding: 10,
-            // marginTop: 10,
-            // padding: 10,
             minHeight: 30,
             height: 300,
-            // transition: "all .2s ease-in",
-            // overflow: "hidden",
             color: "#fff",
             backgroundColor: "#000",
             wordWrap: "break-word",
@@ -771,13 +790,14 @@ const ServiceManagement = () => {
             overflowX: "hidden",
           }}
         >
-          {log ? log : "正在安装..."}
+          {log ? log : context.installing + "..."}
         </div>
       </OmpMessageModal>
     </OmpContentWrapper>
   );
 };
 
+// 删除服务依赖信息
 const ExpandCollapseMsg = ({ length, all }) => {
   const [isOpen, setIsOpen] = useState(false);
   if (!all) {

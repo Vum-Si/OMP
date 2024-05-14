@@ -1,40 +1,33 @@
 import { OmpContentWrapper, OmpTable, OmpMessageModal } from "@/components";
-import { Button } from "antd";
-import { useState, useEffect, useRef } from "react";
+import { Button, message } from "antd";
+import { useState, useEffect } from "react";
 import { handleResponse, _idxInit } from "@/utils/utils";
 import { fetchGet } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
 //import updata from "@/store_global/globalStore";
-import { useDispatch } from "react-redux";
 import { ExclamationCircleOutlined } from "@ant-design/icons";
 import getColumnsConfig from "./config/columns";
 import { ImportPlanModal } from "./config/models";
 import { useHistory } from "react-router-dom";
+import { locales } from "@/config/locales";
 
-const DeploymentPlan = () => {
-  const dispatch = useDispatch();
+const msgMap = {
+  "en-US": {
+    pushMsg: "Please publish services in the app store",
+  },
+  "zh-CN": {
+    pushMsg: "请在应用商店发布服务",
+  },
+};
+
+const DeploymentPlan = ({ locale }) => {
   const history = useHistory();
-
   const [loading, setLoading] = useState(false);
-
-  const [searchLoading, setSearchLoading] = useState(false);
-
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
-  const [userListSource, setUserListSource] = useState([]);
-  const [searchValue, setSearchValue] = useState("");
-  const [selectValue, setSelectValue] = useState();
-
-  const [labelControl, setLabelControl] = useState("plan_name");
-  const [instanceSelectValue, setInstanceSelectValue] = useState("");
-
   const [operable, setOperable] = useState(false);
-
   // 导入弹框
   const [importPlan, setImportPlan] = useState(false);
-  // 不可用弹框
-  const [disableModal, setDisableModal] = useState(false);
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -42,12 +35,10 @@ const DeploymentPlan = () => {
     ordering: "",
     searchParams: {},
   });
-  const [showModal, setShowModal] = useState(false);
-
-  const msgRef = useRef(null);
+  const context = locales[locale].common;
 
   // 获取导入模板按钮是否可操作
-  function getOpreable() {
+  const getOpreable = () => {
     fetchGet(apiRequest.deloymentPlan.deploymentOperable)
       .then((res) => {
         handleResponse(res, (res) => {
@@ -60,13 +51,13 @@ const DeploymentPlan = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     searchParams,
     ordering
-  ) {
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.deloymentPlan.deploymentList, {
       params: {
@@ -102,29 +93,57 @@ const DeploymentPlan = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
+
+  // 查询生成模板数据
+  const checkCreateDeployment = () => {
+    setLoading(true);
+    fetchGet(apiRequest.deloymentPlan.installTempFirst)
+      .then((res) => {
+        handleResponse(res, (res) => {
+          if (res.data.pro_info.length === 0) {
+            message.info(msgMap[locale].pushMsg);
+          } else {
+            history.push({
+              pathname: "/application_management/create-deployment",
+              state: {
+                oneData: res.data,
+              },
+            });
+          }
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        setLoading(false);
+      });
+  };
 
   useEffect(() => {
     fetchData(pagination);
   }, []);
 
-  //console.log(checkedList)
-  // 防止在校验进入死循环
-  const flag = useRef(null);
-
   return (
     <OmpContentWrapper>
+      {/* -- 顶部区域 -- */}
       <div style={{ display: "flex" }}>
         <Button
           type="primary"
-          onClick={() => {
-            if (operable) setImportPlan(true);
-            else setDisableModal(true);
-          }}
+          disabled={!operable}
+          onClick={() => setImportPlan(true)}
         >
-          导入模板
+          {context.import}
+        </Button>
+        <Button
+          type="primary"
+          style={{ marginLeft: 10 }}
+          onClick={() => checkCreateDeployment()}
+        >
+          {context.generate}
         </Button>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -143,7 +162,7 @@ const DeploymentPlan = () => {
               fetchData(e, pagination.searchParams, ordering);
             }, 200);
           }}
-          columns={getColumnsConfig(history)}
+          columns={getColumnsConfig(history, context, locale)}
           dataSource={dataSource}
           pagination={{
             showSizeChanger: true,
@@ -158,11 +177,11 @@ const DeploymentPlan = () => {
                 }}
               >
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -172,49 +191,13 @@ const DeploymentPlan = () => {
         />
       </div>
 
+      {/* -- 导入模板 -- */}
       <ImportPlanModal
         importPlan={importPlan}
         setImportPlan={setImportPlan}
-      ></ImportPlanModal>
-
-      <OmpMessageModal
-        visibleHandle={[disableModal, setDisableModal]}
-        title={
-          <span>
-            <ExclamationCircleOutlined
-              style={{
-                fontSize: 20,
-                color: "#f0a441",
-                paddingRight: "10px",
-                position: "relative",
-                top: 2,
-              }}
-            />
-            提示
-          </span>
-        }
-        noFooter={true}
-      >
-        <div style={{ padding: "20px" }}>
-          已安装服务，快速部署仅在未安装任何服务状态下可用
-          <div
-            style={{
-              textAlign: "center",
-              position: "relative",
-              bottom: -26,
-            }}
-          >
-            <Button
-              type="primary"
-              onClick={() => {
-                setDisableModal(false);
-              }}
-            >
-              确定
-            </Button>
-          </div>
-        </div>
-      </OmpMessageModal>
+        context={context}
+        locale={locale}
+      />
     </OmpContentWrapper>
   );
 };

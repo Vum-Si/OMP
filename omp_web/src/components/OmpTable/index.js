@@ -4,6 +4,7 @@ import { useLayoutEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import OmpTableFilter from "./components/OmpTableFilter";
 import { SettingOutlined } from "@ant-design/icons";
+// import * as R from "ramda"
 
 const OmpTable = ({
   checkedState,

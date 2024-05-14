@@ -6,7 +6,7 @@ from rest_framework.serializers import ModelSerializer
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.common.validators import ReValidator
-from db_models.models import BackupHistory, BackupSetting, BackupCustom
+from db_models.models import BackupHistory, BackupSetting, BackupCustom, Service
 
 logger = logging.getLogger("server")
 
@@ -49,8 +49,13 @@ class BackupCustomSerializer(ModelSerializer):
 
     def validate(self, attrs):
         backup_obj = BackupCustom.objects.filter(
-            field_k=attrs["field_k"], field_v=attrs["field_v"]).count()
-        if backup_obj != 0:
+            field_k=attrs["field_k"], field_v=attrs["field_v"])
+        request = self.context['request']
+        if request.method == "PUT":
+            exclude_id = request.get_full_path().split("/")[-2]
+            backup_obj = backup_obj.exclude(id=int(exclude_id))
+
+        if backup_obj.count() != 0:
             raise ValidationError(f"自定义参数不可重复")
         return attrs
 
@@ -93,6 +98,14 @@ class BackupSettingSerializer(ModelSerializer):
         ]
     )
     backup_custom = BackupCustomSerializer(many=True, required=False)
+    app_name = serializers.SerializerMethodField()
+
+    def get_app_name(self, obj):
+        instance_name = obj.backup_instances[0]
+        ser_obj = Service.objects.filter(service_instance_name=instance_name).first()
+        if ser_obj:
+            return ser_obj.service.app_name
+        return ""
 
     def validate_retain_path(self, retain_path):  # NOQA
         try:
@@ -116,5 +129,5 @@ class BackupSettingSerializer(ModelSerializer):
         model = BackupSetting
         fields = (
             "id", "backup_instances", "crontab_detail", "retain_day",
-            "retain_path", "backup_custom", "is_on"
+            "retain_path", "backup_custom", "is_on", "app_name"
         )

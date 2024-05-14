@@ -45,8 +45,8 @@ const OmpProgress = ({ trafficWay, percent }) => {
             labelLine: {
               show: false,
             },
-            color: percent == 0 ? "#f45966":"rgba(0, 0, 0, 0)",
-            borderColor: percent == 0 ? "#f45966":"rgba(0, 0, 0, 0)",
+            color: percent == 0 ? "#f45966" : "rgba(0, 0, 0, 0)",
+            borderColor: percent == 0 ? "#f45966" : "rgba(0, 0, 0, 0)",
             borderWidth: 4,
           },
         },

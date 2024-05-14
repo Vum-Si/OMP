@@ -1,9 +1,9 @@
-import { OmpContentWrapper, OmpTable } from "@/components";
+import { OmpContentWrapper, OmpTable, OmpMessageModal } from "@/components";
 import { useState, useEffect } from "react";
 import { useHistory } from "react-router-dom";
-import { fetchGet } from "@/utils/request";
+import { fetchGet, fetchPost } from "@/utils/request";
 import { apiRequest } from "@/config/requestApi";
-import { Button } from "antd";
+import { Button, Tooltip, Input, message } from "antd";
 import {
   handleResponse,
   _idxInit,
@@ -12,14 +12,17 @@ import {
 } from "@/utils/utils";
 import moment from "moment";
 import ServiceRollbackModal from "../AppStore/config/ServiceRollbackModal";
+import { SearchOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
+import { locales } from "@/config/locales";
 
-const renderStatus = (record) => {
+// 渲染状态
+const renderStatus = (context, record) => {
   let text = record.state;
   if (text.includes("SUCCESS")) {
     return (
       <span>
         {renderDisc("normal", 7, -1)}
-        {record.state_display}
+        {context.succeeded}
       </span>
     );
   }
@@ -27,7 +30,7 @@ const renderStatus = (record) => {
     return (
       <span>
         {renderDisc("critical", 7, -1)}
-        {record.state_display}
+        {context.failed}
       </span>
     );
   }
@@ -35,35 +38,38 @@ const renderStatus = (record) => {
     return (
       <span>
         {renderDisc("warning", 7, -1)}
-        {record.state_display}
+        {context.executing}
       </span>
     );
   }
   return "-";
 };
 
-const typeMap = {
-  MainInstallHistory: "安装",
-  RollbackHistory: "回滚",
-  UpgradeHistory: "升级",
+const msgMap = {
+  "en-US": {
+    stopOne: "Are you sure to execute the termination?",
+    stopTwo:
+      "This operation will forcibly interrupt the task and set it to a failed state!!!",
+    stopThree:
+      "Attention: Apply to situations where the waiting time is too long or the stuck state is released",
+  },
+  "zh-CN": {
+    stopOne: "确认执行强制中断吗?",
+    stopTwo: "该操作会强制停止流程任务，并将任务状态置为失败！！!",
+    stopThree: "注意：应用于等待时间过长，解除卡死状态",
+  },
 };
 
-const notProhibit = {
-  cursor: "not-allowed",
-  color: "#bbbbbb",
-};
-
-const InstallationRecord = () => {
+const InstallationRecord = ({ locale }) => {
   const history = useHistory();
-
   const [loading, setLoading] = useState(false);
   //table表格数据
   const [dataSource, setDataSource] = useState([]);
-
+  // 原始数据
+  const [initDataSource, setInitDataSource] = useState([]);
   const [vfModalVisibility, setVfModalVisibility] = useState(false);
-
+  const [instanceSelectValue, setInstanceSelectValue] = useState("");
   const [rowId, setRowId] = useState("");
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -71,15 +77,24 @@ const InstallationRecord = () => {
     ordering: "",
     searchParams: {},
   });
+  // 控制中断任务
+  const [zdModalVisibility, setZdModalVisibility] = useState(false);
+  const [zdModalLoading, setZdModalLoading] = useState(false);
+  const [zdInfo, setZdInfo] = useState(null);
+  const context = locales[locale].common;
+
+  const typeMap = {
+    MainInstallHistory: context.install,
+    RollbackHistory: context.rollback,
+    UpgradeHistory: context.upgrade,
+  };
 
   const columns = [
     {
-      title: "类型",
-      width: 80,
+      title: context.type,
+      width: 60,
       key: "module",
       dataIndex: "module",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
       usefilter: true,
       queryRequest: (params) => {
         fetchData(
@@ -88,7 +103,6 @@ const InstallationRecord = () => {
           { ...pagination.searchParams, ...params }
         );
       },
-      // initfilter: initfilterAppType,
       filterMenuList: Object.keys(typeMap).map((k) => {
         return {
           value: k,
@@ -97,47 +111,45 @@ const InstallationRecord = () => {
       }),
       align: "center",
       fixed: "left",
-      render: (text, record, idx) => {
-        //history.push()
-        return typeMap[text];
-      },
+      render: (text) => typeMap[text],
     },
     {
-      title: "执行用户",
-      key: "operator",
-      width: 100,
-      dataIndex: "operator",
-      //sorter: (a, b) => a.username - b.username,
-      // sortDirections: ["descend", "ascend"],
-      align: "center",
-      render: nonEmptyProcessing,
-    },
-    {
-      title: "状态",
-      key: "install_status",
-      dataIndex: "install_status",
-      width: 100,
-      //sorter: (a, b) => a.is_superuser - b.is_superuser,
-      //sortDirections: ["descend", "ascend"],
-      align: "center",
-      render: (text, record) => {
-        return renderStatus(record);
-      },
-    },
-    {
-      title: "服务数量",
+      title: context.total,
       key: "count",
       dataIndex: "count",
-      width: 60,
+      width: 50,
       align: "center",
       render: nonEmptyProcessing,
     },
     {
-      title: "开始时间",
+      title: context.status,
+      key: "install_status",
+      dataIndex: "install_status",
+      width: 80,
+      align: "center",
+      render: (text, record) => renderStatus(context, record),
+    },
+    {
+      title: context.serviceInstance,
+      key: "service_instance_name",
+      dataIndex: "service_instance_name",
+      width: 200,
+      ellipsis: true,
+      align: "center",
+      render: (text) => {
+        return (
+          <Tooltip title={text} placement="topLeft">
+            <span>{text ? text : "-"}</span>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: context.beginTime,
       key: "created",
       dataIndex: "created",
       align: "center",
-      width: 120,
+      width: 100,
       sorter: (a, b) => a.created - b.created,
       sortDirections: ["descend", "ascend"],
       render: (text) => {
@@ -149,13 +161,13 @@ const InstallationRecord = () => {
       },
     },
     {
-      title: "结束时间",
+      title: context.endTime,
       key: "end_time",
       dataIndex: "end_time",
       align: "center",
-      width: 120,
+      width: 100,
       render: (text, record) => {
-        if (record.install_status == 1) {
+        if (record.install_status === 1) {
           return "-";
         }
         if (text) {
@@ -166,39 +178,63 @@ const InstallationRecord = () => {
       },
     },
     {
-      title: "用时",
+      title: context.duration,
       key: "duration",
       dataIndex: "duration",
       align: "center",
-      width: 120,
-      render: nonEmptyProcessing,
+      width: 80,
+      render: (text) => {
+        if (text === "" || text === null || text === undefined) {
+          return "-";
+        }
+        return text
+          .replace("秒", context.s)
+          .replace("分", context.m)
+          .replace("时", context.h)
+          .replace("天", context.d);
+      },
     },
     {
-      title: "操作",
+      title: context.action,
       key: "1",
-      width: 58,
+      width: 80,
       dataIndex: "1",
       align: "center",
       fixed: "right",
-      render: function renderFunc(text, record, index) {
+      render: (text, record, index) => {
         switch (record.module) {
           case "MainInstallHistory":
             return (
               <div style={{ display: "flex", justifyContent: "space-around" }}>
-                <div
-                  onClick={() => {
-                    history.push({
-                      pathname:
-                        "/application_management/app_store/installation",
-                      state: {
-                        uniqueKey: record.module_id,
-                        step: 3,
-                      },
-                    });
-                  }}
-                  style={{ display: "flex", justifyContent: "space-around" }}
-                >
-                  <a>查看</a>
+                <div style={{ margin: "auto" }}>
+                  <a
+                    onClick={() => {
+                      history.push({
+                        pathname:
+                          "/application_management/app_store/installation",
+                        state: {
+                          uniqueKey: record.module_id,
+                          step: 4,
+                        },
+                      });
+                    }}
+                  >
+                    {context.view}
+                  </a>
+                  {record.state?.includes("ING") && (
+                    <a
+                      style={{ marginLeft: 10 }}
+                      onClick={() => {
+                        setZdInfo({
+                          module_id: record.module_id,
+                          module: record.module,
+                        });
+                        setZdModalVisibility(true);
+                      }}
+                    >
+                      {context.termination}
+                    </a>
+                  )}
                 </div>
               </div>
             );
@@ -206,18 +242,34 @@ const InstallationRecord = () => {
           case "RollbackHistory":
             return (
               <div style={{ display: "flex", justifyContent: "space-around" }}>
-                <div
-                  onClick={() => {
-                    history.push({
-                      pathname:
-                        "/application_management/app_store/service_rollback",
-                      state: {
-                        history: record.module_id,
-                      },
-                    });
-                  }}
-                >
-                  <a>查看</a>
+                <div style={{ margin: "auto" }}>
+                  <a
+                    onClick={() => {
+                      history.push({
+                        pathname:
+                          "/application_management/app_store/service_rollback",
+                        state: {
+                          history: record.module_id,
+                        },
+                      });
+                    }}
+                  >
+                    {context.view}
+                  </a>
+                  {record.state?.includes("ING") && (
+                    <a
+                      style={{ marginLeft: 10 }}
+                      onClick={() => {
+                        setZdInfo({
+                          module_id: record.module_id,
+                          module: record.module,
+                        });
+                        setZdModalVisibility(true);
+                      }}
+                    >
+                      {context.termination}
+                    </a>
+                  )}
                 </div>
               </div>
             );
@@ -237,26 +289,35 @@ const InstallationRecord = () => {
                       });
                     }}
                   >
-                    查看
+                    {context.view}
                   </a>
-                  <a
-                    style={
-                      record.can_rollback
-                        ? { marginLeft: 10 }
-                        : {
-                            marginLeft: 10,
-                            ...notProhibit,
-                          }
-                    }
-                    onClick={() => {
-                      if (record.can_rollback) {
-                        setRowId(record.module_id);
-                        setVfModalVisibility(true);
-                      }
-                    }}
-                  >
-                    回滚
-                  </a>
+                  {record.can_rollback && (
+                    <a
+                      style={{ marginLeft: 10 }}
+                      onClick={() => {
+                        if (record.can_rollback) {
+                          setRowId(record.module_id);
+                          setVfModalVisibility(true);
+                        }
+                      }}
+                    >
+                      {context.rollback}
+                    </a>
+                  )}
+                  {record.state?.includes("ING") && (
+                    <a
+                      style={{ marginLeft: 10 }}
+                      onClick={() => {
+                        setZdInfo({
+                          module_id: record.module_id,
+                          module: record.module,
+                        });
+                        setZdModalVisibility(true);
+                      }}
+                    >
+                      {context.termination}
+                    </a>
+                  )}
                 </div>
               </div>
             );
@@ -269,12 +330,11 @@ const InstallationRecord = () => {
     },
   ];
 
-  function fetchData(
+  const fetchData = (
     pageParams = { current: 1, pageSize: 10 },
     ordering,
     searchParams
-  ) {
-    console.log(searchParams);
+  ) => {
     setLoading(true);
     fetchGet(apiRequest.installHistoryPage.queryAllList, {
       params: {
@@ -286,8 +346,8 @@ const InstallationRecord = () => {
     })
       .then((res) => {
         handleResponse(res, (res) => {
-          console.log(res);
           setDataSource(res.data.results);
+          setInitDataSource(res.data.results);
           setPagination({
             ...pagination,
             total: res.data.count,
@@ -302,7 +362,34 @@ const InstallationRecord = () => {
       .finally(() => {
         setLoading(false);
       });
-  }
+  };
+
+  const stopPorcess = () => {
+    setZdModalLoading(true);
+    fetchPost(apiRequest.appStore.stopProcess, {
+      body: zdInfo,
+    })
+      .then((res) => {
+        handleResponse(res, (res) => {
+          if (res.message === "success") {
+            fetchData(
+              {
+                current: pagination.current,
+                pageSize: pagination.pageSize,
+              },
+              pagination.ordering,
+              pagination.searchParams
+            );
+            message.success(res.data);
+            setZdModalVisibility(false);
+          }
+        });
+      })
+      .catch((e) => console.log(e))
+      .finally(() => {
+        setZdModalLoading(false);
+      });
+  };
 
   useEffect(() => {
     fetchData(pagination);
@@ -310,12 +397,32 @@ const InstallationRecord = () => {
 
   return (
     <OmpContentWrapper wrapperStyle={{ paddingBottom: 0 }}>
+      {/* -- 顶部区域 -- */}
       <div style={{ display: "flex" }}>
         <div style={{ display: "flex", marginLeft: "auto" }}>
+          <Input
+            placeholder={context.input + context.ln + context.serviceInstance}
+            style={{ width: 220 }}
+            allowClear
+            value={instanceSelectValue}
+            onChange={(e) => {
+              setInstanceSelectValue(e.target.value);
+              if (!e.target.value) {
+                setDataSource(initDataSource);
+              }
+            }}
+            onPressEnter={(e) => {
+              setDataSource(
+                initDataSource.filter((i) =>
+                  i.service_instance_name.includes(e.target.value)
+                )
+              );
+            }}
+            suffix={<SearchOutlined style={{ color: "#b6b6b6" }} />}
+          />
           <Button
             style={{ marginLeft: 10 }}
             onClick={() => {
-              // console.log(pagination, "hosts/hosts/?page=1&size=10");
               fetchData(
                 {
                   current: pagination.current,
@@ -326,10 +433,12 @@ const InstallationRecord = () => {
               );
             }}
           >
-            刷新
+            {context.refresh}
           </Button>
         </div>
       </div>
+
+      {/* -- 表格 -- */}
       <div
         style={{
           border: "1px solid #ebeef2",
@@ -342,7 +451,7 @@ const InstallationRecord = () => {
           loading={loading}
           onChange={(e, filters, sorter) => {
             let ordering = sorter.order
-              ? `${sorter.order == "descend" ? "" : "-"}${sorter.columnKey}`
+              ? `${sorter.order === "descend" ? "" : "-"}${sorter.columnKey}`
               : null;
             setTimeout(() => {
               fetchData(e, ordering, pagination.searchParams);
@@ -352,7 +461,7 @@ const InstallationRecord = () => {
           dataSource={dataSource}
           pagination={{
             showSizeChanger: true,
-            pageSizeOptions: ["10", "20", "50", "100"],
+            pageSizeOptions: ["10", "20", "30"],
             showTotal: () => (
               <div
                 style={{
@@ -363,11 +472,11 @@ const InstallationRecord = () => {
                 }}
               >
                 <p style={{ color: "rgb(152, 157, 171)" }}>
-                  共计{" "}
+                  {context.total}{" "}
                   <span style={{ color: "rgb(63, 64, 70)" }}>
                     {pagination.total}
-                  </span>{" "}
-                  条
+                  </span>
+                  {context.tiao}
                 </p>
               </div>
             ),
@@ -376,12 +485,29 @@ const InstallationRecord = () => {
           rowKey={(record) => record.id}
         />
       </div>
+
+      {/* -- 服务回滚 -- */}
       <ServiceRollbackModal
         sRModalVisibility={vfModalVisibility}
         setSRModalVisibility={setVfModalVisibility}
         initLoading={loading}
         fixedParams={`?history_id=${rowId}`}
+        context={context}
       />
+
+      {/* -- 强制中断 -- */}
+      <OmpMessageModal
+        visibleHandle={[zdModalVisibility, setZdModalVisibility]}
+        context={context}
+        loading={zdModalLoading}
+        onFinish={() => stopPorcess()}
+      >
+        <div style={{ padding: "20px", fontWeight: 500, color: "red" }}>
+          {msgMap[locale].stopOne}
+          <p>{msgMap[locale].stopTwo}</p>
+          <p>{msgMap[locale].stopThree}</p>
+        </div>
+      </OmpMessageModal>
     </OmpContentWrapper>
   );
 };

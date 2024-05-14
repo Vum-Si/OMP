@@ -1,6 +1,8 @@
 from django.db import models
 
 from .env import Env
+from .service import Service
+from db_models.mixins import TimeStampMixin
 
 
 class MonitorUrl(models.Model):
@@ -86,7 +88,7 @@ class GrafanaMainPage(models.Model):
     instance_name = models.CharField(
         "实例名字", max_length=32, unique=True, help_text="信息面板实例名字")
     instance_url = models.CharField(
-        "实例地址", max_length=255, unique=True, help_text="实例文根地址")
+        "实例地址", max_length=255, unique=False, help_text="实例文根地址")
 
     class Meta:
         """ 元数据 """
@@ -166,3 +168,49 @@ class AlertSendWaySetting(models.Model):
         cls.objects.filter(
             way_name="email"
         ).update(used=used, server_url=user_emails)
+
+
+class ServiceLogLevel(TimeStampMixin):
+    used = models.BooleanField("是否启用日志等级复原", default=False)
+    time_interval = models.IntegerField("更新日志后复原超时时间间隔", default=30)
+    service = models.ForeignKey(Service, null=True, blank=True, on_delete=models.SET_NULL, help_text="关联服务实例")
+    raw_log_level_str = models.CharField("服务实例原来的日志等级字符串", blank=True, null=True, max_length=512)
+    new_log_level_str = models.CharField("服务实例更新后的日志等级字符串", blank=True, null=True, max_length=512)
+
+    class Meta:
+        db_table = "omp_service_log_level"
+        verbose_name = verbose_name_plural = "服务日志更新设置"
+
+    @property
+    def is_used(self):
+        return self.used
+
+
+class AlertSettings(TimeStampMixin):
+    IS_DOUC = 0
+    IS_FEI_SHU = 1
+    IS_DOEM = 2
+    ALERT_TYPES = (
+        (
+            (IS_FEI_SHU, "feishu"),
+            (IS_DOEM, "doem"),
+            (IS_DOUC, "douc")
+        )
+    )
+    IS_OFF = 0
+    IS_ON = 1
+    SWITCH_STATUS = (
+        (
+            (IS_OFF, "关闭"),
+            (IS_ON, "开启"),
+        )
+    )
+
+    alert_type = models.IntegerField(
+        "告警类别", choices=ALERT_TYPES,
+        default=0, help_text="告警类别")
+    switch = models.IntegerField(
+        "开关", choices=SWITCH_STATUS,
+        default=0, help_text="开关")
+    alert_setting = models.JSONField(
+        "推送告警配置",  help_text="推送告警配置")

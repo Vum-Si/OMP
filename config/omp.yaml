@@ -12,13 +12,44 @@ thread_pool_max_workers: 10
 redis:
   host: 127.0.0.1
   port: 19034
-  password: common123
+  password: redis@321_test
 # mysql相关配置
 mysql:
   host: 127.0.0.1
   port: 19033
   username: common
-  password: Common@123
+  password: mysql@321_test
+# dm相关配置
+dm:
+  host: 127.0.0.1
+  port: 5236
+  username: MDDBA
+  password: MDDBA
+  db_name: OMP
+# oceanbase
+# obclient -h127.0.0.1 -P2881 -uroot@yzhob
+oceanbase:
+  host: 127.0.0.1
+  port: 2881
+  username: root@yzhob
+  password:
+# pg
+CloudPanguDB:
+  host: 127.0.0.1
+  port: 19035
+  username: synthetic_user
+  password: CloudPanguDB@321_test
+# postgreSql:
+postgreSql:
+  host: 127.0.0.1
+  port: 19035
+  username: synthetic_user
+  password: postgreSql@321_test
+
+# 使用数据库 支持 mysql,oceanbase,CloudPanguDB,dm暂不支持
+use_db: mysql
+# 使用远端库还是omp自身的库 false使用远端
+use_self_db: true
 # salt相关配置
 salt_master:
   publish_port: 19004
@@ -50,23 +81,23 @@ grafana_auth:
 # 关联邮件设置,谨慎修改
 alert_manager:
   # 是否开启发送邮件配置，默认不开启
-  send_email: false
+  send_email: true
   # 发件人邮箱配置
-  EMAIL_SEND: <发件人邮箱>
+  EMAIL_SEND: 123456789@qq.com
   # smtp服务器地址端口配置
-  SMTP_SMARTHOST: <SMTP 服务器，比如 smtp.163.com:465>
-  # 解释待定？？？？
+  SMTP_SMARTHOST: smtp.163.com:465
+  # 解释待定
   SMTP_HELLO: 163.com
   # 发件人的用户名配置
-  EMAIL_SEND_USER: <发件人的用户名>
+  EMAIL_SEND_USER: 123456789@qq.com
   # 发件人邮箱秘钥
-  EMAIL_SEND_PASSWORD: <发件人邮箱密钥>
+  EMAIL_SEND_PASSWORD: '12345'
   # 发送频率(同一条报警消息的发送频率,s、m、h对应 秒、分、小时)
   EMAIL_SEND_INTERVAL: 30m
   # 接收代号
-  RECEIVER: commonuser
+  RECEIVER: cloudwise
   # 收件人
-  EMAIL_ADDRESS: <收件人邮箱>
+  EMAIL_ADDRESS: 123@qq.com
   # webhook地址，仅在手动维护OMP各个组件时才可能用到，其他情况下不建议修改
   WEBHOOK_URL: http://127.0.0.1:19001/api/promemonitor/receiveAlert/
 # prometheus basic auth
@@ -82,12 +113,12 @@ monitor_port:
   alertmanager: 19013
   grafana: 19014
   # agent端各个端口配置
-  blackboxExporter: 19015
   promtail: 19016
   nodeExporter: 19017
   processExporter: 19018
   mysqlExporter: 19019
   redisExporter: 19020
+  redisgraphExporter: 19015
   kafkaExporter: 19021
   zookeeperExporter: 19022
   clickhouseExporter: 19023
@@ -95,7 +126,7 @@ monitor_port:
   beanstalkdExporter: 19025
   tengineExporter: 19026
   elasticsearchExporter: 19027
-  httpdExporter: 19028
+  CloudPanguDBExporter: 19028
   igniteExporter: 19029
   rocketmqExporter: 19032
   # arangodb与nacos没有单独的exporter，使用的是arangodb和nacos的原生自带接口
@@ -113,50 +144,195 @@ loki_config:
 basic_order:
   0:
     - jdk
+    - fonts
+    - doiaAlgoBaseServer
     - safeRM
     - tengine
     - mysql
+    - dameng
+    - oceanbase
     - comLib
     - redis
     - arangodb
     - minio
+    - CloudPanguDB
     - postgreSql
     - prometheus
     - pushgateway
     - mongodb
     - nodejs
-    - beanstalk
   1:
+    - skywalking
+    - redisgraph
     - keepalived
     - httpd
+    - libreoffice
     - elasticsearch
     - zookeeper
+    - zookeeperCH
     - rocketmq
     - wkhtmltox
     - tomcat
-    - jkbPhp
+    - clickhouseKeeper
+    - kafkaController
   2:
+    - jaeger
+    - skywalkingAgent
     - nacos
     - xxlJob
     - kafka
     - clickhouse
     - hadoop
+    - kkFileView
   3:
+    - jaegerAgent
     - flink
+    - cmak
+    - ckman
     - aopsUtils
-    - filebeat
     - victoriaMetrics
     - sentinel
+    - AutoTest
+
+
+# 亲和力服务名称
+# app_name 和冗余字段中 affinity 的值，二者需保持一致
+affinity:
+  tengine: tengine
+
+# hadoop 角色信息
+hadoop_role:
+  single:
+    - namenode
+    - secondarynamenode
+    - datanode
+    - resourcemanager
+    - nodemanager
+  cluster:
+    - namenode
+    - datanode
+    - resourcemanager
+    - nodemanager
+    - zkfc
+    - journalnode
+
+#主机名前缀
+hostname_prefix: docp
+
+# 无ssh场景下，请更改配置为 true & false
+is_no_ssh: false
+
+# 模板安装下，基础组件集群模式个数的严格校验
+template_cluster_check: true
+
+#服务发现脚本,纳管自定义排查脚本
+service_discovery:
+
+#测试任务列表,根据实际版本进行变更
+test_product_list:
+  - DOCP
+  - DOUC
+  - DOHD
+  - WISEBOT
+  - DOSM
+  - DODI
+  - DOKB
+  - DOEM
+  - DOLA
+  - DOIM
+  - DOOP
+  - DOCC
+  - DOMM
+  - DOMA
+  - LCAP
+  - CMDB
+  - DODB
+  - TSB
+  - AUTOMATION
+  - DCIM
+#测试任务名称
+test_task_name:
+  - SmokeTest
+  - clearData
+#hkjs项目额外日志需求，默认不开启
+alert_log: false
+# 暂时不支持omp升级的服务（无正常upgrade.py脚本支持）
+# 6.1
+ignore_upgrade_app:
+  - arangodb
+  - beanstalk
+  - clickHouse
+  - elasticSearch
+  - filebeat
+  - hadoop
+  - flink
+  - mongodb
+  - mysql
+  - jdk
+  - postgreSql
+  - pushgateway
+  - sentinel
+  - victoriaMetrics
+# 暂时不支持omp回滚的服务
+ignore_rollback_app:
+  - zookeeper
+# 备份模块支持的服务
+backup_service:
+  mysql:
+    args:
+      - db_name
+      - no_pass
+      - need_push
+    remind: 备份mysql可能存在部分锁表，请在业务量空闲时操作，默认需要密码。
+  postgreSql:
+    args:
+      - db_name
+      - need_push
+      - need_app
+    remind: 备份pg时应避免ddl(对表结构增删改)操作。
+  redis:
+    args:
+      - operation
+      - need_push
+      - backup_dir
+    remind:
+  elasticsearch:
+    args:
+      - operation
+      - backup_dir
+    remind: 初次备份会修改配置并重启es，禁止业务繁忙时操作。es备份需要具备nfs环境，共享环境内用户所对应的uid一致，nfs挂载路径需一致，备份集群时需集群内所有节点同步执行。
+# 清理日规则
+clear_log:
+  type:
+    - byFileDay
+    - byFileSize
+#日志管理-修改日志等级超时恢复时间: min
+reset_log_level_interval: 30
+# python环境执行-适用升级回滚安装场景
+python_env: python3.8
 # 自愈周期内服务key的存活时常 min
 health_redis_timeout: 60
 # 单次health接口检测最大次数
 health_request_count: 10
 # 单次health接口请求停留时常 s
 health_request_sleep: 6
-# 模板安装下，基础组件集群模式个数的严格校验
-template_cluster_check: true
-#服务发现脚本,纳管自定义排查脚本
-service_discovery:
-backup_service:
-  - mysql
-  - postgreSql
+# omp自身数据清理配置
+clear_table:
+  alert:
+    day: 7
+  health:
+    day: 7
+# 磁盘检查最高限制
+disk_error_line: 95
+# 本地磁盘最小预留空间,单位GB
+disk_available_size: 2
+# 准入模版版本私有
+support_dpcp_yaml_version:
+  - 6.0.0-6.x
+# 脱离进行中状态时间
+default_stop_time:
+  RollbackHistory: 5
+  MainInstallHistory: 5
+  UpgradeHistory: 5
+#监控agent默认更新时间: min
+update_monitor_agent_status_interval: 2

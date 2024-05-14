@@ -1,9 +1,8 @@
 import { OmpToolTip } from "@/components";
 import styles from "./index.module.less";
-import imgObj from "./img";
 import { useState } from "react";
 
-const Card = ({ idx, history, info, tabKey, installOperation }) => {
+const Card = ({ idx, history, info, tabKey, installOperation, context }) => {
   //定义命名
   let nameObj = {
     component: {
@@ -12,7 +11,6 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
       version: "app_version",
       description: "app_description",
       instance_number: "instance_number",
-      install_url: "/application_management/app_store/component_installation",
     },
     service: {
       logo: "pro_logo",
@@ -20,10 +18,8 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
       version: "pro_version",
       description: "pro_description",
       instance_number: "instance_number",
-      install_url: "/application_management/app_store/application_installation",
     },
   };
-
   const [isHover, setIsHover] = useState(false);
 
   return (
@@ -35,7 +31,6 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
         marginLeft: (idx - 1) % 4 !== 0 && "0.75%",
         height: 200,
         boxSizing: "border-box",
-        //border: "1px solid #000",
         marginTop: 10,
         position: "relative",
         top: 0,
@@ -43,14 +38,11 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
         paddingLeft: 10,
         paddingRight: 10,
       }}
-      onMouseEnter={() => {
-        setIsHover(true);
-      }}
-      onMouseLeave={() => {
-        setIsHover(false);
-      }}
+      onMouseEnter={() => setIsHover(true)}
+      onMouseLeave={() => setIsHover(false)}
     >
       <div className={styles.cardContent}>
+        {/* -- logo -- */}
         <div style={{ width: 80, paddingTop: 10 }}>
           {info[nameObj[tabKey].logo] ? (
             <div
@@ -69,7 +61,7 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
               dangerouslySetInnerHTML={{
                 __html: info[nameObj[tabKey].logo],
               }}
-            ></div>
+            />
           ) : (
             <div
               style={{
@@ -96,9 +88,10 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
             </div>
           )}
         </div>
+
+        {/* -- 上方信息 -- */}
         <div
           style={{
-            //flex: 1,
             fontSize: 13,
             color: "#a2a2a2",
             position: "relative",
@@ -112,30 +105,36 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
             });
           }}
         >
+          {/* -- 名称 -- */}
           <div style={{ fontSize: 14, color: isHover ? "#247fe6" : "#222222" }}>
             {info[nameObj[tabKey].name]}
           </div>
+
+          {/* -- 最新版本 -- */}
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               fontSize: 12,
               padding: "8px 10px 10px 0px",
-              //fontSize:12
             }}
           >
-            <span>最新版本</span>
+            <span>{context.latestVer}</span>
             <span>
-              <OmpToolTip maxLength={16}>
+              <OmpToolTip maxLength={14}>
                 {info[nameObj[tabKey].version]}
               </OmpToolTip>
             </span>
           </div>
+
+          {/* -- 描述信息 -- */}
           <p className={styles.text}>
             {/* <Tooltip placement="top" title={info[nameObj[tabKey].description]}> */}
             {info[nameObj[tabKey].description]}
             {/* </Tooltip> */}
           </p>
+
+          {/* -- 服务实例总计 -- */}
           <span
             style={{
               float: "right",
@@ -145,10 +144,13 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
               fontSize: 12,
             }}
           >
-            已安装{info[nameObj[tabKey].instance_number]}个实例
+            {context.serviceInstance + context.ln + context.total}{" "}
+            {info[nameObj[tabKey].instance_number]} {context.ge}
           </span>
         </div>
       </div>
+
+      {/* -- 下方按钮 查看/安装 -- */}
       <div
         className={styles.cardBtn}
         style={{ color: isHover ? "#247fe6" : "rgba(0,0,0,0.65)" }}
@@ -163,7 +165,7 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
             });
           }}
         >
-          查看
+          {context.view}
         </div>
         <div
           onClick={() => {
@@ -171,15 +173,10 @@ const Card = ({ idx, history, info, tabKey, installOperation }) => {
               installOperation({ product_name: info.pro_name }, "服务");
             } else {
               installOperation({ app_name: info.app_name }, "组件");
-              // history?.push({
-              //   pathname: `${nameObj[tabKey].install_url}/${
-              //     info[nameObj[tabKey].name]
-              //   }`,
-              // });
             }
           }}
         >
-          安装
+          {context.install}
         </div>
       </div>
     </div>

@@ -5,21 +5,19 @@ import moment from "moment";
 const getColumnsConfig = (
   queryRequest,
   setShowIframe,
-  //updateAlertRead,
   history,
-  initfilter
+  initfilter,
+  context
 ) => {
   return [
     {
-      title: "实例名称",
+      title: context.serviceInstance,
       key: "instance_name",
       dataIndex: "instance_name",
       align: "center",
       width: 200,
       ellipsis: true,
       fixed: "left",
-      // sorter: (a, b) => a.instance_name - b.instance_name,
-      // sortDirections: ["descend", "ascend"],
       render: (text, record) => {
         return (
           <Tooltip title={text}>
@@ -33,10 +31,9 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "IP地址",
+      title: context.ip,
       key: "ip",
       dataIndex: "ip",
-      //width: 180,
       ellipsis: true,
       sorter: (a, b) => a.ip - b.ip,
       sortDirections: ["descend", "ascend"],
@@ -60,74 +57,62 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "级别",
+      title: context.severity,
       key: "severity",
       dataIndex: "severity",
       align: "center",
       width: 120,
-      // sorter: (a, b) => a.severity - b.severity,
-      // sortDirections: ["descend", "ascend"],
-      //ellipsis: true,
-      //width:120,
       usefilter: true,
       queryRequest: queryRequest,
       filterMenuList: [
         {
           value: "critical",
-          text: "严重",
+          text: "critical",
         },
         {
           value: "warning",
-          text: "警告",
+          text: "warning",
         },
       ],
       render: (text) => {
         switch (text) {
           case "critical":
-            return <span style={{ color: colorConfig[text] }}>严重</span>;
           case "warning":
-            return <span style={{ color: colorConfig[text] }}>警告</span>;
           case "info":
-            return <span style={{ color: colorConfig[text] }}>警告</span>;
+            return <span style={{ color: colorConfig[text] }}>{text}</span>;
           default:
             return "-";
         }
       },
     },
     {
-      title: "告警类型",
+      title: context.type,
       key: "type",
       dataIndex: "type",
-      // usefilter: true,
-      // queryRequest: queryRequest,
-      // initfilter: initfilter,
-      // filterMenuList: [
-      //   {
-      //     value: "service",
-      //     text: "服务",
-      //   },
-      //   {
-      //     value: "host",
-      //     text: "主机",
-      //   },
-      // ],
+      filterMenuList: [
+        {
+          value: "service",
+          text: context.service,
+        },
+        {
+          value: "host",
+          text: context.host,
+        },
+        {
+          value: "component",
+          text: context.component,
+        },
+        {
+          value: "database",
+          text: context.database,
+        },
+      ],
       align: "center",
-      //ellipsis: true,
       width: 150,
-      render: (text) => {
-        if (text == "host") {
-          return "主机";
-        } else if (text == "service") {
-          return "服务";
-        } else if (text == "component") {
-          return "组件";
-        } else if (text == "database") {
-          return "数据库";
-        }
-      },
+      render: (text) => context[text],
     },
     {
-      title: "告警描述",
+      title: context.description,
       key: "description",
       dataIndex: "description",
       align: "center",
@@ -142,12 +127,10 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "告警时间",
-      //width:180,
+      title: context.timestamp,
       key: "date",
       dataIndex: "date",
       align: "center",
-      //ellipsis: true,
       sorter: (a, b) => a.date - b.date,
       sortDirections: ["descend", "ascend"],
       render: (text) => {
@@ -156,20 +139,19 @@ const getColumnsConfig = (
       },
     },
     {
-      title: "操作",
+      title: context.action,
       width: 100,
       key: "",
       dataIndex: "",
       fixed: "right",
       align: "center",
-      render: function renderFunc(text, record, index) {
+      render: (text, record, index) => {
         return (
           <div style={{ display: "flex", justifyContent: "space-around" }}>
             <div style={{ margin: "auto" }}>
               {record.monitor_url ? (
                 <a
                   onClick={() => {
-                    //record.is_read == 0 && updateAlertRead([record.id]);
                     setShowIframe({
                       isOpen: true,
                       src: record.monitor_url,
@@ -181,10 +163,12 @@ const getColumnsConfig = (
                     });
                   }}
                 >
-                  监控
+                  {context.monitor}
                 </a>
               ) : (
-                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>监控</span>
+                <span style={{ color: "rgba(0, 0, 0, 0.25)" }}>
+                  {context.monitor}
+                </span>
               )}
 
               {record.type == "host" ? (
@@ -196,12 +180,11 @@ const getColumnsConfig = (
                   }
                   style={{ marginLeft: "10px" }}
                 >
-                  分析
+                  {context.analysis}
                 </a>
               ) : record.log_url ? (
                 <a
                   onClick={() => {
-                    //record.is_read == 0 && updateAlertRead([record.id]);
                     setShowIframe({
                       isOpen: true,
                       src: record.log_url,
@@ -214,11 +197,11 @@ const getColumnsConfig = (
                   }}
                   style={{ marginLeft: "10px" }}
                 >
-                  日志
+                  {context.log}
                 </a>
               ) : (
                 <span style={{ color: "rgba(0, 0, 0, 0.25)", marginLeft: 10 }}>
-                  日志
+                  {context.log}
                 </span>
               )}
             </div>

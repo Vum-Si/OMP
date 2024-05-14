@@ -11,7 +11,7 @@
 """
 
 import os
-
+import traceback
 import yaml
 from celery.utils.log import get_task_logger
 
@@ -19,8 +19,65 @@ from utils.plugin.ssh import SSH
 from omp_server.settings import PROJECT_DIR
 from utils.parse_config import LOCAL_IP
 from utils.parse_config import SALT_RET_PORT
+from utils.parse_config import IS_NO_SSH
+from utils.parse_config import python_cmd_env
+from db_models.models import Host
+from django.conf import settings
+from utils.plugin.crypto import AESCryptor
+from utils.parse_config import HOSTNAME_PREFIX
 
 logger = get_task_logger("celery_log")
+
+
+def real_init_host(host_obj, install_dir):
+    """
+    初始化主机
+    :param host_obj: 主机对象
+    :type host_obj Host
+    :return:
+    """
+    logger.info(f"init host Begin [{host_obj.id}]")
+    _ssh = SSH(
+        hostname=host_obj.ip,
+        port=host_obj.port,
+        username=host_obj.username,
+        password=AESCryptor().decode(host_obj.password),
+    )
+    # 验证用户权限
+    is_sudo, _ = _ssh.is_sudo()
+    if not is_sudo:
+        logger.error(f"init host [{host_obj.id}] failed: permission failed")
+        raise Exception("permission failed")
+
+    # 发送脚本
+    init_script_name = "init_host.py"
+    init_script_path = os.path.join(
+        settings.BASE_DIR.parent,
+        "package_hub", "_modules", init_script_name)
+    script_push_state, script_push_msg = _ssh.file_push(
+        file=init_script_path,
+        remote_path="/tmp",
+    )
+    if not script_push_state:
+        logger.error(f"init host [{host_obj.id}] failed: send script failed, "
+                     f"detail: {script_push_msg}")
+        raise Exception("send script failed")
+    modified_host_name = str(HOSTNAME_PREFIX) + "".join(
+        item.zfill(3) for item in host_obj.ip.split("."))
+    # 执行初始化
+    json_path = os.path.join(install_dir, "omp_packages/test.json")
+    is_success, script_msg = _ssh.cmd(
+        f"{python_cmd_env(json_path)} /tmp/{init_script_name} init_valid {modified_host_name} {host_obj.ip}")
+    if not (is_success and "init success" in script_msg and "valid success" in script_msg):
+        logger.error(f"init host [{host_obj.id}] failed: execute init failed, "
+                     f"detail: {script_msg}")
+        raise Exception("execute failed")
+    # 释放 ssh 连接
+    _ssh.close()
+    Host.objects.filter(
+        id=host_obj.id
+    ).update(init_status=Host.INIT_SUCCESS)
+    logger.info("init host Success")
 
 
 class Agent(object):
@@ -78,11 +135,15 @@ class Agent(object):
         except Exception as error:
             return False, str(error)
 
-    def agent_deploy(self):
+    def agent_deploy(self, init=False):
         """
         安装agent
         :return:
         """
+        if IS_NO_SSH is True:
+            logger.info(
+                "NO SSH CONDITION: agent_deploy return default success")
+            return True, "default success"
         logger.info(f"deploy host for agent {self.host}!")
         # step1: 判断是否可连接
         ssh_state, _ = self.ssh.check()
@@ -158,7 +219,33 @@ class Agent(object):
             return False, script_push_msg
         # shutil.rmtree(config_tmp_dir)
 
-        # step7: start and init agent
+        # step7: mkdir omp_packages and write PATH scripts
+        logger.info(f"write PATH for {self.host}!")
+        omp_packages_path = os.path.join(self.install_dir, "omp_packages")
+        python_bin = os.path.join(self.install_dir, self.agent_name, "env/bin/")
+        path_scripts = os.path.join(omp_packages_path, "bash_env.sh ")
+        command = f'mkdir -p {omp_packages_path} && echo -e "' \
+                  f'echo \$PATH |grep {self.agent_name}\nif [ \$? -ne 0 ]; then\n' \
+                  f'   export PATH=\$PATH:{python_bin}\nfi" >{path_scripts}'
+        cmd_exec_state, cmd_exec_msg = self.ssh.cmd(command, timeout=120)
+        logger.info(f"write result {cmd_exec_state} msg {cmd_exec_msg}")
+
+        # setp7+: init_host
+        if init:
+            host_query = Host.objects.filter(ip=self.host)
+            try:
+                host_query.update(init_status=Host.INIT_EXECUTING)
+                real_init_host(host_query.first(), self.install_dir)
+            except Exception as e:
+                print(e)
+                logger.error(
+                    f"Init Host For {self.host} Failed with error: {str(e)};\n"
+                    f"detail: {traceback.format_exc()}"
+                )
+                host_query.update(
+                    init_status=Host.INIT_FAILED)
+
+        # step8: start and init agent
         logger.info(f"init omp_salt_agent for {self.host}!")
         command = f"cd {self.install_dir} && " \
                   f"chown -R {self.run_user}.{self.run_user} {self.agent_name} && " \
@@ -183,6 +270,10 @@ class Agent(object):
         :return:
             the (state, status) , as a 2-tuple
         """
+        if IS_NO_SSH is True:
+            logger.info(
+                "NO SSH CONDITION: agent_manage return default success")
+            return True, "default success"
         if action == "start":
             command = "cd {}/{} && bash ./bin/omp_salt_agent start".format(
                 install_app_dir, self.agent_name)
